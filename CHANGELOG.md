@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.29 (Build 30) — 13.10.2026
+
+- Der Schalter je Automatismus heißt jetzt „Aktiv“ statt „Eingeschaltet“ (Dialog und Listenspalte, vorher „An“); Zustand „⚫ Nicht aktiv“, Zusammenfassung „… aktiv“. „Eingeschaltet“ war mit dem Schalten der Geräte zu verwechseln. Rückmeldung Dietmar.
+
 ## 0.1.28 (Build 29) — 13.10.2026
 
 - Neuer Automatismus **🌙 Zentral-Aus / Szene nach Hausmodus** (Wunsch Dietmar): Beim Wechsel des Hausmodus auf angekreuzte Modi (Standard: Nacht, Abwesend, Urlaub) bis zu 16 Geräte ausschalten, einschalten (Dimmer mit Helligkeit) oder auf einen Wert setzen (z. B. 17 °C). Wahlweise verzögert (wechselt der Modus vorher weiter, entfällt es). Was schon richtig steht, wird nicht angefasst. Nur beim Wechsel — danach darf jeder wieder schalten. Optional Meldung, was geschaltet wurde (über die gewählten Meldewege).

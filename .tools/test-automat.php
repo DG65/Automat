@@ -1774,6 +1774,7 @@ $walkM = function ($els) use (&$walkM, &$hiddenModes) {
 };
 $walkM($dlgS);
 check('Dialog der Szene: allgemeine Modus-Häkchen ausgeblendet', $hiddenModes);
+check('Schalter heißt „Aktiv“ (Dialog, Listenspalte, Zustand „Nicht aktiv“)', strpos(json_encode($dlgS, JSON_UNESCAPED_UNICODE), '"name":"Enabled","caption":"Aktiv"') !== false && strpos($src0 = file_get_contents(dirname(__DIR__) . '/Automat/module.php'), "['caption' => 'Aktiv', 'name' => 'Enabled'") !== false && strpos($src0, "'⚫ Nicht aktiv'") !== false && strpos($src0, "'Eingeschaltet'") === false);
 $cS = json_encode(json_decode($m->UIEditForm('aszn02', 'szene'), true), JSON_UNESCAPED_UNICODE);
 check('Doppelregelung mit dem Bewegungslicht nur als ℹ️ (gewollt)', strpos($cS, 'gewollt: die Szene schaltet nur beim Wechsel') !== false);
 $m->props['Automations'] = json_encode([$blr]);

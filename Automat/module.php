@@ -366,7 +366,7 @@ class Automat extends IPSModule
         $status = $this->attrMap('Status');
         $due = $this->attrMap('Due');
         if (empty($row['Enabled'])) {
-            $status[$uid] = '⚫ Ausgeschaltet (in der Liste)';
+            $status[$uid] = '⚫ Nicht aktiv (in der Liste)';
             unset($due[$uid]);
             $this->WriteAttributeString('Status', json_encode($status));
             $this->WriteAttributeString('Due', json_encode($due));
@@ -601,7 +601,7 @@ class Automat extends IPSModule
     //  Melder-Dauern lernen (Rückfall bei verlorener „keine Bewegung“-Meldung)
     // =====================================================================
 
-    /** Melder aller eingeschalteten Bewegungslichter. */
+    /** Melder aller aktiven Bewegungslichter. */
     private function melderIDs(array $rows): array
     {
         $ids = [];
@@ -1739,7 +1739,7 @@ class Automat extends IPSModule
             ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.'],
             ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => 'Bezeichnung (z. B. „Flurlicht“)', 'width' => '420px'],
             ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => 'Raum (optional, für Übersicht und Kachel)', 'width' => '420px'],
-            ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => 'Eingeschaltet', 'value' => true],
+            ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => 'Aktiv', 'value' => true],
             ['type' => 'ValidationTextBox', 'name' => 'Uid', 'caption' => 'Kennung', 'visible' => false, 'value' => $isNew ? $this->newUid($this->rows()) : $uid],
             ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
@@ -2257,7 +2257,7 @@ class Automat extends IPSModule
                 return IPS_VariableExists($vid);
             });
             $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : '❔ Typ wählen (✏️)';
-            $r['State'] = empty($r['Enabled']) ? '⚫ Ausgeschaltet' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
+            $r['State'] = empty($r['Enabled']) ? '⚫ Nicht aktiv' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
             $r['Settings'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::summary($r, function (int $vid) {
                 return $this->liveText($vid);
             }) : '';
@@ -2443,7 +2443,7 @@ class Automat extends IPSModule
         }
         $summary = count($rows) === 0
             ? 'ℹ️ Noch kein Automatismus — unten „Entdecken“ nutzen, im „Katalog“ einen Typ wählen oder „+“ an der Liste klicken.'
-            : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' eingeschaltet'
+            : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' aktiv'
                 . ($problems > 0 ? ', ' . $problems . ' unvollständig (rot)' : '') . ($locked > 0 ? ', ' . $locked . ' gesperrt' : '')
                 . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->ReadPropertyBoolean('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
         return [
@@ -2459,7 +2459,7 @@ class Automat extends IPSModule
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
                     'sort' => $this->listSort($this->ReadPropertyInteger('cfg_ListOrder')),
                     'columns' => [
-                        ['caption' => 'An', 'name' => 'Enabled', 'width' => '50px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Aktiv', 'name' => 'Enabled', 'width' => '60px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
                         ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '210px', 'add' => '', 'save' => true, 'sortColumn' => 'SortType'],
                         ['caption' => 'Bezeichnung', 'name' => 'Name', 'width' => '200px', 'add' => '', 'save' => true],
