@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (Build 3) — 13.10.2026
+
+- Bewegungslicht: verständlicherer Text für den Schalter „Melder setzt die Variable nie (oder erst sehr spät) auf „aus“ zurück“ und ein Hilfe-Knopf „Wann brauche ich diesen Schalter?“ direkt darunter (Rückmeldung Dietmar aus dem ersten Live-Test).
+
 ## 0.1.1 (Build 2) — 13.10.2026
 
 - Räume kommen aus dem umbenannten Toolkit-Modul **Raumstruktur** (vormals Katasteramt): Automat ruft `RAUM_GetStructure` auf, `STRUKT_GetStructure` bleibt als Rückfall, bis alle umgestellt haben.

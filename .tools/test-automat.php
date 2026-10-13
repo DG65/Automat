@@ -815,6 +815,8 @@ $collect2($form['elements']);
 check('Dialog-Namen kollidieren nicht mit Formular-Namen', count(array_intersect(array_diff($names, ['Automations']), $names2)) === 0, implode(',', array_intersect($names, $names2)));
 $secs = array_values(array_filter($dlg, fn($e) => strpos($e['name'] ?? '', 'sec_') === 0 && $e['name'] !== 'sec_when'));
 check('Dialog: nur der Abschnitt des Typs sichtbar', count(array_filter($secs, fn($e) => $e['visible'])) === 1 && $find($dlg, 'sec_bewegung')['visible'] === true);
+$dlgTxt = json_encode($dlg, JSON_UNESCAPED_UNICODE);
+check('Dialog: Hilfe-Knopf zum Impuls-Schalter mit voller Frage, ohne zusätzliches Symbol', strpos($dlgTxt, '"caption":"Wann brauche ich diesen Schalter?"') !== false && strpos($dlgTxt, 'nie (oder erst sehr spät) auf „aus“ zurück') !== false);
 check('Dialog: Kennung bleibt beim Bearbeiten erhalten', $find($dlg, 'Uid')['value'] === 'aflur1');
 $dlgNew = json_decode($m->UIEditForm('', ''), true);
 check('Neuer Dialog: neue Kennung, kein Abschnitt sichtbar', preg_match('/^a[0-9a-f]{5}$/', $find($dlgNew, 'Uid')['value']) === 1 && count(array_filter($dlgNew, fn($e) => strpos($e['name'] ?? '', 'sec_') === 0 && $e['name'] !== 'sec_when' && $e['visible'])) === 0);

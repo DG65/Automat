@@ -1017,8 +1017,23 @@ class Automat extends IPSModule
         return json_encode($el);
     }
 
-    /** Formular-Elemente eines Katalog-Felds. */
+    /** Formular-Elemente eines Katalog-Felds, ggf. mit Hilfe-Knopf (volle Frage als Beschriftung, SUITE.md Feld-Hilfestellung). */
     private function fieldElements(array $f): array
+    {
+        $els = $this->fieldInputs($f);
+        if (isset($f['help'])) {
+            [$question, $lines] = $f['help'];
+            $els[] = ['type' => 'PopupButton', 'caption' => $question, 'width' => '420px', 'popup' => [
+                'caption' => $question,
+                'items' => array_map(function ($l) {
+                    return ['type' => 'Label', 'caption' => $l];
+                }, $lines),
+            ]];
+        }
+        return $els;
+    }
+
+    private function fieldInputs(array $f): array
     {
         $k = $f['k'];
         if ($k === 'info') {

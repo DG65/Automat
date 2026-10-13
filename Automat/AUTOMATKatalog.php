@@ -119,7 +119,13 @@ class AUTOMATKatalog
                 return [
                     ['k' => 'info', 'c' => 'Melder (einer reicht — mehrere werden ODER-verknüpft)'],
                     ['n' => 'bl_mel', 'k' => 'vars', 'c' => 'Bewegungsmelder', 'req' => true],
-                    ['n' => 'bl_impuls', 'k' => 'bool', 'c' => 'Melder senden nur „Bewegung“, nie „keine Bewegung“ (Nachlauf ab jeder Meldung)', 'd' => false],
+                    ['n' => 'bl_impuls', 'k' => 'bool', 'c' => 'Melder setzt die Variable nie (oder erst sehr spät) auf „aus“ zurück — Nachlauf bei jeder Bewegungsmeldung neu starten', 'd' => false,
+                        'help' => ['Wann brauche ich diesen Schalter?', [
+                            'Ein Bewegungsmelder setzt seine Variable bei Bewegung auf „an“ (true) und normalerweise einige Zeit später von selbst wieder auf „aus“ (false).',
+                            'Schalter AUS (Normalfall): Das Licht bleibt an, solange irgendein Melder noch auf „an“ steht. Erst wenn alle wieder „aus“ melden, beginnt die Nachlaufzeit.',
+                            'Schalter AN: Automat beachtet nur, wann zuletzt „an“ gemeldet wurde, und startet ab da jedes Mal die Nachlaufzeit neu. Ein „aus“ wird ignoriert.',
+                            'Einschalten, wenn das Licht dauerhaft an bleibt, obwohl niemand mehr da ist — dann geht die Variable des Melders nie oder erst sehr spät auf „aus“ zurück (z. B. Melder, die bei jeder Bewegung nur erneut „an“ schreiben).',
+                        ]]],
                     ['k' => 'info', 'c' => 'Was soll geschaltet werden?'],
                     ['n' => 'bl_out', 'k' => 'vars', 'c' => 'Licht / Ausgang', 'req' => true],
                     ['k' => 'info', 'c' => 'Zeiten, Helligkeit und Handbedienung'],
