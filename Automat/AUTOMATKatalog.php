@@ -36,6 +36,7 @@ class AUTOMATKatalog
         'licht'        => '💡 Licht',
         'klima'        => '🌡 Klima',
         'ueberwachung' => '🔔 Überwachung',
+        'haus'         => '🏠 Haus und Anwesenheit',
     ];
 
     /** Geräte-Rollen der Erkennung, mit Anzeigename für „dafür fehlt …“. */
@@ -46,6 +47,7 @@ class AUTOMATKatalog
         'setpoint' => 'Heizungs-Sollwert (Thermostat)',
         'lux'      => 'Helligkeitssensor',
         'power'    => 'Leistungsmessung eines Haushaltsgeräts',
+        'presence' => 'Anwesenheit einer Person (z. B. Geofency, Handy im WLAN)',
     ];
 
     public const TYPES = [
@@ -78,6 +80,11 @@ class AUTOMATKatalog
             'label' => 'Gerät fertig', 'icon' => '🧺', 'cat' => 'ueberwachung', 'light' => false,
             'desc'  => 'Meldet, wenn z. B. Waschmaschine, Trockner oder Spülmaschine fertig ist — erkannt an der Leistungsaufnahme.',
             'needs' => ['power'],
+        ],
+        'anwesenheit' => [
+            'label' => 'Anwesenheit zusammenfassen', 'icon' => '🏠', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Fasst mehrere Anwesenheitssignale (z. B. je Person Geofency oder Handy im WLAN) zu „Jemand zu Hause“ zusammen — sofort „da“, „niemand da“ erst nach einer Wartezeit gegen kurze Aussetzer. Der Hausmodus nutzt das Ergebnis automatisch.',
+            'needs' => ['presence'],
         ],
     ];
 
@@ -208,6 +215,18 @@ class AUTOMATKatalog
                     ['n' => 'wa_wdh', 'k' => 'int', 'c' => 'Wiederholen alle (0 = einmal)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                     ['n' => 'wa_ende', 'k' => 'bool', 'c' => 'Entwarnung melden, wenn der Zustand vorbei ist', 'd' => true],
                     ['n' => 'wa_push', 'k' => 'bool', 'c' => 'Als Push-Nachricht an alle Visualisierungen senden', 'd' => true],
+                ];
+            case 'anwesenheit':
+                return [
+                    ['k' => 'info', 'c' => 'Signale für „zu Hause“ (eines reicht für „jemand da“)'],
+                    ['n' => 'an_p', 'k' => 'vars', 'c' => 'Person / Anwesenheitssignal', 'req' => true,
+                        'help' => ['Welche Signale passen hierher?', [
+                            'Je Person ein Signal, das „zu Hause“ meldet — z. B. Geofency/Standort-App, Handy im WLAN, ein Schlüsselschalter, eine Anwesenheitsvariable einer anderen Steuerung.',
+                            'Zählt als „da“: an/wahr, Zahlen über 0 und Texte wie „home“, „zuhause“, „anwesend“.',
+                            'Nicht hierher gehören Präsenzmelder in einzelnen Räumen (die gehören zum Bewegungslicht), „Zu Hause“ von Fahrzeugen und geplante Kalendereinträge.',
+                        ]]],
+                    ['k' => 'info', 'c' => 'Ergebnis'],
+                    ['n' => 'an_weg', 'k' => 'int', 'c' => '„Niemand da“ erst, wenn alle so lange weg sind', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                 ];
             case 'fertig':
                 return [
@@ -350,6 +369,9 @@ class AUTOMATKatalog
                     $in[] = (int)$row['wa_var'];
                 }
                 break;
+            case 'anwesenheit':
+                $in = self::vars($row, 'an_p');
+                break;
             case 'fertig':
                 if ((int)($row['gf_var'] ?? 0) >= self::$minId) {
                     $in[] = (int)$row['gf_var'];
@@ -491,6 +513,10 @@ class AUTOMATKatalog
                 if ((int)($row['wa_wdh'] ?? 0) > 0) {
                     $p[] = 'Erinnerung alle ' . (int)$row['wa_wdh'] . ' min';
                 }
+                break;
+            case 'anwesenheit':
+                $p[] = count(self::vars($row, 'an_p')) . ' Signal(e)';
+                $p[] = '„niemand da“ nach ' . (int)($row['an_weg'] ?? 10) . ' min';
                 break;
             case 'fertig':
                 $p[] = 'läuft ab ' . (float)($row['gf_lauf'] ?? 0) . ' W';

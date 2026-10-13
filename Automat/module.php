@@ -76,7 +76,10 @@ class Automat extends IPSModule
         $this->RegisterPropertyString('Automations', '[]');
         // Standard an (Dietmar 13.10.2026): bestimmt nur, welcher Hausmodus gilt — schaltet selbst nichts.
         $this->RegisterPropertyBoolean('cfg_ModeAuto', true);
+        $this->RegisterPropertyInteger('cfg_DayRef', 0);
         $this->RegisterPropertyString('cfg_DayFrom', AUTOMATKatalog::time(6, 30));
+        $this->RegisterPropertyInteger('cfg_DayOffset', 0);
+        $this->RegisterPropertyInteger('cfg_EveningOffset', 0);
         $this->RegisterPropertyInteger('cfg_EveningRef', 0);
         $this->RegisterPropertyString('cfg_EveningFrom', AUTOMATKatalog::time(18, 0));
         $this->RegisterPropertyString('cfg_NightFrom', AUTOMATKatalog::time(22, 30));
@@ -159,6 +162,10 @@ class Automat extends IPSModule
                 $this->EnableAction('d_' . $uid);
                 $keep['d_' . $uid] = true;
             }
+            if ($row['Type'] === 'anwesenheit') {
+                $this->ensureVar('p_' . $uid, $name . ' · Jemand zu Hause', VARIABLETYPE_BOOLEAN, IPS_VariableProfileExists('~Presence') ? '~Presence' : '~Switch', $pos + 3);
+                $keep['p_' . $uid] = true;
+            }
             if (empty($row['Enabled'])) {
                 continue;
             }
@@ -178,11 +185,15 @@ class Automat extends IPSModule
         if ($presence > 0 && IPS_VariableExists($presence)) {
             $this->RegisterMessage($presence, VM_UPDATE);
         }
+        $isDay = $this->locationVariable('IsDay');
+        if ($isDay > 0 && ($this->ReadPropertyInteger('cfg_DayRef') === 2 || $this->ReadPropertyInteger('cfg_EveningRef') === 2)) {
+            $this->RegisterMessage($isDay, VM_UPDATE);
+        }
 
         // Variablen entfernter Automatismen aufräumen (nur eigene Idents).
         foreach (IPS_GetChildrenIDs($this->InstanceID) as $cid) {
             $ident = (string)(IPS_GetObject($cid)['ObjectIdent'] ?? '');
-            if (preg_match('/^[sldr]_[a-z0-9]+$/', $ident) && !isset($keep[$ident]) && IPS_VariableExists($cid)) {
+            if (preg_match('/^[sldrp]_[a-z0-9]+$/', $ident) && !isset($keep[$ident]) && IPS_VariableExists($cid)) {
                 IPS_DeleteVariable($cid);
             }
         }
@@ -220,6 +231,9 @@ class Automat extends IPSModule
         $value = $Data[0] ?? null;
         if ($vid === $this->ReadPropertyInteger('cfg_PresenceVar')) {
             $this->evaluateMode(true);
+        }
+        if ($vid === $this->locationVariable('IsDay')) {
+            $this->evaluateMode(false);
         }
         $own = $this->consumeEcho($vid, $value);
         $this->learnMelder($vid, $value);
@@ -364,6 +378,16 @@ class Automat extends IPSModule
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
+        if (array_key_exists('self', $res) && $res['self'] !== null) {
+            // Ergebnis eines Automatismus, der selbst eine Variable führt (Anwesenheit zusammenfassen)
+            $pid = @IPS_GetObjectIDByIdent('p_' . $uid, $this->InstanceID);
+            if ($pid && (bool)GetValue($pid) !== (bool)$res['self']) {
+                $this->SetValue('p_' . $uid, (bool)$res['self']);
+                if ($this->ReadPropertyInteger('cfg_PresenceVar') < AUTOMATKatalog::$minId) {
+                    $this->evaluateMode(true);
+                }
+            }
+        }
     }
 
     /** Zeitpunkt des nächsten Ereignisses merken und „… · Restzeit" nachführen. */
@@ -391,6 +415,11 @@ class Automat extends IPSModule
             if (IPS_VariableExists($vid)) {
                 $val[$vid] = GetValue($vid);
                 $names[$vid] = $this->varLabel($vid);
+                if ($row['Type'] === 'anwesenheit') {
+                    // „Dietmar / Zuhause“ → „Dietmar“: die Instanz trägt meist den Namen der Person
+                    $p = IPS_GetParent($vid);
+                    $names[$vid] = $p > 0 && IPS_InstanceExists($p) ? IPS_GetName($p) : IPS_GetName($vid);
+                }
             }
         }
         $dim = [];
@@ -723,23 +752,22 @@ class Automat extends IPSModule
      */
     private function evaluateMode(bool $presenceChanged): void
     {
-        $presVid = $this->ReadPropertyInteger('cfg_PresenceVar');
-        $presence = null;
-        if ($presVid > 0 && IPS_VariableExists($presVid)) {
-            $presence = AUTOMATLogik::isTrue(GetValue($presVid));
-            if ($this->ReadPropertyBoolean('cfg_PresenceInvert')) {
-                $presence = !$presence;
-            }
-        }
+        [$presence] = $this->presenceSource();
         if (!$this->ReadPropertyBoolean('cfg_ModeAuto') && $presence === null) {
             return;
         }
         $current = (int)$this->GetValue('Hausmodus');
         $now = $this->now();
         if ($this->ReadPropertyBoolean('cfg_ModeAuto')) {
-            $target = AUTOMATLogik::autoMode($now, $this->ReadPropertyString('cfg_DayFrom'), $this->ReadPropertyInteger('cfg_EveningRef'),
-                $this->ReadPropertyString('cfg_EveningFrom'), $this->ReadPropertyString('cfg_NightFrom'),
-                $this->sunOn('Sunset', date('Y-m-d', $now)), $presence, $current);
+            $today = date('Y-m-d', $now);
+            $isDayVid = $this->locationVariable('IsDay');
+            $target = AUTOMATLogik::autoMode($now, [
+                'dayRef' => $this->ReadPropertyInteger('cfg_DayRef'), 'dayFrom' => $this->ReadPropertyString('cfg_DayFrom'), 'dayOff' => $this->ReadPropertyInteger('cfg_DayOffset'),
+                'eveRef' => $this->ReadPropertyInteger('cfg_EveningRef'), 'eveFrom' => $this->ReadPropertyString('cfg_EveningFrom'), 'eveOff' => $this->ReadPropertyInteger('cfg_EveningOffset'),
+                'night' => $this->ReadPropertyString('cfg_NightFrom'),
+                'sunrise' => $this->sunOn('Sunrise', $today), 'sunset' => $this->sunOn('Sunset', $today),
+                'isDay' => $isDayVid > 0 ? (bool)GetValue($isDayVid) : null,
+            ], $presence, $current);
         } else {
             // Nur Anwesenheit: Abwesend setzen bzw. beim Heimkommen auf Tag zurück.
             if ($current === AUTOMATKatalog::MODE_HOLIDAY) {
@@ -754,6 +782,32 @@ class Automat extends IPSModule
                 $this->setMode($target, $presenceChanged ? 'Anwesenheit' : 'automatisch');
             }
         }
+    }
+
+    /**
+     * Woher kommt „jemand zu Hause“? [true/false/null, Beschreibung]. Eingetragene Variable hat Vorrang,
+     * sonst das Ergebnis eines Automatismus „Anwesenheit zusammenfassen“.
+     */
+    private function presenceSource(): array
+    {
+        $presVid = $this->ReadPropertyInteger('cfg_PresenceVar');
+        if ($presVid >= AUTOMATKatalog::$minId && IPS_VariableExists($presVid)) {
+            $p = AUTOMATLogik::isTrue(GetValue($presVid));
+            if ($this->ReadPropertyBoolean('cfg_PresenceInvert')) {
+                $p = !$p;
+            }
+            return [$p, '✏️ Anwesenheit aus der eingetragenen Variable „' . $this->varLabel($presVid) . '“: ' . ($p ? 'jemand da' : 'niemand da') . '.'];
+        }
+        foreach ($this->rows() as $r) {
+            if ($r['Type'] === 'anwesenheit' && !empty($r['Enabled'])) {
+                $pid = @IPS_GetObjectIDByIdent('p_' . $r['Uid'], $this->InstanceID);
+                if ($pid) {
+                    $p = (bool)GetValue($pid);
+                    return [$p, '✅ 🔗 Anwesenheit automatisch aus dem Automatismus „' . $this->rowName($r) . '“: ' . ($p ? 'jemand da' : 'niemand da') . '.'];
+                }
+            }
+        }
+        return [null, 'ℹ️ Keine Anwesenheit verknüpft — „Abwesend“ wird nur von Hand gesetzt. Tipp: Automatismus „🏠 Anwesenheit zusammenfassen“ anlegen (Entdecken schlägt ihn vor), dann nutzt der Hausmodus ihn automatisch.'];
     }
 
     // =====================================================================
@@ -941,6 +995,7 @@ class Automat extends IPSModule
                 'profile' => $profile, 'pres' => $pres, 'suffix' => trim($suffix),
                 'name' => (string)$obj['ObjectName'], 'inst' => $parent > 0 ? IPS_GetName($parent) : '', 'ident' => (string)$obj['ObjectIdent'],
                 'room' => $roomByInstance[$instID] ?? ($roomByInstance[$vid] ?? null),
+                'module' => $instID > 0 ? (string)(@IPS_GetInstance($instID)['ModuleInfo']['ModuleName'] ?? '') : '',
             ];
             if ($item['room'] === null && count($this->roomLabels) > 0) {
                 // Gerät hängt nicht in einem Raum, nennt ihn aber im Namen („Thermostat Kind II“).
@@ -1708,7 +1763,7 @@ class Automat extends IPSModule
         if ($id) {
             // MaintainVariable benennt nicht um (Pitfall 16): nur Standardnamen nachziehen, Nutzernamen bleiben.
             $cur = IPS_GetName($id);
-            if ($cur !== $name && preg_match('/ · (Status|Restzeit|gesperrt|Dauerlicht)$/u', $cur)) {
+            if ($cur !== $name && preg_match('/ · (Status|Restzeit|gesperrt|Dauerlicht|Jemand zu Hause)$/u', $cur)) {
                 IPS_SetName($id, $name);
             }
         }
@@ -2131,23 +2186,37 @@ class Automat extends IPSModule
     {
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
         $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
+        [, $presText] = $this->presenceSource();
         $loc = $this->locationVariable('Sunset') > 0
-            ? '✅ 🔗 Sonnenuntergang aus Symcons Location Control.'
-            : 'ℹ️ Keine Location-Control-Instanz — „bei Sonnenuntergang“ fällt auf die Uhrzeit zurück (Einstellungen → Standort).';
+            ? '✅ 🔗 Sonnenaufgang, Sonnenuntergang und „Ist es Tag“ aus Symcons Location Control.'
+            : 'ℹ️ Keine Location-Control-Instanz — Sonnenaufgang/-untergang und „Ist es Tag“ fallen auf die Uhrzeiten zurück (Einstellungen → Standort).';
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
             'items' => [
                 ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
                 ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
-                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag ab'],
-                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend ab', 'options' => [['caption' => 'Sonnenuntergang', 'value' => 0], ['caption' => 'Uhrzeit (unten)', 'value' => 1]]],
-                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend ab (Uhrzeit)'],
-                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht ab'],
+                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'options' => [
+                    ['caption' => 'zur Uhrzeit', 'value' => 0],
+                    ['caption' => 'bei Sonnenaufgang (± Versatz)', 'value' => 1],
+                    ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2],
+                ]],
+                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Uhrzeit für „Tag“ (bei „zur Uhrzeit“)'],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz zum Sonnenaufgang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240],
+                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'options' => [
+                    ['caption' => 'bei Sonnenuntergang (± Versatz)', 'value' => 0],
+                    ['caption' => 'zur Uhrzeit', 'value' => 1],
+                    ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2],
+                ]],
+                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Uhrzeit für „Abend“ (bei „zur Uhrzeit“)'],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz zum Sonnenuntergang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240],
+                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um'],
                 ['type' => 'Label', 'caption' => $loc, 'color' => strpos($loc, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => 'Anwesenheit (optional, Bool: wahr = jemand zu Hause)', 'width' => '520px'],
+                ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
+                ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],
+                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => 'Eigene Anwesenheits-Variable (optional, hat Vorrang; Bool: wahr = jemand zu Hause)', 'width' => '520px'],
                 ['type' => 'CheckBox', 'name' => 'cfg_PresenceInvert', 'caption' => 'Variable ist umgekehrt (wahr = niemand da, z. B. „Abwesend“)'],
-                ['type' => 'Label', 'caption' => 'ℹ️ Mit Anwesenheits-Variable wird bei „niemand da“ automatisch „Abwesend“ gesetzt und beim Heimkommen wieder der Tageszeit-Modus. „Urlaub“ setzt und beendet nur der Nutzer.'],
+                ['type' => 'Label', 'caption' => 'ℹ️ Bei „niemand da“ wird automatisch „Abwesend“ gesetzt, beim Heimkommen wieder der Tageszeit-Modus. „Urlaub“ setzt und beendet nur der Nutzer.'],
             ],
         ];
     }

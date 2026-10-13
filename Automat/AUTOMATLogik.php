@@ -48,6 +48,8 @@ class AUTOMATLogik
                 return self::waechter($row, $st, $ev, $ctx, $res);
             case 'fertig':
                 return self::fertig($row, $st, $ev, $ctx, $res);
+            case 'anwesenheit':
+                return self::anwesenheit($row, $st, $ev, $ctx, $res);
         }
         $res['status'] = '❔ Unbekannter Typ';
         return $res;
@@ -95,7 +97,7 @@ class AUTOMATLogik
             if (is_numeric($s)) {
                 return (float)$s > 0;
             }
-            return in_array($s, ['true', 'wahr', 'an', 'ein', 'on', 'ja', 'offen', 'open'], true);
+            return in_array($s, ['true', 'wahr', 'an', 'ein', 'on', 'ja', 'offen', 'open', 'home', 'zuhause', 'zu hause', 'anwesend', 'present'], true);
         }
         return false;
     }
@@ -1124,12 +1126,14 @@ class AUTOMATLogik
     // ------------------------------------------------------------------
 
     /**
-     * Welcher Hausmodus gälte jetzt nach Uhrzeit/Anwesenheit?
-     * $presence: true = jemand da, false = niemand da, null = keine Variable.
-     * Urlaub wird nie automatisch gesetzt und nie automatisch verlassen
-     * (außer der Nutzer stellt selbst um).
+     * Welcher Hausmodus gälte jetzt nach Tageszeit und Anwesenheit?
+     * $c: dayRef (0 Uhrzeit, 1 Sonnenaufgang, 2 „Ist es Tag“), dayFrom (SelectTime-JSON), dayOff (min),
+     *     eveRef (0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“ wird falsch), eveFrom, eveOff (min),
+     *     night (SelectTime-JSON), sunrise/sunset (Zeitstempel heute oder null), isDay (bool|null).
+     * $presence: true = jemand da, false = niemand da, null = unbekannt.
+     * Urlaub wird nie automatisch gesetzt und nie automatisch verlassen.
      */
-    public static function autoMode(int $now, string $dayFrom, int $eveningRef, string $eveningFrom, string $nightFrom, ?int $sunset, ?bool $presence, int $current): int
+    public static function autoMode(int $now, array $c, ?bool $presence, int $current): int
     {
         if ($current === AUTOMATKatalog::MODE_HOLIDAY) {
             return $current;
@@ -1138,15 +1142,108 @@ class AUTOMATLogik
             return AUTOMATKatalog::MODE_AWAY;
         }
         $today = date('Y-m-d', $now);
-        $day = self::timeOn($dayFrom, $today);
-        $evening = $eveningRef === 0 && $sunset !== null ? $sunset : self::timeOn($eveningFrom, $today);
-        $night = self::timeOn($nightFrom, $today);
-        if ($now < $day || $now >= $night) {
+        $noon = self::timeOn(AUTOMATKatalog::time(12, 0), $today);
+        $isDay = $c['isDay'] ?? null;
+        $dayRef = (int)($c['dayRef'] ?? 0);
+        $eveRef = (int)($c['eveRef'] ?? 0);
+        // Fehlt die Sonnen-/Tag-Angabe (keine Location-Control-Instanz), gilt die eingetragene Uhrzeit.
+        if ($dayRef === 1 && ($c['sunrise'] ?? null) === null || $dayRef === 2 && $isDay === null) {
+            $dayRef = 0;
+        }
+        if ($eveRef === 0 && ($c['sunset'] ?? null) === null || $eveRef === 2 && $isDay === null) {
+            $eveRef = 1;
+        }
+        if ($dayRef === 2) {
+            $beforeDay = !$isDay && $now < $noon;
+        } else {
+            $dayStart = $dayRef === 1 ? (int)$c['sunrise'] + (int)($c['dayOff'] ?? 0) * 60 : self::timeOn((string)($c['dayFrom'] ?? AUTOMATKatalog::time(6, 30)), $today);
+            $beforeDay = $now < $dayStart;
+        }
+        if ($eveRef === 2) {
+            $evening = !$isDay && $now >= $noon;
+        } else {
+            $eveStart = $eveRef === 0 ? (int)$c['sunset'] + (int)($c['eveOff'] ?? 0) * 60 : self::timeOn((string)($c['eveFrom'] ?? AUTOMATKatalog::time(18, 0)), $today);
+            $evening = $now >= $eveStart;
+        }
+        $night = self::timeOn((string)($c['night'] ?? AUTOMATKatalog::time(22, 30)), $today);
+        if ($night < $noon) {
+            // „Nacht ab 00:30“: nach Mitternacht bis dahin noch Abend, danach Nacht bis zum Tag.
+            if ($now < $noon) {
+                return $now >= $night && $beforeDay ? AUTOMATKatalog::MODE_NIGHT : ($beforeDay ? 1 : 0);
+            }
+            return $evening ? 1 : 0;
+        }
+        if ($now >= $night || $beforeDay) {
             return AUTOMATKatalog::MODE_NIGHT;
         }
-        if ($now >= $evening) {
-            return 1;
+        return $evening ? 1 : 0;
+    }
+
+    // ------------------------------------------------------------------
+    // Anwesenheit zusammenfassen
+    // ------------------------------------------------------------------
+
+    private static function anwesenheit(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $sig = AUTOMATKatalog::vars($row, 'an_p');
+        $wait = max(0, (int)($row['an_weg'] ?? 10)) * 60;
+        $home = [];
+        foreach ($sig as $vid) {
+            if (self::isTrue($ctx['val'][$vid] ?? false)) {
+                $home[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
+            }
         }
-        return 0;
+        $first = !isset($st['ph']);
+        $st += ['ph' => count($home) > 0 ? 'da' : 'weg', 'until' => 0, 'home' => [], 'since' => $now];
+        $hard = self::hardBlock($ctx);
+        if ($hard !== '') {
+            $res['st'] = $st;
+            $res['status'] = self::hardStatus($hard) . ' (Ergebnis bleibt ' . ($st['ph'] === 'weg' ? '„niemand da“' : '„jemand da“') . ')';
+            return $res;
+        }
+        if ($first) {
+            $res['self'] = $st['ph'] !== 'weg';
+        }
+        $came = array_values(array_diff($home, (array)$st['home']));
+        $left = array_values(array_diff((array)$st['home'], $home));
+        if (count($home) > 0) {
+            if ($st['ph'] !== 'da') {
+                $res['self'] = true;
+                $res['log'] = ($st['ph'] === 'weg' ? 'Jemand ist nach Hause gekommen' : 'Doch wieder jemand da') . ' (' . implode(', ', $came ?: $home) . ').';
+                $st['since'] = $now;
+            } elseif (count($came) > 0 || count($left) > 0) {
+                $res['log'] = trim((count($came) > 0 ? implode(', ', $came) . ' gekommen. ' : '') . (count($left) > 0 ? implode(', ', $left) . ' gegangen. ' : '') . 'Zu Hause: ' . implode(', ', $home) . '.');
+            }
+            $st['ph'] = 'da';
+            $st['until'] = 0;
+        } else {
+            if ($st['ph'] === 'da') {
+                $st['ph'] = 'wartet';
+                $st['until'] = $now + $wait;
+                $res['log'] = (count($left) > 0 ? implode(', ', $left) . ' gegangen — ' : '') . 'alle weg' . ($wait > 0 ? ', „niemand da“ ab ' . date('H:i', $st['until']) . ' Uhr, falls niemand zurückkommt.' : '.');
+            }
+            if ($st['ph'] === 'wartet' && $now >= (int)$st['until']) {
+                $st['ph'] = 'weg';
+                $st['since'] = $now;
+                $res['self'] = false;
+                $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Niemand mehr zu Hause.';
+            }
+        }
+        $st['home'] = $home;
+        $res['st'] = $st;
+        switch ($st['ph']) {
+            case 'da':
+                $res['status'] = '🏠 Zu Hause: ' . implode(', ', $home);
+                break;
+            case 'wartet':
+                $res['due'] = (int)$st['until'];
+                $res['end'] = (int)$st['until'];
+                $res['status'] = '🚪 Alle weg — „niemand da“ um ' . self::fmtClock((int)$st['until'], $now);
+                break;
+            default:
+                $res['status'] = '🚪 Niemand zu Hause seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr';
+        }
+        return $res;
     }
 }

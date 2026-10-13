@@ -52,6 +52,17 @@ class AUTOMATErkennung
         if (preg_match(self::NOISE, $text)) {
             return '';
         }
+        // Anwesenheit einer Person im Haus (nicht: Präsenzmelder im Raum, Fahrzeuge, Kalender)
+        if ($type === 0 && !$action
+            && (preg_match('/anwesen|presence/', $profile) || preg_match('/zuhause|zu hause|daheim|anwesenheit|geofenc|presence|\bhome\b/i', $text))
+            && !preg_match('/sensor|melder|occupancy|bewegung|motion|geplant|planned|kalender|calendar|krank|homelink|simulation|fahrzeug|vehicle/i', $text)
+            && !preg_match('/vehicle|tessie|\bcar\b|fahrzeug|calendar|kalender|ical/i', (string)($v['module'] ?? ''))) {
+            return 'presence';
+        }
+        // Kalender-/Planwerte („Geplante Anwesenheit“) sind keine Messung
+        if (preg_match('/geplant|planned/i', $text) || preg_match('/calendar|kalender|ical/i', (string)($v['module'] ?? ''))) {
+            return '';
+        }
         if ($type === 0 && !$action && (preg_match('/motion|presence|occupancy/', $profile) || preg_match(self::MOTION_WORDS, $text))) {
             return 'motion';
         }
@@ -323,6 +334,24 @@ class AUTOMATErkennung
                     . ($row['fo_invert'] ? ' (Kontakt meldet „wahr“ = geschlossen, erkannt)' : ''),
                     array_merge(array_column($contacts, 'vid'), array_column($setpoints, 'vid')));
             }
+        }
+
+        // Anwesenheit zusammenfassen: alle Personen-Signale des Hauses in einem Automatismus
+        $pres = array_values(array_filter($items, function ($it) {
+            return ($it['role'] ?? '') === 'presence';
+        }));
+        if (count($pres) > 0) {
+            usort($pres, function ($a, $b) {
+                return strcmp((string)$a['inst'] . $a['name'], (string)$b['inst'] . $b['name']);
+            });
+            $row = AUTOMATKatalog::defaults('anwesenheit');
+            $row['Name'] = 'Anwesenheit';
+            $row['Room'] = '';
+            $fill($row, 'an_p', array_column($pres, 'vid'));
+            $names = array_map(function ($it) {
+                return trim((string)$it['inst']) ?: (string)$it['name'];
+            }, array_slice($pres, 0, AUTOMATKatalog::SLOTS));
+            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column(array_slice($pres, 0, AUTOMATKatalog::SLOTS), 'vid'));
         }
 
         // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen

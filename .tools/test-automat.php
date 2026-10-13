@@ -684,12 +684,55 @@ heading('A8. Hausmodus-Automatik');
 $day = AUTOMATKatalog::time(6, 30);
 $eve = AUTOMATKatalog::time(18, 0);
 $night = AUTOMATKatalog::time(22, 30);
-check('12 Uhr = Tag', AUTOMATLogik::autoMode(ts('2026-10-13 12:00'), $day, 1, $eve, $night, null, null, 0) === 0);
-check('19 Uhr = Abend', AUTOMATLogik::autoMode(ts('2026-10-13 19:00'), $day, 1, $eve, $night, null, null, 0) === 1);
-check('Abend ab Sonnenuntergang 17:45', AUTOMATLogik::autoMode(ts('2026-10-13 17:50'), $day, 0, $eve, $night, ts('2026-10-13 17:45'), null, 0) === 1);
-check('23 Uhr = Nacht, 5 Uhr = Nacht', AUTOMATLogik::autoMode(ts('2026-10-13 23:00'), $day, 1, $eve, $night, null, null, 0) === 2 && AUTOMATLogik::autoMode(ts('2026-10-13 05:00'), $day, 1, $eve, $night, null, null, 0) === 2);
-check('Niemand da = Abwesend', AUTOMATLogik::autoMode(ts('2026-10-13 12:00'), $day, 1, $eve, $night, null, false, 0) === 3);
-check('Urlaub bleibt Urlaub', AUTOMATLogik::autoMode(ts('2026-10-13 23:00'), $day, 1, $eve, $night, null, false, 4) === 4);
+$c = ['dayRef' => 0, 'dayFrom' => $day, 'eveRef' => 1, 'eveFrom' => $eve, 'night' => $night, 'sunrise' => null, 'sunset' => null, 'isDay' => null];
+$am = fn(string $t, array $o = [], ?bool $p = null, int $cur = 0) => AUTOMATLogik::autoMode(ts('2026-10-13 ' . $t), $o + $c, $p, $cur);
+check('12 Uhr = Tag', $am('12:00') === 0);
+check('19 Uhr = Abend', $am('19:00') === 1);
+check('Abend ab Sonnenuntergang 17:45', $am('17:50', ['eveRef' => 0, 'sunset' => ts('2026-10-13 17:45')]) === 1 && $am('17:40', ['eveRef' => 0, 'sunset' => ts('2026-10-13 17:45')]) === 0);
+check('Sonnenuntergang −30 min: Abend schon ab 17:15', $am('17:20', ['eveRef' => 0, 'sunset' => ts('2026-10-13 17:45'), 'eveOff' => -30]) === 1);
+check('23 Uhr = Nacht, 5 Uhr = Nacht', $am('23:00') === 2 && $am('05:00') === 2);
+check('Tag ab Sonnenaufgang 07:40: 07:00 noch Nacht, 07:45 Tag', $am('07:00', ['dayRef' => 1, 'sunrise' => ts('2026-10-13 07:40')]) === 2 && $am('07:45', ['dayRef' => 1, 'sunrise' => ts('2026-10-13 07:40')]) === 0);
+check('Sonnenaufgang +20 min: 07:45 noch Nacht', $am('07:45', ['dayRef' => 1, 'sunrise' => ts('2026-10-13 07:40'), 'dayOff' => 20]) === 2);
+check('„Ist es Tag“: morgens falsch = Nacht, wahr = Tag', $am('07:00', ['dayRef' => 2, 'isDay' => false]) === 2 && $am('07:00', ['dayRef' => 2, 'isDay' => true]) === 0);
+check('„Ist es Tag“ wird nachmittags falsch = Abend', $am('17:00', ['eveRef' => 2, 'isDay' => false]) === 1 && $am('17:00', ['eveRef' => 2, 'isDay' => true]) === 0);
+check('Ohne Location Control: Uhrzeiten als Rückfall', $am('07:00', ['dayRef' => 1, 'eveRef' => 0]) === 0 && $am('19:00', ['dayRef' => 2, 'eveRef' => 2]) === 1);
+check('Nacht ab 00:30: 23:30 noch Abend, 01:00 Nacht, 07:00 Tag', $am('23:30', ['night' => AUTOMATKatalog::time(0, 30)]) === 1 && $am('01:00', ['night' => AUTOMATKatalog::time(0, 30)]) === 2 && $am('07:00', ['night' => AUTOMATKatalog::time(0, 30)]) === 0);
+check('Niemand da = Abwesend', $am('12:00', [], false) === 3);
+check('Urlaub bleibt Urlaub', $am('23:00', [], false, 4) === 4);
+
+heading('A8b. Anwesenheit zusammenfassen');
+$an = AUTOMATKatalog::defaults('anwesenheit');
+$an['Uid'] = 'aanw01';
+$an['Name'] = 'Anwesenheit';
+$an['Enabled'] = true;
+$an['an_p1'] = 700;
+$an['an_p2'] = 701;
+$an['an_weg'] = 10;
+$names = [700 => 'Dietmar', 701 => 'Svetlana'];
+$st = [];
+at('12:00:00');
+$r = step($an, $st, ['k' => 'tick'], ['val' => [700 => true, 701 => false], 'names' => $names]);
+check('Erster Lauf: Ergebnis „jemand da“, Status nennt die Person', $r['self'] === true && $r['status'] === '🏠 Zu Hause: Dietmar');
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 701, 'v' => true], ['val' => [700 => true, 701 => true], 'names' => $names]);
+check('Zweite Person kommt: protokolliert, Ergebnis unverändert', !isset($r['self']) && strpos((string)$r['log'], 'Svetlana gekommen') !== false && $r['status'] === '🏠 Zu Hause: Dietmar, Svetlana');
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 700, 'v' => false], ['val' => [700 => false, 701 => true], 'names' => $names]);
+check('Eine Person geht: noch jemand da', !isset($r['self']) && strpos((string)$r['log'], 'Dietmar gegangen') !== false);
+at('12:10:00');
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 701, 'v' => false], ['val' => [700 => false, 701 => false], 'names' => $names]);
+check('Alle weg: Wartezeit 10 min, noch kein „niemand da“', !isset($r['self']) && $r['due'] === ts('2026-10-13 12:20:00') && strpos($r['status'], 'Alle weg') !== false);
+at('12:15:00');
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 700, 'v' => true], ['val' => [700 => true, 701 => false], 'names' => $names]);
+check('Zurück in der Wartezeit: bleibt „jemand da“ (kein Wechsel)', $r['self'] === true && strpos((string)$r['log'], 'Doch wieder jemand da') !== false && $st['ph'] === 'da');
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 700, 'v' => false], ['val' => [700 => false, 701 => false], 'names' => $names]);
+at('12:25:00');
+$r = step($an, $st, ['k' => 'tick'], ['val' => [700 => false, 701 => false], 'names' => $names]);
+check('Nach Ablauf: „niemand da“', $r['self'] === false && strpos($r['status'], 'Niemand zu Hause seit 13.10.2026 12:25') !== false);
+$r = step($an, $st, ['k' => 'trigger', 'vid' => 701, 'v' => true], ['val' => [700 => false, 701 => true], 'names' => $names]);
+check('Heimkommen: sofort „jemand da“', $r['self'] === true && strpos((string)$r['log'], 'nach Hause gekommen (Svetlana)') !== false);
+$st2 = [];
+$r = step($an, $st2, ['k' => 'tick'], ['val' => [700 => 'Zu Hause', 701 => 0], 'names' => $names]);
+check('Text „Zu Hause“ zählt als anwesend', $r['self'] === true);
+check('Katalog: Ein- und Ausgänge des Typs', AUTOMATKatalog::variables($an)['in'] === [700, 701] && AUTOMATKatalog::variables($an)['out'] === []);
 
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
 AUTOMATKatalog::$minId = 10000;
@@ -732,6 +775,11 @@ $cases = [
     ['', ['type' => 2, 'profile' => '~Watt.3680', 'name' => 'Meter (2), Elektro, W', 'inst' => 'Licht Bad Aktor']],
     ['lux', ['type' => 2, 'profile' => '~Illumination', 'name' => 'Helligkeit', 'inst' => 'Flur Multisensor']],
     ['', ['type' => 1, 'action' => true, 'profile' => 'CHB.Led255', 'name' => 'LED-Helligkeit', 'inst' => 'Steuerung']],
+    ['presence', ['type' => 0, 'profile' => 'Anwesenheit', 'name' => 'Zuhause', 'inst' => 'Dietmar', 'module' => 'Dummy Module']],
+    ['presence', ['type' => 0, 'profile' => '~Presence', 'name' => 'Anwesenheit', 'inst' => 'Anwesenheit']],
+    ['', ['type' => 0, 'name' => 'Zu Hause', 'inst' => 'Model Y', 'ident' => 'stat_at_home', 'module' => 'Tessie']],
+    ['', ['type' => 0, 'name' => 'Geplante Anwesenheit', 'inst' => 'Kalender', 'ident' => 'PlannedPresence', 'module' => 'iCal Calendar Reader']],
+    ['motion', ['type' => 0, 'profile' => '~Presence', 'name' => 'Belegung', 'inst' => 'Bad Anwesenheitssensor', 'ident' => 'OccupancySensing_Occupancy']],
 ];
 foreach ($cases as [$want, $a]) {
     $got = AUTOMATErkennung::role($it($a));
@@ -1246,6 +1294,52 @@ $GLOBALS['CLOCK'] = strtotime('+8 days', $GLOBALS['CLOCK']);
 $fv = json_decode($m->GetConfigurationForm(), true);
 $lv = $find($fv['elements'], 'Automations')['values'][0] ?? [];
 check('Nach 7 Tagen fällt der Eingriff aus der Anzeige', strpos($lv['Settings'] ?? '', '📶') === false);
+
+heading('C8. Anwesenheit zusammenfassen speist den Hausmodus');
+mkinst(1500, 'Dietmar');
+mkvar(1501, VARIABLETYPE_BOOLEAN, true, 'Zuhause', 1500, false, 'Anwesenheit');
+mkinst(1510, 'Svetlana');
+mkvar(1511, VARIABLETYPE_BOOLEAN, false, 'Zuhause', 1510, false, 'Anwesenheit');
+mkinst(1520, 'Model Y');
+$GLOBALS['MODNAME'][1520] = 'Tessie';
+mkvar(1521, VARIABLETYPE_BOOLEAN, true, 'Zu Hause', 1520, false, '', [], 'stat_at_home');
+$m->props['Automations'] = '[]';
+$m->props['cfg_PresenceVar'] = 0;
+$m->ApplyChanges();
+$m->Discover();
+$sug = json_decode($m->attrs['Suggestions'], true);
+$sa = array_values(array_filter($sug, fn($x) => $x['type'] === 'anwesenheit'));
+check('Entdecken schlägt „Anwesenheit zusammenfassen“ mit beiden Personen vor, ohne Auto', count($sa) === 1 && AUTOMATKatalog::vars($sa[0]['row'], 'an_p') === [1501, 1511], json_encode($sa, JSON_UNESCAPED_UNICODE));
+$anr = $sa[0]['row'] ?? $an;
+$anr['Uid'] = 'aanw02';
+$anr['Enabled'] = true;
+$anr['an_weg'] = 5;
+$m->props['Automations'] = json_encode([$anr]);
+$m->props['cfg_ModeAuto'] = true;
+at('12:00:00');
+$m->ApplyChanges();
+$pid = @IPS_GetObjectIDByIdent('p_aanw02', 12345);
+check('Ergebnisvariable „Jemand zu Hause“ angelegt und wahr', $pid !== false && GetValue($pid) === true && isset($m->messages[1501]));
+$ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Hausmodus-Panel zeigt die automatische Verknüpfung', strpos($ft, '🔗 Anwesenheit automatisch aus dem Automatismus „Anwesenheit“') !== false, '');
+check('Hausmodus-Panel bietet Sonnenaufgang und „Ist es Tag“', strpos($ft, 'bei Sonnenaufgang') !== false && strpos($ft, '„Ist es Tag“ (Location Control) falsch wird') !== false);
+fire($m, 1501, false);
+at('12:06:00');
+$m->Tick();
+check('Alle weg + Wartezeit → Ergebnis falsch, Hausmodus „Abwesend“', GetValue($pid) === false && GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 3);
+fire($m, 1511, true);
+check('Heimkommen → Hausmodus zurück auf Tageszeit', GetValue($pid) === true && GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 0);
+mkvar(10446, VARIABLETYPE_BOOLEAN, true, 'Ist es Tag', 10443, false, '', [], 'IsDay');
+$m->props['cfg_EveningRef'] = 2;
+$m->ApplyChanges();
+check('„Ist es Tag“ wird überwacht, wenn gewählt', isset($m->messages[10446]));
+at('16:30:00');
+fire($m, 10446, false);
+check('„Ist es Tag“ wird falsch → Abend', GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 1);
+$m->props['cfg_EveningRef'] = 0;
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+check('Ergebnisvariable verschwindet mit dem Automatismus', @IPS_GetObjectIDByIdent('p_aanw02', 12345) === false);
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
 check('Kein IPS_LogMessage in module.php (Store-Review Punkt 15)', strpos($src, 'IPS_LogMessage') === false);

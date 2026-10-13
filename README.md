@@ -28,6 +28,7 @@ Geräten vor, was sich lohnt.
 | 🪟 | Fenster offen → Heizung runter | senkt Sollwerte ab, stellt beim Schließen wieder her | Verzögerung (kurz lüften zählt nicht); ändert ein Wochenplan den Sollwert bei offenem Fenster, wird der neue Wert gemerkt; invertierte Kontakte (Matter/Zigbee) |
 | ⏱ | Wächter „bleibt zu lange so" | meldet, wenn ein Zustand zu lange anhält | gleich/ungleich/größer/kleiner/an/aus; Wiederholung; Entwarnung |
 | 🧺 | Gerät fertig | meldet das Ende eines Laufs an der Leistung | Mindestlaufzeit gegen Spitzen, Pausen/Schleudern überbrückt |
+| 🏠 | Anwesenheit zusammenfassen | bis 4 Anwesenheitssignale → „Jemand zu Hause“ | sofort „da“, „niemand da“ erst nach Wartezeit; nennt, wer da ist; speist den Hausmodus „Abwesend“ |
 
 ## Für alle Automatismen gleich
 
@@ -36,7 +37,7 @@ Geräten vor, was sich lohnt.
   (Putzen, Party, Handwerker). Gesperrt heißt: tut gar nichts.
 - **Pause** für alle auf einmal (Variable „Alle Automatismen pausieren").
 - **Hausmodus** Tag/Abend/Nacht/Abwesend/Urlaub als Variable dieser Instanz — von Hand, per Skript oder
-  automatisch nach Uhrzeit/Sonnenuntergang und Anwesenheit. Jeder Automatismus lässt sich auf Modi
+  automatisch nach Uhrzeit, Sonnenaufgang/-untergang oder „Ist es Tag“ (Location Control) und Anwesenheit. Jeder Automatismus lässt sich auf Modi
   beschränken, Licht nutzt bei „Nacht" einen eigenen Helligkeitswert.
 - **Bedingungen** über Symcons eigene Bedingungs-Auswahl (z. B. nur werktags, nur wenn ein Schalter an ist).
 - **Handbedienung hat Vorrang** — Automat erkennt das Echo eigener Befehle und unterscheidet es von

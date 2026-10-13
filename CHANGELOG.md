@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.17 (Build 18) — 13.10.2026
+
+- Neuer Automatismus **🏠 Anwesenheit zusammenfassen**: bis zu 4 Anwesenheitssignale (z. B. Geofency je Person, „Anwesenheit“-Variablen) ergeben eine Variable „Jemand zu Hause“. Sobald einer da ist: sofort „jemand da“; sind alle weg, erst nach einer Wartezeit (Standard 10 min) „niemand da“ — kurzes GPS-Springen schaltet nichts um. Status nennt, wer zu Hause ist; Kommen/Gehen im Protokoll. Entdecken schlägt ihn vor; Fahrzeuge („Zu Hause“ eines Autos), Kalender-Planwerte und Präsenzmelder im Raum zählen nicht. Wunsch Dietmar.
+- Hausmodus nutzt das Ergebnis automatisch für „Abwesend“, wenn keine eigene Anwesenheits-Variable eingetragen ist (eine eingetragene hat Vorrang); das Panel zeigt, woher die Anwesenheit kommt.
+- Hausmodus: „Tag beginnt“ wahlweise zur Uhrzeit, bei Sonnenaufgang (± Versatz) oder wenn „Ist es Tag“ der Location Control wahr wird; „Abend beginnt“ bei Sonnenuntergang (± Versatz), zur Uhrzeit oder wenn „Ist es Tag“ falsch wird. „Nacht ab“ nach Mitternacht (z. B. 00:30) wird richtig behandelt. Wunsch Dietmar.
+
 ## 0.1.16 (Build 17) — 13.10.2026
 
 - Hausmodus-Schalter neu formuliert: „automatisch nach Tageszeit umschalten … (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)“ — er schaltet nicht zwingend zu festen Zeiten. Rückmeldung Dietmar.
