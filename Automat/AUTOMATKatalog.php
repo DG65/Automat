@@ -86,7 +86,13 @@ class AUTOMATKatalog
             'desc'  => 'Fasst mehrere Anwesenheitssignale (z. B. je Person Geofency oder Handy im WLAN) zu „Jemand zu Hause“ zusammen — sofort „da“, „niemand da“ erst nach einer Wartezeit gegen kurze Aussetzer. Der Hausmodus nutzt das Ergebnis automatisch.',
             'needs' => ['presence'],
         ],
+        'szene' => [
+            'label' => 'Zentral-Aus / Szene nach Hausmodus', 'icon' => '🌙', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Wechselt der Hausmodus (z. B. auf „Nacht“ oder „Abwesend“), schaltet eine Gruppe von Geräten aus, ein oder auf einen Wert — z. B. beim Gehen alles aus, abends die Stimmungsbeleuchtung an. Nur beim Wechsel, danach darf wieder jeder schalten.',
+            'needs' => ['light'],
+        ],
     ];
+    public const SZ_ACTIONS = [0 => 'ausschalten', 1 => 'einschalten', 2 => 'auf einen Wert setzen'];
 
     // Auswahllisten
     public const WA_OPS = [0 => 'ist gleich', 1 => 'ist ungleich', 2 => 'ist größer als', 3 => 'ist kleiner als', 4 => 'ist an / wahr', 5 => 'ist aus / falsch'];
@@ -229,6 +235,23 @@ class AUTOMATKatalog
                     ['k' => 'info', 'c' => 'Ergebnis'],
                     ['n' => 'an_weg', 'k' => 'int', 'c' => '„Niemand da“ erst, wenn alle so lange weg sind', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                     ['n' => 'an_push', 'k' => 'bool', 'c' => '„Alle weg“ und „Jemand ist heimgekommen“ melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
+                ];
+            case 'szene':
+                return [
+                    ['k' => 'info', 'c' => 'Wann? Beim Wechsel des Hausmodus auf …'],
+                    ['n' => 'sz_m0', 'k' => 'bool', 'c' => 'Tag', 'd' => false],
+                    ['n' => 'sz_m1', 'k' => 'bool', 'c' => 'Abend', 'd' => false],
+                    ['n' => 'sz_m2', 'k' => 'bool', 'c' => 'Nacht', 'd' => true],
+                    ['n' => 'sz_m3', 'k' => 'bool', 'c' => 'Abwesend', 'd' => true],
+                    ['n' => 'sz_m4', 'k' => 'bool', 'c' => 'Urlaub', 'd' => true],
+                    ['n' => 'sz_verz', 'k' => 'int', 'c' => 'Verzögerung (z. B. bei „Nacht“ Zeit zum Ins-Bett-Gehen; wechselt der Modus vorher zurück, entfällt es)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 240],
+                    ['k' => 'info', 'c' => 'Was?'],
+                    ['n' => 'sz_out', 'k' => 'vars', 'max' => 16, 'c' => 'Gerät', 'req' => true],
+                    ['n' => 'sz_aktion', 'k' => 'select', 'c' => 'Diese Geräte', 'd' => 0, 'options' => self::SZ_ACTIONS],
+                    ['n' => 'sz_hell', 'k' => 'int', 'c' => 'Helligkeit bei „einschalten“ (Dimmer)', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
+                    ['n' => 'sz_wert', 'k' => 'float', 'c' => 'Wert bei „auf einen Wert setzen“ (z. B. 17 °C, Rollladen 100 %)', 'd' => 0.0, 'min' => -1000, 'max' => 100000],
+                    ['k' => 'info', 'c' => 'Meldung'],
+                    ['n' => 'sz_push', 'k' => 'bool', 'c' => 'Melden, was geschaltet wurde (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
             case 'fertig':
                 return [
@@ -391,6 +414,9 @@ class AUTOMATKatalog
             case 'anwesenheit':
                 $in = self::vars($row, 'an_p');
                 break;
+            case 'szene':
+                $out = self::vars($row, 'sz_out');
+                break;
             case 'fertig':
                 if ((int)($row['gf_var'] ?? 0) >= self::$minId) {
                     $in[] = (int)$row['gf_var'];
@@ -425,6 +451,15 @@ class AUTOMATKatalog
                 if (!$exists($vid)) {
                     $p[] = 'Variable #' . $vid . ' existiert nicht mehr.';
                 }
+            }
+        }
+        if ($t === 'szene') {
+            $any = false;
+            foreach (self::MODES as $m => $_) {
+                $any = $any || !empty($row['sz_m' . $m]);
+            }
+            if (!$any) {
+                $p[] = 'Kein Hausmodus angekreuzt, bei dessen Wechsel geschaltet wird.';
             }
         }
         if ($t === 'daemmerung') {
@@ -531,6 +566,19 @@ class AUTOMATKatalog
                 $p[] = 'länger als ' . self::dur((int)($row['wa_dauer'] ?? 0) * 60);
                 if ((int)($row['wa_wdh'] ?? 0) > 0) {
                     $p[] = 'Erinnerung alle ' . (int)$row['wa_wdh'] . ' min';
+                }
+                break;
+            case 'szene':
+                $modes = [];
+                foreach (self::MODES as $m => $l) {
+                    if (!empty($row['sz_m' . $m])) {
+                        $modes[] = $l;
+                    }
+                }
+                $p[] = 'bei ' . (implode('/', $modes) ?: '—');
+                $p[] = count(self::vars($row, 'sz_out')) . ' Gerät(e) ' . (self::SZ_ACTIONS[(int)($row['sz_aktion'] ?? 0)] ?? '');
+                if ((int)($row['sz_verz'] ?? 0) > 0) {
+                    $p[] = 'nach ' . (int)$row['sz_verz'] . ' min';
                 }
                 break;
             case 'anwesenheit':

@@ -50,6 +50,8 @@ class AUTOMATLogik
                 return self::fertig($row, $st, $ev, $ctx, $res);
             case 'anwesenheit':
                 return self::anwesenheit($row, $st, $ev, $ctx, $res);
+            case 'szene':
+                return self::szene($row, $st, $ev, $ctx, $res);
         }
         $res['status'] = '❔ Unbekannter Typ';
         return $res;
@@ -282,7 +284,7 @@ class AUTOMATLogik
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
                 $st['ph'] = 'aus';
                 $st['until'] = 0;
-                $res['log'] = 'Licht wurde von Hand ausgeschaltet — Zeit abgebrochen.';
+                $res['log'] = !empty($ev['central']) ? 'Zentral ausgeschaltet (' . (string)$ev['central'] . ') — Zeit abgebrochen.' : 'Licht wurde von Hand ausgeschaltet — Zeit abgebrochen.';
             }
         }
         $res['st'] = $st;
@@ -565,7 +567,12 @@ class AUTOMATLogik
                 }
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
                 $st['offAt'] = 0; // von Hand aus: kein Lernanlass
-                if ($handPause > 0) {
+                if (!empty($ev['central'])) {
+                    // Zentral-Aus/Szene: kein Handeingriff — keine Pause, die nächste Bewegung schaltet wieder ein.
+                    $st['ph'] = 'aus';
+                    $st['until'] = 0;
+                    $res['log'] = 'Zentral ausgeschaltet (' . (string)$ev['central'] . ') — nächste Bewegung schaltet wieder ein.';
+                } elseif ($handPause > 0) {
                     $st['ph'] = 'hand';
                     $st['hu'] = $now + $handPause;
                     $st['until'] = 0;
@@ -755,7 +762,7 @@ class AUTOMATLogik
             && !self::isTrue($ev['v'] ?? false) && $st['on'] && !self::anyOn($outs, $ctx)) {
             $st['on'] = false;
             $st['manual'] = $key;
-            $res['log'] = 'Von Hand ausgeschaltet — bis zum nächsten Schaltfenster bleibt es aus.';
+            $res['log'] = (!empty($ev['central']) ? 'Zentral ausgeschaltet (' . (string)$ev['central'] . ')' : 'Von Hand ausgeschaltet') . ' — bis zum nächsten Schaltfenster bleibt es aus.';
         }
 
         if ($win === null) {
@@ -1248,6 +1255,93 @@ class AUTOMATLogik
             return ['day' => !$st['day'], 'cand' => 0];
         }
         return ['day' => (bool)$st['day'], 'cand' => $cand];
+    }
+
+    // ------------------------------------------------------------------
+    // Zentral-Aus / Szene nach Hausmodus
+    // ------------------------------------------------------------------
+
+    /**
+     * Ereignis 'mode' (from, to) vom Modul bei jedem Wechsel des Hausmodus. Geschaltet wird nur beim Wechsel
+     * auf einen angekreuzten Modus (sz_m0…4), wahlweise verzögert; wechselt der Modus vorher weiter, entfällt es.
+     * Die allgemeinen Modus-Häkchen („Wann aktiv?“) gelten hier nicht — der Modus IST der Auslöser.
+     */
+    private static function szene(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $outs = AUTOMATKatalog::vars($row, 'sz_out');
+        $mode = (int)($ctx['mode'] ?? 0);
+        $st += ['pend' => -1, 'at' => 0, 'last' => '', 'lastTs' => 0];
+        $hard = self::hardBlock($ctx);
+        $modeName = AUTOMATKatalog::MODES[$mode] ?? (string)$mode;
+        $name = trim((string)($row['Name'] ?? '')) ?: 'Szene';
+        if (($ev['k'] ?? '') === 'mode') {
+            $to = (int)($ev['to'] ?? $mode);
+            if ((int)$st['pend'] >= 0 && (int)$st['pend'] !== $to) {
+                $res['log'] = 'Hausmodus wechselte vor Ablauf der Verzögerung auf „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — „' . (AUTOMATKatalog::MODES[(int)$st['pend']] ?? '') . '“-Schaltung entfällt.';
+                $st['pend'] = -1;
+                $st['at'] = 0;
+            }
+            if (!empty($row['sz_m' . $to])) {
+                if ($hard !== '') {
+                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — nicht geschaltet: ' . $hard . '.';
+                } elseif (isset($ctx['condOk']) && !$ctx['condOk']) {
+                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — nicht geschaltet: Bedingung nicht erfüllt.';
+                } else {
+                    $st['pend'] = $to;
+                    $st['at'] = $now + max(0, (int)($row['sz_verz'] ?? 0)) * 60;
+                }
+            }
+        }
+        if ((int)$st['pend'] >= 0 && $now >= (int)$st['at']) {
+            $pend = (int)$st['pend'];
+            $st['pend'] = -1;
+            $st['at'] = 0;
+            if ($mode !== $pend) {
+                $res['log'] = 'Hausmodus ist nicht mehr „' . (AUTOMATKatalog::MODES[$pend] ?? $pend) . '“ — Schaltung entfällt.';
+            } elseif ($hard !== '') {
+                $res['log'] = 'Nicht geschaltet: ' . $hard . '.';
+            } else {
+                $aktion = (int)($row['sz_aktion'] ?? 0);
+                $changed = [];
+                foreach ($outs as $vid) {
+                    if ($aktion === 1) {
+                        $want = self::onValue($vid, (int)($row['sz_hell'] ?? 100), $ctx);
+                    } elseif ($aktion === 2) {
+                        $want = (float)($row['sz_wert'] ?? 0);
+                    } else {
+                        $want = self::offValue($vid, $ctx);
+                    }
+                    $cur = $ctx['val'][$vid] ?? null;
+                    // Was schon so steht, wird nicht angefasst (keine unnötigen Funkbefehle).
+                    $same = $aktion === 2 ? ($cur !== null && abs((float)$cur - (float)$want) < 0.001)
+                        : ($cur !== null && self::isTrue($cur) === self::isTrue($want) && ($aktion === 0 || (float)$cur == (float)$want || is_bool($want)));
+                    if (!$same) {
+                        $res['cmd'][] = [$vid, $want];
+                        $changed[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
+                    }
+                }
+                $verb = AUTOMATKatalog::SZ_ACTIONS[$aktion] ?? 'geschaltet';
+                $verbPast = [0 => 'ausgeschaltet', 1 => 'eingeschaltet', 2 => 'auf ' . self::fmtNum((float)($row['sz_wert'] ?? 0)) . ' gesetzt'][$aktion] ?? 'geschaltet';
+                $res['log'] = 'Hausmodus „' . $modeName . '“: ' . (count($changed) > 0 ? count($changed) . ' Gerät(e) ' . $verbPast . ' (' . implode(', ', $changed) . ').' : 'alle Geräte standen schon richtig — nichts zu ' . $verb . '.');
+                $st['last'] = $modeName . ': ' . (count($changed) > 0 ? count($changed) . ' ' . $verbPast : 'nichts zu tun');
+                $st['lastTs'] = $now;
+                if (count($changed) > 0 && !empty($row['sz_push'])) {
+                    $res['msg'][] = ['🌙 ' . $name, 'Hausmodus „' . $modeName . '“: ' . implode(', ', $changed) . ' ' . $verbPast . '.'];
+                }
+            }
+        }
+        $res['st'] = $st;
+        if ($hard !== '') {
+            $res['status'] = self::hardStatus($hard);
+        } elseif ((int)$st['pend'] >= 0) {
+            $res['due'] = (int)$st['at'];
+            $res['end'] = (int)$st['at'];
+            $res['status'] = '⏳ „' . (AUTOMATKatalog::MODES[(int)$st['pend']] ?? '') . '“: schaltet um ' . self::fmtClock((int)$st['at'], $now);
+        } else {
+            $res['status'] = $st['last'] !== '' ? '✅ Zuletzt ' . date('d.m.Y H:i', (int)$st['lastTs']) . ' — ' . $st['last'] : '💤 Wartet auf den nächsten Wechsel des Hausmodus';
+        }
+        return $res;
     }
 
     // ------------------------------------------------------------------

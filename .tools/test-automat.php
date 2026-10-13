@@ -774,6 +774,70 @@ at('12:00:00');
 check('Ohne „melden“ (Standard): keine Meldungen', AUTOMATKatalog::defaults('anwesenheit')['an_push'] === false);
 check('Katalog: Ein- und Ausgänge des Typs', AUTOMATKatalog::variables($an)['in'] === [700, 701] && AUTOMATKatalog::variables($an)['out'] === []);
 
+heading('A8c. Zentral-Aus / Szene nach Hausmodus');
+$sz = AUTOMATKatalog::defaults('szene');
+$sz += ['Uid' => 'aszn01', 'Name' => 'Alles aus'];
+$sz['sz_out1'] = 500;
+$sz['sz_out2'] = 501;
+$sz['sz_out3'] = 502;
+$names = [500 => 'Flur', 501 => 'Wohnzimmer', 502 => 'Küche'];
+$st = [];
+at('22:30:00');
+$r = step($sz, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => [500 => true, 501 => 80, 502 => false], 'dim' => [501 => 100], 'names' => $names]);
+check('Wechsel auf „Nacht“: an stehende Geräte aus (Dimmer 0), was schon aus ist, bleibt unberührt', cmdMap($r) === ['500=false', '501=0'] && strpos((string)$r['log'], '2 Gerät(e) ausgeschaltet (Flur, Wohnzimmer)') !== false, implode(',', cmdMap($r)));
+check('Status nennt das Ergebnis', strpos($r['status'], 'Nacht: 2 ausgeschaltet') !== false, $r['status']);
+$st = [];
+$r = step($sz, $st, ['k' => 'mode', 'from' => 2, 'to' => 0], ['mode' => 0, 'val' => [500 => true]]);
+check('Wechsel auf „Tag“ (nicht angekreuzt): nichts', $r['cmd'] === []);
+$sz2 = $sz;
+$sz2['sz_verz'] = 2;
+$st = [];
+$r = step($sz2, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => [500 => true]]);
+check('Mit Verzögerung: erst vormerken, Restzeit sichtbar', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 22:32:00') && strpos($r['status'], 'schaltet um 22:32') !== false);
+at('22:31:00');
+$r = step($sz2, $st, ['k' => 'mode', 'from' => 2, 'to' => 1], ['mode' => 1, 'val' => [500 => true]]);
+check('Modus wechselt vorher zurück: Schaltung entfällt', $r['cmd'] === [] && strpos((string)$r['log'], 'entfällt') !== false && $st['pend'] === -1);
+at('22:30:00');
+$st = [];
+step($sz2, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => [500 => true]]);
+at('22:32:00');
+$r = step($sz2, $st, ['k' => 'tick'], ['mode' => 2, 'val' => [500 => true, 501 => false, 502 => false], 'names' => $names]);
+check('Nach der Verzögerung: geschaltet', cmdMap($r) === ['500=false'], implode(',', cmdMap($r)) . ' | ' . $r['log']);
+$sz3 = $sz;
+$sz3['sz_aktion'] = 1;
+$sz3['sz_hell'] = 30;
+$sz3['sz_m1'] = true;
+$sz3['sz_push'] = true;
+$st = [];
+$r = step($sz3, $st, ['k' => 'mode', 'from' => 0, 'to' => 1], ['mode' => 1, 'val' => [500 => false, 501 => 0, 502 => false], 'dim' => [501 => 100], 'names' => $names]);
+check('„Einschalten“ bei „Abend“: Schalter an, Dimmer auf 30 %, mit Meldung', cmdMap($r) === ['500=true', '501=30', '502=true'] && count($r['msg']) === 1 && strpos($r['msg'][0][1], 'eingeschaltet') !== false);
+$sz4 = $sz;
+$sz4['sz_aktion'] = 2;
+$sz4['sz_wert'] = 17.0;
+$st = [];
+$r = step($sz4, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [500 => 21.0, 501 => 17.0, 502 => 20.0]]);
+check('„Auf Wert setzen“ (17 °C bei „Abwesend“), schon 17 wird übersprungen', cmdMap($r) === ['500=17.0', '502=17.0'], implode(',', cmdMap($r)));
+$st = [];
+$r = step($sz, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'paused' => true, 'val' => [500 => true]]);
+check('Pause: nicht geschaltet, mit Grund', $r['cmd'] === [] && strpos((string)$r['log'], 'nicht geschaltet') !== false);
+$st = [];
+$r = step($sz, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'condOk' => false, 'val' => [500 => true]]);
+check('Bedingung nicht erfüllt: nicht geschaltet', $r['cmd'] === [] && strpos((string)$r['log'], 'Bedingung') !== false);
+$sz5 = $sz;
+$sz5['m2'] = false;
+$st = [];
+$r = step($sz5, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => [500 => true, 501 => false, 502 => false]]);
+$stU = [];
+check('Unbekannter Zustand (Wert fehlt): wird sicherheitshalber geschaltet', cmdMap(step($sz, $stU, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => []])) === ['500=false', '501=false', '502=false']);
+check('Allgemeine Modus-Häkchen gelten bei der Szene nicht (der Modus ist der Auslöser)', cmdMap($r) === ['500=false'], implode(',', cmdMap($r)) . ' | ' . $r['log']);
+$sz6 = $sz;
+foreach (range(0, 4) as $i) {
+    $sz6['sz_m' . $i] = false;
+}
+check('Kein Modus angekreuzt: als unvollständig gemeldet', count(array_filter(AUTOMATKatalog::problems($sz6, fn($v) => true), fn($p) => strpos($p, 'Kein Hausmodus') !== false)) === 1);
+check('Szene: 16 Plätze für Geräte', AUTOMATKatalog::slots('sz_out') === 16 && AUTOMATKatalog::variables($sz)['out'] === [500, 501, 502]);
+at('12:00:00');
+
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
 AUTOMATKatalog::$minId = 10000;
 $bad = AUTOMATKatalog::defaults('bewegung');
@@ -1146,7 +1210,7 @@ unset($rb);
 $m->props['Automations'] = json_encode($rowsBad);
 $m->fieldUpdates = [];
 $m->UIDialogType('fenster');
-$vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] === true);
+$vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] === true && strpos($u[0], 'sec_') === 0);
 check('Typwechsel im Dialog zeigt den passenden Abschnitt', count($vis) === 1 && array_values($vis)[0][0] === 'sec_fenster');
 
 // Hausmodus-Automatik: Standard an, verständlicher Schalter, Zustand sichtbar
@@ -1666,6 +1730,59 @@ $ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_
 check('Nach dem Update: bisherige Push-/E-Mail-Einstellung erscheint als Meldewege mit Hinweis', strpos($ft, 'Push an alle Visualisierungen') !== false && strpos($ft, 'stammen aus deinen bisherigen Einstellungen') !== false);
 $m->props['cfg_NotifyMail'] = false;
 $m->props['Automations'] = '[]';
+$m->ApplyChanges();
+
+heading('C12. Szene im Modul: Hausmodus-Wechsel schaltet, Bewegungslicht ohne Handpause');
+$szr = AUTOMATKatalog::defaults('szene');
+$szr += ['Uid' => 'aszn02', 'Name' => 'Alles aus', 'Enabled' => true];
+$szr['sz_out1'] = 1001;
+$szr['sz_out2'] = 1081;
+$blr = $bl;
+$blr['Uid'] = 'aflur9';
+$blr['Enabled'] = true;
+$blr['bl_handpause'] = 15;
+$m->props['Automations'] = json_encode([$blr, $szr]);
+$m->props['cfg_ModeAuto'] = false;
+at('22:00:00');
+$m->ApplyChanges();
+$m->RequestAction('Hausmodus', 1);
+fire($m, 1011, true);
+check('Vorher: Bewegung schaltet Flurlicht ein', GetValue(1001) === true);
+SetValue(1081, true);
+$m->RequestAction('Hausmodus', 2);
+check('Hausmodus „Nacht“ von Hand → Szene schaltet beide Lichter aus', GetValue(1001) === false && GetValue(1081) === false);
+fire($m, 1001, false);
+fire($m, 1081, false);
+$stz = testStates();
+check('Bewegungslicht wertet das als „zentral“, nicht als Handbedienung (keine Pause)', $stz['aflur9']['ph'] === 'aus', json_encode($stz['aflur9']));
+fire($m, 1011, false);
+$GLOBALS['CLOCK'] += 20;
+fire($m, 1011, true);
+check('Nächste Bewegung schaltet sofort wieder ein', GetValue(1001) === true);
+check('Protokoll nennt die Szene', strpos(implode("\n", array_map(fn($e) => $e[2], json_decode($m->attrs['Protocol'], true))), 'Zentral ausgeschaltet (Szene „Alles aus“)') !== false);
+$dlgS = json_decode($m->UIEditForm('aszn02', 'szene'), true);
+$hiddenModes = true;
+$walkM = function ($els) use (&$walkM, &$hiddenModes) {
+    foreach ($els as $e) {
+        if (in_array($e['name'] ?? '', ['m0', 'm1', 'm2', 'm3', 'm4'], true) && ($e['visible'] ?? true) !== false) {
+            $hiddenModes = false;
+        }
+        if (isset($e['items'])) {
+            $walkM($e['items']);
+        }
+    }
+};
+$walkM($dlgS);
+check('Dialog der Szene: allgemeine Modus-Häkchen ausgeblendet', $hiddenModes);
+$cS = json_encode(json_decode($m->UIEditForm('aszn02', 'szene'), true), JSON_UNESCAPED_UNICODE);
+check('Doppelregelung mit dem Bewegungslicht nur als ℹ️ (gewollt)', strpos($cS, 'gewollt: die Szene schaltet nur beim Wechsel') !== false);
+$m->props['Automations'] = json_encode([$blr]);
+$m->ApplyChanges();
+$m->Discover();
+$sugS = array_values(array_filter(json_decode($m->attrs['Suggestions'], true), fn($x) => $x['type'] === 'szene'));
+check('Entdecken schlägt „Zentral-Aus nach Hausmodus“ mit den gefundenen Lichtern vor', count($sugS) === 1 && count(AUTOMATKatalog::vars($sugS[0]['row'], 'sz_out')) >= 2);
+$m->props['Automations'] = '[]';
+$m->props['cfg_ModeAuto'] = true;
 $m->ApplyChanges();
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

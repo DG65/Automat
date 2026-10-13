@@ -354,6 +354,22 @@ class AUTOMATErkennung
             $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column(array_slice($pres, 0, AUTOMATKatalog::slots('an_p')), 'vid'));
         }
 
+        // Zentral-Aus: beim Gehen/Schlafen alle gefundenen Lichter aus (ein Vorschlag fürs ganze Haus)
+        $lights = array_values(array_filter($items, function ($it) {
+            return ($it['role'] ?? '') === 'light';
+        }));
+        if (count($lights) >= 2) {
+            usort($lights, function ($a, $b) {
+                return strcmp((string)($a['room'] ?? '') . $a['inst'], (string)($b['room'] ?? '') . $b['inst']);
+            });
+            $max = AUTOMATKatalog::slots('sz_out');
+            $row = AUTOMATKatalog::defaults('szene');
+            $row['Name'] = 'Alles aus beim Gehen und nachts';
+            $row['Room'] = '';
+            $fill($row, 'sz_out', array_column($lights, 'vid'));
+            $add('szene', '', 'Zentral-Aus nach Hausmodus', $row, count($lights) . ' Licht(er) gefunden' . (count($lights) > $max ? ' (die ersten ' . $max . ' übernommen)' : '') . ' — bei „Nacht“, „Abwesend“ und „Urlaub“ aus; bitte im Dialog prüfen, was davon wirklich aus soll', array_column(array_slice($lights, 0, $max), 'vid'));
+        }
+
         // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen
         // (z. B. „Wirkleistung“ und „Wirkleistung Original“), gewinnt die ohne „Original“.
         $powerBest = [];

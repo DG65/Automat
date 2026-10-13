@@ -40,7 +40,7 @@ class Automat extends IPSModule
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     // Je Typ das Feld „Melden“ im Dialog (was gemeldet wird, entscheidet der Nutzer je Automatismus).
-    private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push'];
+    private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push', 'szene' => 'sz_push'];
     private const SMTP_GUID = '{375EAF21-35EF-4BC4-83B3-C780FD8BD88A}';
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     // Zeitpunkte der Location Control je Auswahlwert (Idents live geprüft). Die Werte 0–2 bleiben aus 0.1.17 gültig.
@@ -271,7 +271,13 @@ class Automat extends IPSModule
         if ($vid === $this->locationVariable('IsDay') || ($vid > 0 && $vid === $this->lightVar())) {
             $this->evaluateMode(false);
         }
-        $own = $this->consumeEcho($vid, $value);
+        $origin = '';
+        $own = $this->consumeEcho($vid, $value, $origin);
+        $central = '';
+        if ($own && $origin !== '') {
+            $or = $this->rowByUid($origin);
+            $central = $or !== null ? 'Szene „' . $this->rowName($or) . '“' : '';
+        }
         $this->learnMelder($vid, $value);
         $touched = false;
         foreach ($this->rows() as $row) {
@@ -284,7 +290,10 @@ class Automat extends IPSModule
                 $touched = true;
             }
             if (in_array($vid, $vars['out'], true)) {
-                $this->process($row, ['k' => 'output', 'vid' => $vid, 'v' => $value, 'own' => $own]);
+                // Schaltet eine Szene ein Gerät, das auch ein anderer Automatismus steuert, ist das für diesen
+                // weder eigenes Echo noch Handbedienung, sondern „zentral“ (keine Handpause).
+                $other = $central !== '' && ($row['Uid'] ?? '') !== $origin;
+                $this->process($row, ['k' => 'output', 'vid' => $vid, 'v' => $value, 'own' => $other ? false : $own] + ($other ? ['central' => $central] : []));
                 $touched = true;
             }
         }
@@ -399,7 +408,7 @@ class Automat extends IPSModule
 
         $failed = [];
         foreach ($res['cmd'] as [$vid, $value]) {
-            if (!$this->switchVariable((int)$vid, $value)) {
+            if (!$this->switchVariable((int)$vid, $value, $row['Type'] === 'szene' ? $uid : '')) {
                 $failed[] = $this->varLabel((int)$vid);
             }
         }
@@ -539,14 +548,15 @@ class Automat extends IPSModule
     }
 
     /** Schalten einer Zielvariable; merkt sich den Wert, damit das Echo nicht als Handbedienung zählt. */
-    private function switchVariable(int $vid, $value): bool
+    /** $origin: Kennung einer Szene, die schaltet — andere Automatismen sehen das als „zentral“, nicht als Handbedienung. */
+    private function switchVariable(int $vid, $value, string $origin = ''): bool
     {
         if (!IPS_VariableExists($vid)) {
             return false;
         }
         $value = $this->castForVariable($vid, $value);
         $sent = $this->attrMap('Sent');
-        $sent[$vid] = [$value, $this->now()];
+        $sent[$vid] = [$value, $this->now(), $origin];
         $this->WriteAttributeString('Sent', json_encode($sent));
         $ok = false;
         $error = '';
@@ -566,14 +576,17 @@ class Automat extends IPSModule
         return $ok;
     }
 
-    /** War diese Wertänderung das Echo eines eigenen Befehls? (verbraucht den Eintrag) */
-    private function consumeEcho(int $vid, $value): bool
+    /** War diese Wertänderung das Echo eines eigenen Befehls? (verbraucht den Eintrag; $origin = schaltende Szene) */
+    private function consumeEcho(int $vid, $value, string &$origin = ''): bool
     {
+        $origin = '';
         $sent = $this->attrMap('Sent');
         if (!isset($sent[$vid])) {
             return false;
         }
-        [$want, $ts] = $sent[$vid];
+        $want = $sent[$vid][0];
+        $ts = $sent[$vid][1];
+        $origin = (string)($sent[$vid][2] ?? '');
         $now = $this->now();
         $fresh = $now - (int)$ts <= self::ECHO_S;
         $same = $this->sameValue($value, $want);
@@ -782,10 +795,11 @@ class Automat extends IPSModule
         if ((int)$this->GetValue('Hausmodus') === $mode) {
             return;
         }
+        $from = (int)$this->GetValue('Hausmodus');
         $this->SetValue('Hausmodus', $mode);
         $this->addLog('', '🏠 Hausmodus „' . AUTOMATKatalog::MODES[$mode] . '“ (' . $source . ').');
         foreach ($this->rows() as $row) {
-            $this->process($row, ['k' => 'flag']);
+            $this->process($row, $row['Type'] === 'szene' ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
         }
     }
 
@@ -1541,6 +1555,10 @@ class Automat extends IPSModule
                     continue;
                 }
                 foreach (array_intersect($outs, AUTOMATKatalog::variables($r)['out']) as $vid) {
+                    if ($row['Type'] === 'szene' || ($r['Type'] ?? '') === 'szene') {
+                        $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“ schaltet „' . $this->varLabel($vid) . '“ ebenfalls — gewollt: die Szene schaltet nur beim Wechsel des Hausmodus, der andere arbeitet danach normal weiter (ohne Handpause).'];
+                        continue;
+                    }
                     $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“' . ($iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : ' (diese Instanz)') . ' schaltet „' . $this->varLabel($vid) . '“ ebenfalls.'];
                 }
             }
@@ -1749,9 +1767,9 @@ class Automat extends IPSModule
             $bad = $t === $type && count($fieldProblems) > 0;
             $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
         }
-        $modeItems = [['type' => 'Label', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):']];
+        $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):', 'visible' => $type !== 'szene']];
         foreach (AUTOMATKatalog::MODES as $m => $label) {
-            $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true];
+            $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true, 'visible' => $type !== 'szene'];
         }
         $modeItems[] = ['type' => 'SelectCondition', 'name' => 'Cond', 'caption' => 'Zusätzliche Bedingung (optional, z. B. nur werktags oder nur wenn ein Schalter an ist)', 'multi' => true];
         $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_when', 'caption' => '🕒 Wann ist der Automatismus aktiv?', 'expanded' => false, 'items' => $modeItems];
@@ -1969,6 +1987,11 @@ class Automat extends IPSModule
             $this->UpdateFormField('sec_' . $t, 'visible', $t === $type);
         }
         $this->UpdateFormField('TypeLabel', 'value', AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : '');
+        // Bei der Szene ist der Hausmodus der Auslöser — die allgemeinen Modus-Häkchen wären dort verwirrend.
+        $this->UpdateFormField('ModesLabel', 'visible', $type !== 'szene');
+        foreach (AUTOMATKatalog::MODES as $m => $_) {
+            $this->UpdateFormField('m' . $m, 'visible', $type !== 'szene');
+        }
         $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.');
     }
 

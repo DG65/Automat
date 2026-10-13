@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.27:** neu gebaut und am Prüfstand (390 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.28:** neu gebaut und am Prüfstand (413 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -29,6 +29,7 @@ Geräten vor, was sich lohnt.
 | ⏱ | Wächter „bleibt zu lange so" | meldet, wenn ein Zustand zu lange anhält | gleich/ungleich/größer/kleiner/an/aus; Wiederholung; Entwarnung |
 | 🧺 | Gerät fertig | meldet das Ende eines Laufs an der Leistung | Mindestlaufzeit gegen Spitzen, Pausen/Schleudern überbrückt |
 | 🏠 | Anwesenheit zusammenfassen | bis 8 Anwesenheitssignale → „Jemand zu Hause“ | sofort „da“, „niemand da“ erst nach Wartezeit; nennt, wer da ist; speist den Hausmodus „Abwesend“ |
+| 🌙 | Zentral-Aus / Szene nach Hausmodus | beim Wechsel auf Nacht/Abwesend/… Geräte aus, ein oder auf Wert | bis 16 Geräte, Verzögerung, nur was anders steht; andere Automatismen sehen es als „zentral“, nicht als Handbedienung |
 
 ## Für alle Automatismen gleich
 

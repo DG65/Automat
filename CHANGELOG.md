@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.28 (Build 29) — 13.10.2026
+
+- Neuer Automatismus **🌙 Zentral-Aus / Szene nach Hausmodus** (Wunsch Dietmar): Beim Wechsel des Hausmodus auf angekreuzte Modi (Standard: Nacht, Abwesend, Urlaub) bis zu 16 Geräte ausschalten, einschalten (Dimmer mit Helligkeit) oder auf einen Wert setzen (z. B. 17 °C). Wahlweise verzögert (wechselt der Modus vorher weiter, entfällt es). Was schon richtig steht, wird nicht angefasst. Nur beim Wechsel — danach darf jeder wieder schalten. Optional Meldung, was geschaltet wurde (über die gewählten Meldewege).
+- Steuert ein anderer Automatismus dasselbe Licht (z. B. Bewegungslicht), gilt das Ausschalten durch die Szene als „zentral“ statt als Handbedienung: keine Handpause, die nächste Bewegung schaltet wieder ein; das Protokoll nennt die Szene. Doppelregelung wird hier nur als ℹ️ (gewollt) angezeigt.
+- Entdecken schlägt „Zentral-Aus nach Hausmodus“ mit den gefundenen Lichtern vor. Im Dialog der Szene sind die allgemeinen Modus-Häkchen ausgeblendet (der Modus ist hier der Auslöser).
+
 ## 0.1.27 (Build 28) — 13.10.2026
 
 - **Meldewege je Meldung** (Wunsch Dietmar): Unter „🔔 Meldungen“ legst du beliebig viele benannte Meldewege an — Push an alle oder eine bestimmte Visualisierung (Kachel/WebFront), E-Mail über eine SMTP-Instanz an bestimmte Empfänger, oder ein Skript (bekommt $_IPS['TITLE'] und $_IPS['TEXT'], z. B. für Telegram, Pushover, Sprachausgabe). Je Weg: „Standard“ und „Ruhezeit beachten“.
