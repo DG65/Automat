@@ -107,6 +107,8 @@ function IPS_GetObjectIDByIdent(string $ident, int $parent)
 function IPS_GetChildrenIDs(int $p): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['parent'] === $p)); }
 function IPS_DeleteVariable(int $id): bool { unset($GLOBALS['OBJ'][$id]); return true; }
 function IPS_GetName(int $id): string { return $GLOBALS['OBJ'][$id]['name'] ?? ''; }
+function IPS_ScriptExists(int $id): bool { return isset($GLOBALS['OBJ'][$id]) && $GLOBALS['OBJ'][$id]['kind'] === 3; }
+function IPS_RunScriptEx(int $id, array $p): bool { $GLOBALS['SCRIPTRUN'][] = [$id, $p]; return true; }
 function IPS_SetHidden(int $id, bool $h): bool { $GLOBALS['OBJ'][$id]['hidden'] = $h; return true; }
 function SetValueString($id, string $v): bool { $GLOBALS['OBJ'][(int)$id]['value'] = $v; return true; }
 function testStates(): array { $id = IPS_GetObjectIDByIdent('store', 12345); return json_decode((string)GetValue($id), true) ?: []; }
@@ -1450,13 +1452,13 @@ mkinst(13001, 'WebFront alt');
 $GLOBALS['MODULES']['{3565B1F2-8F7B-4311-A4B6-1BF1D868F39E}'] = [13001];
 function WFC_PushNotification(int $id, string $t, string $x, string $s, int $target): bool { $GLOBALS['PUSH'][] = [$id, $t, $x]; return true; }
 at('12:00:00');
-$msg->invoke($m, 'Titel', 'nicht melden', false);
+$msg->invoke($m, 'Titel', 'nicht melden', false, null);
 check('Automatismus ohne „Melden“: nur „Letzte Meldung“, keine Zustellung', $GLOBALS['PUSH'] === [] && strpos(GetValue(IPS_GetObjectIDByIdent('LastMessage', 12345)), 'nicht melden') !== false);
-$msg->invoke($m, 'Titel', 'an alle', true);
+$msg->invoke($m, 'Titel', 'an alle', true, null);
 check('Push ohne Auswahl: an alle Visualisierungen (Kachel und WebFront)', array_column($GLOBALS['PUSH'], 0) === [13000, 13001]);
 $m->props['cfg_PushTargets'] = json_encode([['Instance' => 13001]]);
 $GLOBALS['PUSH'] = [];
-$msg->invoke($m, 'Titel', 'nur WebFront', true);
+$msg->invoke($m, 'Titel', 'nur WebFront', true, null);
 check('Push mit Auswahl: nur an die gewählte Visualisierung', array_column($GLOBALS['PUSH'], 0) === [13001]);
 mkinst(14223, 'SMTP');
 $m->props['cfg_NotifyPush'] = false;
@@ -1464,14 +1466,14 @@ $m->props['cfg_NotifyMail'] = true;
 $m->props['cfg_MailInstance'] = 14223;
 $m->props['cfg_MailTo'] = 'a@example.org, b@example.org';
 $GLOBALS['PUSH'] = [];
-$msg->invoke($m, 'Waschmaschine', 'fertig', true);
+$msg->invoke($m, 'Waschmaschine', 'fertig', true, null);
 check('Push aus, E-Mail an: an beide Empfänger, kein Push', $GLOBALS['PUSH'] === [] && array_column($GLOBALS['MAIL'], 1) === ['a@example.org', 'b@example.org']);
 $GLOBALS['MAIL_FAIL'] = true;
 $tm = $m->TestMessage();
 unset($GLOBALS['MAIL_FAIL']);
-check('Testmeldung nennt den Grund eines Mailfehlers verständlich', strpos($tm, 'E-Mail: ⚠️ nicht gesendet — Anmeldung abgelehnt') !== false, $tm);
+check('Testmeldung nennt den Grund eines Mailfehlers verständlich', strpos($tm, '„E-Mail“: ⚠️ nicht gesendet — Anmeldung abgelehnt') !== false, $tm);
 $m->props['cfg_NotifyMail'] = false;
-check('Testmeldung ohne Weg sagt das', strpos($m->TestMessage(), 'kein Weg gewählt') !== false);
+check('Testmeldung ohne Weg sagt das', strpos($m->TestMessage(), 'Kein Meldeweg angelegt') !== false);
 $m->props['cfg_NotifyPush'] = true;
 $m->props['cfg_PushTargets'] = '[]';
 $m->props['cfg_QuietEnabled'] = true;
@@ -1479,7 +1481,7 @@ $m->props['cfg_QuietFrom'] = 22;
 $m->props['cfg_QuietTo'] = 7;
 $GLOBALS['PUSH'] = [];
 at('23:30:00');
-$msg->invoke($m, '🧺 Trockner', 'fertig', true);
+$msg->invoke($m, '🧺 Trockner', 'fertig', true, null);
 check('Ruhezeit: Meldung zurückgehalten', $GLOBALS['PUSH'] === [] && count(json_decode($m->attrs['Deferred'], true)) === 1);
 $m->Tick();
 check('Noch Ruhezeit: Takt stellt nicht zu', $GLOBALS['PUSH'] === []);
@@ -1592,6 +1594,77 @@ $m->Tick();
 $lm = GetValue(IPS_GetObjectIDByIdent('LastMessage', 12345));
 check('Meldung mit Beschriftung: „ist gleich Offen … (aktuell Offen)“ statt „false“', strpos($lm, 'ist gleich Offen') !== false && strpos($lm, '(aktuell Offen)') !== false && strpos($lm, 'false') === false, $lm);
 check('valueKey vereinheitlicht Werte (true/„1.0“/„Zu“)', AUTOMATLogik::valueKey(true) === 'true' && AUTOMATLogik::valueKey('1.0') === '1' && AUTOMATLogik::valueKey(2.0) === '2' && AUTOMATLogik::valueKey('Zu') === 'Zu');
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+
+heading('C11. Meldewege: je Meldung eigene Wege');
+$GLOBALS['OBJ'][1800] = ['kind' => 3, 'name' => 'Telegram senden', 'parent' => 0, 'ident' => '', 'hidden' => false];
+$m->props['cfg_QuietEnabled'] = false;
+$m->props['cfg_Ways'] = json_encode([
+    ['Id' => 'handy', 'Name' => 'Handy Dietmar', 'Typ' => 'push', 'Target' => 13001, 'To' => '', 'Std' => false, 'Quiet' => false],
+    ['Id' => 'kachel', 'Name' => 'Kachel', 'Typ' => 'push', 'Target' => 13000, 'To' => '', 'Std' => true, 'Quiet' => true],
+    ['Id' => 'fam', 'Name' => 'E-Mail Familie', 'Typ' => 'mail', 'Target' => 14223, 'To' => 'x@example.org', 'Std' => false, 'Quiet' => true],
+    ['Id' => 'tg', 'Name' => 'Telegram', 'Typ' => 'script', 'Target' => 1800, 'To' => '', 'Std' => false, 'Quiet' => true],
+]);
+$rowW = AUTOMATKatalog::defaults('waechter') + ['Uid' => 'aww1', 'Name' => 'Tür'];
+$rowW['wa_mw_handy'] = true;
+$rowW['wa_mw_tg'] = true;
+$GLOBALS['PUSH'] = [];
+$GLOBALS['MAIL'] = [];
+$GLOBALS['SCRIPTRUN'] = [];
+at('12:00:00');
+$msg->invoke($m, '⏱ Tür', 'offen', true, $rowW);
+check('Automatismus mit eigener Wahl: nur seine Wege (Handy-WebFront und Telegram-Skript)', array_column($GLOBALS['PUSH'], 0) === [13001] && $GLOBALS['MAIL'] === [] && count($GLOBALS['SCRIPTRUN']) === 1 && $GLOBALS['SCRIPTRUN'][0][1]['TEXT'] === 'offen');
+$rowG = AUTOMATKatalog::defaults('fertig') + ['Uid' => 'agf1', 'Name' => 'Trockner'];
+$GLOBALS['PUSH'] = [];
+$msg->invoke($m, '🧺 Trockner', 'fertig', true, $rowG);
+check('Ohne eigene Wahl: die Standard-Wege (Kachel)', array_column($GLOBALS['PUSH'], 0) === [13000]);
+$rowG['gf_mw_fam'] = true;
+$msg->invoke($m, '🧺 Trockner', 'fertig', true, $rowG);
+check('Anderer Automatismus, anderer Weg: E-Mail an die Familie', array_column($GLOBALS['MAIL'], 1) === ['x@example.org']);
+$m->props['cfg_QuietEnabled'] = true;
+$m->props['cfg_QuietFrom'] = 22;
+$m->props['cfg_QuietTo'] = 7;
+$GLOBALS['PUSH'] = [];
+$GLOBALS['SCRIPTRUN'] = [];
+$rowW['wa_mw_kachel'] = true;
+at('23:00:00');
+$msg->invoke($m, '⏱ Tür', 'nachts offen', true, $rowW);
+check('Ruhezeit: Weg ohne „Ruhezeit beachten“ meldet sofort, die anderen warten', array_column($GLOBALS['PUSH'], 0) === [13001] && $GLOBALS['SCRIPTRUN'] === [] && count(json_decode($m->attrs['Deferred'], true)) === 2);
+$GLOBALS['CLOCK'] = ts('2026-10-14 07:05:00');
+$GLOBALS['PUSH'] = [];
+$m->Tick();
+check('Nach der Ruhezeit: nur die zurückgehaltenen Wege (Kachel, Telegram), nicht nochmal das Handy', array_column($GLOBALS['PUSH'], 0) === [13000] && count($GLOBALS['SCRIPTRUN']) === 1);
+$m->props['cfg_QuietEnabled'] = false;
+at('12:00:00');
+$m->props['Automations'] = json_encode([$rowW + ['Enabled' => true, 'wa_var' => 1701, 'wa_push' => true]]);
+$m->ApplyChanges();
+$dlgW = json_encode(json_decode($m->UIEditForm('aww1', 'waechter'), true), JSON_UNESCAPED_UNICODE);
+check('Dialog: je Meldeweg ein Haken, Namen je Typ getrennt (wa_mw_… / gf_mw_…)', strpos($dlgW, '"wa_mw_handy"') !== false && strpos($dlgW, '"gf_mw_handy"') !== false && strpos($dlgW, 'kein Haken = die Standard-Wege: Kachel') !== false);
+$names = [];
+$walkN = function ($els) use (&$walkN, &$names) {
+    foreach ($els as $e) {
+        if (isset($e['name'])) {
+            $names[] = $e['name'];
+        }
+        if (isset($e['items'])) {
+            $walkN($e['items']);
+        }
+    }
+};
+$walkN(json_decode($m->UIEditForm('aww1', 'waechter'), true));
+check('Dialog: alle Feldnamen eindeutig', count($names) === count(array_unique($names)), implode(',', array_diff_assoc($names, array_unique($names))));
+$ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Panel: Übersicht nennt je Automatismus seine Wege', strpos($ft, '„Tür“ → Handy Dietmar, Kachel, Telegram') !== false);
+$tm = $m->TestMessage();
+check('Testmeldung: Ergebnis je Meldeweg', substr_count($tm, '„') >= 4 && strpos($tm, '„Telegram“: ✅ Skript „Telegram senden“ gestartet') !== false, $tm);
+$m->props['cfg_Ways'] = '[]';
+$m->props['cfg_NotifyPush'] = true;
+$m->props['cfg_NotifyMail'] = true;
+$m->props['cfg_PushTargets'] = '[]';
+$ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Nach dem Update: bisherige Push-/E-Mail-Einstellung erscheint als Meldewege mit Hinweis', strpos($ft, 'Push an alle Visualisierungen') !== false && strpos($ft, 'stammen aus deinen bisherigen Einstellungen') !== false);
+$m->props['cfg_NotifyMail'] = false;
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
 

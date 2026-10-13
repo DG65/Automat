@@ -107,6 +107,8 @@ class Automat extends IPSModule
         $this->RegisterPropertyInteger('cfg_QuietFrom', 22);
         $this->RegisterPropertyInteger('cfg_QuietTo', 7);
         $this->RegisterPropertyBoolean('cfg_NotifyFaults', false);
+        // Meldewege (ab 0.1.27). Leer = aus den früheren Einstellungen (cfg_NotifyPush/-Mail …) gebildet.
+        $this->RegisterPropertyString('cfg_Ways', '[]');
         $this->RegisterPropertyString('FormLayout', '[]');
         $this->RegisterPropertyInteger('cfg_LightVar', 0);
         $this->RegisterPropertyFloat('cfg_LightDay', 50);
@@ -408,11 +410,11 @@ class Automat extends IPSModule
             $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
         }
         if (count($failed) > 0 && $this->ReadPropertyBoolean('cfg_NotifyFaults')) {
-            $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true);
+            $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true, null);
         }
         $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
         foreach ($res['msg'] as [$title, $text]) {
-            $this->message((string)$title, (string)$text, $notify);
+            $this->message((string)$title, (string)$text, $notify, $row);
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
@@ -927,22 +929,26 @@ class Automat extends IPSModule
 
     /**
      * Meldung: steht immer in „Letzte Meldung“; zugestellt wird nur, wenn der Automatismus melden soll ($notify),
-     * über die Wege, die der Nutzer unter „Meldungen“ gewählt hat. In der Ruhezeit wird sie zurückgehalten.
+     * über die Meldewege, die er gewählt hat (sonst die Standard-Wege). Wege mit „Ruhezeit beachten“ halten
+     * die Meldung in der Ruhezeit zurück; die übrigen stellen sofort zu.
      */
-    private function message(string $title, string $text, bool $notify): void
+    private function message(string $title, string $text, bool $notify, ?array $row): void
     {
         $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — ' . $title . ': ' . $text);
         if (!$notify) {
             return;
         }
-        if ($this->inQuiet($this->now())) {
-            $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
-            $q[] = [$this->now(), $title, $text];
-            $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
-            $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten: ' . $title, 0);
-            return;
+        $quiet = $this->inQuiet($this->now());
+        $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
+        foreach ($this->waysFor($row) as $w) {
+            if ($quiet && $w['quiet']) {
+                $q[] = [$this->now(), $title, $text, $w['id']];
+                $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten für „' . $w['name'] . '“: ' . $title, 0);
+                continue;
+            }
+            $this->deliverWay($w, $title, $text);
         }
-        $this->deliver($title, $text);
+        $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
     }
 
     /** Ruhezeit (volle Stunden, über Mitternacht möglich). */
@@ -957,7 +963,7 @@ class Automat extends IPSModule
         return $from === $to ? false : ($from < $to ? $h >= $from && $h < $to : $h >= $from || $h < $to);
     }
 
-    /** Nach der Ruhezeit zurückgehaltene Meldungen zustellen. */
+    /** Nach der Ruhezeit zurückgehaltene Meldungen über ihren Weg zustellen. */
     private function flushDeferred(): void
     {
         $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
@@ -965,55 +971,127 @@ class Automat extends IPSModule
             return;
         }
         $this->WriteAttributeString('Deferred', '[]');
-        foreach ($q as [$ts, $title, $text]) {
-            $this->deliver((string)$title, $text . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$ts) . ' Uhr, Ruhezeit)');
+        $ways = array_column($this->ways(), null, 'id');
+        foreach ($q as $e) {
+            $w = $ways[(string)($e[3] ?? '')] ?? null;
+            foreach ($w !== null ? [$w] : $this->waysFor(null) as $way) {
+                $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)');
+            }
         }
     }
 
-    /** Über die gewählten Wege zustellen. Rückgabe: Zusammenfassung je Weg (für die Testmeldung). */
-    private function deliver(string $title, string $text): string
+    /**
+     * Alle Meldewege: [id, name, typ (push|mail|script), target, to, std, quiet].
+     * Ohne gespeicherte Liste aus den früheren Einstellungen gebildet (Push an alle bzw. die gewählten
+     * Visualisierungen, E-Mail), damit nach dem Update nichts verloren geht.
+     */
+    private function ways(): array
     {
-        $parts = [];
-        if ($this->ReadPropertyBoolean('cfg_NotifyPush')) {
-            $targets = $this->pushTargets();
-            $sent = 0;
-            foreach ($targets as $t) {
-                try {
-                    if ($t['typ'] === 'kachel' && function_exists('VISU_PostNotificationEx')) {
-                        $ok = VISU_PostNotificationEx($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'Bell', 'bell', 0);
-                    } elseif ($t['typ'] === 'webfront' && function_exists('WFC_PushNotification')) {
-                        $ok = WFC_PushNotification($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'bell', $this->InstanceID);
-                    } else {
-                        $ok = false;
-                    }
-                } catch (Throwable $e) {
-                    $ok = false;
+        $rows = json_decode($this->ReadPropertyString('cfg_Ways'), true);
+        $out = [];
+        if (is_array($rows) && count($rows) > 0) {
+            $seen = [];
+            foreach ($rows as $i => $r) {
+                $id = preg_replace('/[^a-z0-9]/', '', strtolower((string)($r['Id'] ?? ''))) ?: 'w' . ($i + 1);
+                while (isset($seen[$id])) {
+                    $id .= 'x'; // in einer Sitzung doppelt hinzugefügt
                 }
-                if ($ok) {
-                    $sent++;
-                } else {
-                    $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
-                }
+                $seen[$id] = true;
+                $typ = in_array($r['Typ'] ?? '', ['push', 'mail', 'script'], true) ? $r['Typ'] : 'push';
+                $out[] = ['id' => $id, 'name' => trim((string)($r['Name'] ?? '')) ?: 'Meldeweg ' . ($i + 1), 'typ' => $typ,
+                    'target' => (int)($r['Target'] ?? 0), 'to' => trim((string)($r['To'] ?? '')),
+                    'std' => !empty($r['Std']), 'quiet' => !array_key_exists('Quiet', $r) || !empty($r['Quiet'])];
             }
-            $parts[] = count($targets) === 0 ? 'Push: ⚠️ keine Visualisierung gefunden' : 'Push: ' . ($sent === count($targets) ? '✅ ' : '⚠️ ') . $sent . ' von ' . count($targets) . ' Zielen';
+            return $out;
+        }
+        if ($this->ReadPropertyBoolean('cfg_NotifyPush')) {
+            $chosen = array_values(array_filter(array_map(function ($r) {
+                return (int)($r['Instance'] ?? 0);
+            }, json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: [])));
+            if (count($chosen) === 0) {
+                $out[] = ['id' => 'push', 'name' => 'Push an alle Visualisierungen', 'typ' => 'push', 'target' => 0, 'to' => '', 'std' => true, 'quiet' => true];
+            }
+            foreach ($chosen as $n => $vid) {
+                $out[] = ['id' => 'push' . ($n + 1), 'name' => 'Push an „' . (IPS_InstanceExists($vid) ? IPS_GetName($vid) : '#' . $vid) . '“', 'typ' => 'push', 'target' => $vid, 'to' => '', 'std' => true, 'quiet' => true];
+            }
         }
         if ($this->ReadPropertyBoolean('cfg_NotifyMail')) {
-            $err = $this->sendMail($title, $text);
-            $parts[] = 'E-Mail: ' . ($err === '' ? '✅ gesendet' : '⚠️ nicht gesendet — ' . $err);
+            $out[] = ['id' => 'mail', 'name' => 'E-Mail', 'typ' => 'mail', 'target' => $this->ReadPropertyInteger('cfg_MailInstance'), 'to' => trim($this->ReadPropertyString('cfg_MailTo')), 'std' => true, 'quiet' => true];
         }
-        $sum = count($parts) > 0 ? implode(' · ', $parts) : 'ℹ️ kein Weg gewählt (Push oder E-Mail unter „🔔 Meldungen“ ankreuzen)';
-        $this->SendDebug('Meldung', $title . ' — ' . $text . ' → ' . $sum, 0);
-        return $sum;
+        return $out;
     }
 
-    /** E-Mail über eine SMTP-Instanz; Rückgabe: '' bei Erfolg, sonst der Grund. */
-    private function sendMail(string $title, string $text): string
+    /** Meldewege eines Automatismus: seine angehakten, sonst die Standard-Wege. */
+    private function waysFor(?array $row): array
     {
-        $inst = $this->ReadPropertyInteger('cfg_MailInstance');
-        if ($inst <= 0 || !IPS_InstanceExists($inst)) {
-            return 'keine SMTP-Instanz ausgewählt (oder die Instanz gibt es nicht mehr)';
+        $all = $this->ways();
+        if ($row !== null) {
+            $prefix = substr(self::NOTIFY_FIELD[$row['Type']] ?? '', 0, 3);
+            $mine = array_values(array_filter($all, function ($w) use ($row, $prefix) {
+                return $prefix !== '' && !empty($row[$prefix . 'mw_' . $w['id']]);
+            }));
+            if (count($mine) > 0) {
+                return $mine;
+            }
         }
-        $to = trim($this->ReadPropertyString('cfg_MailTo'));
+        return array_values(array_filter($all, function ($w) {
+            return $w['std'];
+        }));
+    }
+
+    /** Über einen Meldeweg zustellen. Rückgabe: Ergebnis in Worten (für Testmeldung und Debug). */
+    private function deliverWay(array $w, string $title, string $text): string
+    {
+        switch ($w['typ']) {
+            case 'mail':
+                $err = $this->sendMail($w['target'], $w['to'], $title, $text);
+                $res = $err === '' ? '✅ gesendet' : '⚠️ nicht gesendet — ' . $err;
+                break;
+            case 'script':
+                if ($w['target'] <= 0 || !IPS_ScriptExists($w['target'])) {
+                    $res = '⚠️ kein Skript gewählt (oder es gibt es nicht mehr)';
+                    break;
+                }
+                // Das Skript bekommt Titel und Text, z. B. für Telegram, Pushover oder eine Sprachausgabe.
+                $ok = IPS_RunScriptEx($w['target'], ['TITLE' => $title, 'TEXT' => $text, 'SENDER_AUTOMAT' => (string)$this->InstanceID]);
+                $res = $ok ? '✅ Skript „' . IPS_GetName($w['target']) . '“ gestartet' : '⚠️ Skript ließ sich nicht starten';
+                break;
+            default:
+                $targets = $this->pushTargets($w['target']);
+                $sent = 0;
+                foreach ($targets as $t) {
+                    try {
+                        if ($t['typ'] === 'kachel' && function_exists('VISU_PostNotificationEx')) {
+                            $ok = VISU_PostNotificationEx($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'Bell', 'bell', 0);
+                        } elseif ($t['typ'] === 'webfront' && function_exists('WFC_PushNotification')) {
+                            $ok = WFC_PushNotification($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'bell', $this->InstanceID);
+                        } else {
+                            $ok = false;
+                        }
+                    } catch (Throwable $e) {
+                        $ok = false;
+                    }
+                    if ($ok) {
+                        $sent++;
+                    } else {
+                        $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
+                    }
+                }
+                $res = count($targets) === 0 ? '⚠️ keine passende Visualisierung gefunden' : ($sent === count($targets) ? '✅ ' : '⚠️ ') . $sent . ' von ' . count($targets) . ' Zielen';
+        }
+        $this->SendDebug('Meldung', $w['name'] . ': ' . $title . ' — ' . $text . ' → ' . $res, 0);
+        return $res;
+    }
+
+    /** E-Mail über eine SMTP-Instanz (0 = die erste gefundene); Rückgabe: '' bei Erfolg, sonst der Grund. */
+    private function sendMail(int $inst, string $to, string $title, string $text): string
+    {
+        if ($inst <= 0) {
+            $inst = (int)((@IPS_GetInstanceListByModuleID(self::SMTP_GUID) ?: [0])[0]);
+        }
+        if ($inst <= 0 || !IPS_InstanceExists($inst)) {
+            return 'keine SMTP-Instanz gefunden oder gewählt';
+        }
         $warnings = [];
         $err = '';
         // Das SMTP-Modul meldet den Grund (z. B. „Login denied“) als PHP-Warnung und gibt nur false zurück.
@@ -1056,19 +1134,13 @@ class Automat extends IPSModule
         return $err;
     }
 
-    /** Push-Ziele: Kachel-Visualisierung UND WebFront (SUITE.md Stolperstein 22); die Auswahl unter „Meldungen“ oder alle gefundenen. */
-    private function pushTargets(): array
+    /** Push-Ziele: Kachel-Visualisierung UND WebFront (SUITE.md Stolperstein 22); 0 = alle, sonst nur diese Instanz. */
+    private function pushTargets(int $only): array
     {
-        $chosen = [];
-        foreach (json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: [] as $r) {
-            if ((int)($r['Instance'] ?? 0) > 0) {
-                $chosen[(int)$r['Instance']] = true;
-            }
-        }
         $out = [];
         foreach ([[self::VISU_GUID, 'kachel'], [self::WEBFRONT_GUID, 'webfront']] as [$guid, $typ]) {
             foreach (@IPS_GetInstanceListByModuleID($guid) ?: [] as $id) {
-                if (count($chosen) === 0 || isset($chosen[(int)$id])) {
+                if ($only <= 0 || (int)$id === $only) {
                     $out[] = ['id' => (int)$id, 'name' => IPS_GetName($id), 'typ' => $typ];
                 }
             }
@@ -1115,9 +1187,17 @@ class Automat extends IPSModule
     /** AUTOMAT_TestMessage($id): string — Testmeldung über alle Wege. */
     public function TestMessage(): string
     {
-        // Gilt mit den gespeicherten Einstellungen; die Ruhezeit wird beim Test übergangen.
+        // Über ALLE Meldewege mit den gespeicherten Einstellungen; die Ruhezeit wird beim Test übergangen.
         $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — 🧪 Automat: Testmeldung');
-        return '🧪 Testmeldung (gespeicherte Einstellungen, Ruhezeit übergangen): ' . $this->deliver('🧪 Automat', 'Testmeldung — so sehen Meldungen deiner Automatismen aus.');
+        $ways = $this->ways();
+        if (count($ways) === 0) {
+            return 'ℹ️ Kein Meldeweg angelegt — unter „🔔 Meldungen“ einen hinzufügen und „Übernehmen“.';
+        }
+        $parts = [];
+        foreach ($ways as $w) {
+            $parts[] = '„' . $w['name'] . '“: ' . $this->deliverWay($w, '🧪 Automat', 'Testmeldung über „' . $w['name'] . '“ — so sehen Meldungen deiner Automatismen aus.');
+        }
+        return "🧪 Testmeldung über alle Meldewege (gespeicherte Einstellungen, Ruhezeit übergangen):\n" . implode("\n", $parts);
     }
 
     // =====================================================================
@@ -1660,6 +1740,11 @@ class Automat extends IPSModule
                 foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : [], $t === $type ? $infoHints : []) as $e) {
                     $items[] = $e;
                 }
+                if (($f['n'] ?? '') !== '' && $f['n'] === (self::NOTIFY_FIELD[$t] ?? null)) {
+                    foreach ($this->wayChoice(substr($f['n'], 0, 3)) as $e) {
+                        $items[] = $e;
+                    }
+                }
             }
             $bad = $t === $type && count($fieldProblems) > 0;
             $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
@@ -1722,6 +1807,23 @@ class Automat extends IPSModule
                     return ['type' => 'Label', 'caption' => $l];
                 }, $lines),
             ]];
+        }
+        return $els;
+    }
+
+    /** Kontrollkästchen „über welche Meldewege“ im Dialog; Namen je Typ-Präfix, damit sie nicht kollidieren. */
+    private function wayChoice(string $prefix): array
+    {
+        $ways = $this->ways();
+        if (count($ways) === 0) {
+            return [['type' => 'Label', 'caption' => 'ℹ️ Noch kein Meldeweg angelegt — unter „🔔 Meldungen“ anlegen.']];
+        }
+        $std = implode(', ', array_column(array_filter($ways, function ($w) {
+            return $w['std'];
+        }), 'name')) ?: '— keiner —';
+        $els = [['type' => 'Label', 'caption' => 'Über welche Meldewege? (kein Haken = die Standard-Wege: ' . $std . ')']];
+        foreach ($ways as $w) {
+            $els[] = ['type' => 'CheckBox', 'name' => $prefix . 'mw_' . $w['id'], 'caption' => $w['name'] . ($w['std'] ? ' (Standard)' : ''), 'value' => false];
         }
         return $els;
     }
@@ -2683,65 +2785,60 @@ class Automat extends IPSModule
 
     private function NotifyPanel(): array
     {
-        $t = $this->pushTargets();
-        $chosen = (json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: []) !== [];
-        $lines = [];
-        if (!$this->ReadPropertyBoolean('cfg_NotifyPush')) {
-            $lines[] = 'ℹ️ Push ist aus.';
-        } elseif (count($t) === 0) {
-            $lines[] = '⚠️ Push ist an, aber es gibt keine Visualisierung (Kachel oder WebFront).';
-        } else {
-            $lines[] = '✅ Push an ' . implode(', ', array_map(function ($x) {
-                return '„' . $x['name'] . '“';
-            }, $t)) . ($chosen ? ' (deine Auswahl)' : ' (alle gefundenen)') . '.';
-        }
-        $mi = $this->ReadPropertyInteger('cfg_MailInstance');
-        if (!$this->ReadPropertyBoolean('cfg_NotifyMail')) {
-            $lines[] = 'ℹ️ E-Mail ist aus.';
-        } elseif ($mi <= 0 || !IPS_InstanceExists($mi)) {
-            $lines[] = '⚠️ E-Mail ist an, aber keine SMTP-Instanz gewählt.';
-        } else {
-            $to = trim($this->ReadPropertyString('cfg_MailTo'));
-            $lines[] = '✅ E-Mail über „' . IPS_GetName($mi) . '“ an ' . ($to !== '' ? $to : 'den in der SMTP-Instanz eingestellten Empfänger') . '.';
-        }
-        if ($this->ReadPropertyBoolean('cfg_QuietEnabled')) {
-            $lines[] = '🌙 Ruhezeit ' . $this->ReadPropertyInteger('cfg_QuietFrom') . '–' . $this->ReadPropertyInteger('cfg_QuietTo') . ' Uhr: Meldungen werden danach nachgeholt.';
-        }
+        $ways = $this->ways();
+        $names = array_column($ways, 'name', 'id');
+        $std = array_column(array_filter($ways, function ($w) {
+            return $w['std'];
+        }), 'name');
         $who = [];
         foreach ($this->rows() as $r) {
             if (!empty($r['Enabled']) && !empty($r[self::NOTIFY_FIELD[$r['Type']] ?? ''])) {
-                $who[] = '„' . $this->rowName($r) . '“';
+                $who[] = '„' . $this->rowName($r) . '“ → ' . (implode(', ', array_column($this->waysFor($r), 'name')) ?: '— kein Weg —');
             }
         }
-        $smtp = @IPS_GetInstanceListByModuleID(self::SMTP_GUID) ?: [];
+        $rows = [];
+        foreach ($ways as $w) {
+            $rows[] = ['Id' => $w['id'], 'Name' => $w['name'], 'Typ' => $w['typ'], 'Target' => $w['target'], 'To' => $w['to'], 'Std' => $w['std'], 'Quiet' => $w['quiet']];
+        }
+        $legacy = (json_decode($this->ReadPropertyString('cfg_Ways'), true) ?: []) === [] && count($ways) > 0;
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🔔  Meldungen',
             'items' => [
-                ['type' => 'Label', 'caption' => implode(' ', $lines)],
-                ['type' => 'Label', 'caption' => '— Was wird gemeldet —', 'bold' => true],
-                ['type' => 'Label', 'caption' => count($who) > 0
-                    ? '🔔 Diese Automatismen melden: ' . implode(', ', $who) . '. Ein- und ausschalten je Automatismus im Dialog (✏️) mit „Melden“.'
-                    : 'ℹ️ Kein Automatismus meldet etwas. Melden können Wächter, „Gerät fertig“ und „Anwesenheit zusammenfassen“ — im Dialog (✏️) „Melden“ ankreuzen.'],
-                ['type' => 'CheckBox', 'name' => 'cfg_NotifyFaults', 'caption' => 'Auch Störungen melden (ein Gerät ließ sich nicht schalten)'],
-                ['type' => 'Label', 'caption' => '— Wie wird gemeldet —', 'bold' => true],
-                ['type' => 'CheckBox', 'name' => 'cfg_NotifyPush', 'caption' => 'Per Push (Kachel-Visualisierung und WebFront)'],
+                ['type' => 'Label', 'caption' => '— Meldewege —', 'bold' => true],
+                ['type' => 'Label', 'caption' => 'Lege hier fest, WIE gemeldet werden kann — beliebig viele Wege, z. B. „Handy Dietmar“ (Push an ein WebFront), „Kachel Küche“ (Push an eine Kachel-Visualisierung), „E-Mail Familie“ oder „Telegram“ (ein Skript, das die Meldung weiterreicht). Welcher Automatismus welchen Weg nutzt, wählst du in seinem Dialog (✏️); ohne Haken dort gelten die Standard-Wege.'],
                 [
-                    'type' => 'List', 'name' => 'cfg_PushTargets', 'caption' => 'Nur an diese Visualisierungen (leer = alle gefundenen)', 'rowCount' => 3, 'add' => true, 'delete' => true,
+                    'type' => 'List', 'name' => 'cfg_Ways', 'caption' => 'Meldewege', 'rowCount' => max(3, count($rows) + 1), 'add' => true, 'delete' => true,
+                    'loadValuesFromConfiguration' => false, 'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Instanz', 'name' => 'Instance', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectInstance']],
+                        ['caption' => 'Kennung', 'name' => 'Id', 'width' => '0px', 'visible' => false, 'save' => true, 'add' => 'w' . substr(md5((string)microtime(true)), 0, 6)],
+                        ['caption' => 'Name', 'name' => 'Name', 'width' => '220px', 'add' => 'Neuer Meldeweg', 'edit' => ['type' => 'ValidationTextBox']],
+                        ['caption' => 'Art', 'name' => 'Typ', 'width' => '150px', 'add' => 'push', 'edit' => ['type' => 'Select', 'options' => [
+                            ['caption' => 'Push', 'value' => 'push'],
+                            ['caption' => 'E-Mail', 'value' => 'mail'],
+                            ['caption' => 'Skript', 'value' => 'script'],
+                        ]]],
+                        ['caption' => 'Ziel (Push: Visualisierung, leer = alle · E-Mail: SMTP-Instanz, leer = erste · Skript)', 'name' => 'Target', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectObject']],
+                        ['caption' => 'Empfänger (nur E-Mail, mehrere mit Komma)', 'name' => 'To', 'width' => '260px', 'add' => '', 'edit' => ['type' => 'ValidationTextBox']],
+                        ['caption' => 'Standard', 'name' => 'Std', 'width' => '90px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Ruhezeit beachten', 'name' => 'Quiet', 'width' => '140px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                     ],
                 ],
-                ['type' => 'CheckBox', 'name' => 'cfg_NotifyMail', 'caption' => 'Per E-Mail'],
-                ['type' => 'SelectInstance', 'name' => 'cfg_MailInstance', 'caption' => 'SMTP-Instanz' . (count($smtp) > 0 ? ' (vorhanden: ' . implode(', ', array_map(function ($i) {
-                    return '„' . IPS_GetName($i) . '“ #' . $i;
-                }, array_slice($smtp, 0, 3))) . ')' : ' (noch keine angelegt — Instanz „SMTP“ hinzufügen)'), 'width' => '520px'],
-                ['type' => 'ValidationTextBox', 'name' => 'cfg_MailTo', 'caption' => 'Empfänger (mehrere mit Komma; leer = der in der SMTP-Instanz eingestellte)', 'width' => '520px'],
-                ['type' => 'CheckBox', 'name' => 'cfg_QuietEnabled', 'caption' => 'Ruhezeit: nachts nicht melden (die Meldung wird danach nachgeholt)'],
+                ['type' => 'Label', 'caption' => $legacy
+                    ? 'ℹ️ Diese Wege stammen aus deinen bisherigen Einstellungen (Push/E-Mail). Mit „Übernehmen“ werden sie als Liste gespeichert — danach kannst du sie umbenennen, ergänzen und je Automatismus wählen.'
+                    : (count($ways) === 0 ? '⚠️ Kein Meldeweg — Meldungen stehen nur in „Letzte Meldung“ und im Protokoll.' : '✅ Standard-Wege: ' . (implode(', ', $std) ?: '— keiner (dann melden nur Automatismen mit eigener Wahl) —') . '.')],
+                ['type' => 'Label', 'caption' => 'ℹ️ Skript-Wege bekommen $_IPS[\'TITLE\'] und $_IPS[\'TEXT\'] — so lässt sich jede Benachrichtigung anbinden (Telegram, Pushover, Sprachausgabe …).'],
+                ['type' => 'Label', 'caption' => '— Was wird gemeldet —', 'bold' => true],
+                ['type' => 'Label', 'caption' => count($who) > 0
+                    ? '🔔 ' . implode(' · ', $who) . '. Ein- und ausschalten und Wege wählen je Automatismus im Dialog (✏️).'
+                    : 'ℹ️ Kein Automatismus meldet etwas. Melden können Wächter, „Gerät fertig“ und „Anwesenheit zusammenfassen“ — im Dialog (✏️) „Melden“ ankreuzen.'],
+                ['type' => 'CheckBox', 'name' => 'cfg_NotifyFaults', 'caption' => 'Auch Störungen melden (ein Gerät ließ sich nicht schalten) — über die Standard-Wege'],
+                ['type' => 'Label', 'caption' => '— Ruhezeit —', 'bold' => true],
+                ['type' => 'CheckBox', 'name' => 'cfg_QuietEnabled', 'caption' => 'Ruhezeit: Wege mit „Ruhezeit beachten“ melden nachts nicht (die Meldung wird danach nachgeholt)'],
                 ['type' => 'RowLayout', 'items' => [
                     ['type' => 'NumberSpinner', 'name' => 'cfg_QuietFrom', 'caption' => 'Ruhezeit von', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
                     ['type' => 'NumberSpinner', 'name' => 'cfg_QuietTo', 'caption' => 'bis', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
                 ]],
-                ['type' => 'Button', 'caption' => '📨 Testmeldung senden', 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
+                ['type' => 'Button', 'caption' => '📨 Testmeldung über alle Meldewege', 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
                 ['type' => 'Label', 'caption' => 'ℹ️ Die Testmeldung nutzt die gespeicherten Einstellungen — nach Änderungen erst „Übernehmen“. Jede Meldung steht außerdem in der Variable „Letzte Meldung“.'],
             ],
         ];

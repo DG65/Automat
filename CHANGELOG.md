@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.27 (Build 28) — 13.10.2026
+
+- **Meldewege je Meldung** (Wunsch Dietmar): Unter „🔔 Meldungen“ legst du beliebig viele benannte Meldewege an — Push an alle oder eine bestimmte Visualisierung (Kachel/WebFront), E-Mail über eine SMTP-Instanz an bestimmte Empfänger, oder ein Skript (bekommt $_IPS['TITLE'] und $_IPS['TEXT'], z. B. für Telegram, Pushover, Sprachausgabe). Je Weg: „Standard“ und „Ruhezeit beachten“.
+- Im Dialog jedes meldenden Automatismus (Wächter, Gerät fertig, Anwesenheit) hakst du an, über welche Wege er meldet; ohne Haken gelten die Standard-Wege. Die Übersicht im Panel zeigt je Automatismus seine Wege.
+- Ruhezeit je Weg: Wege ohne „Ruhezeit beachten“ melden sofort, die anderen holen danach nach — jeweils nur über ihren eigenen Weg.
+- Testmeldung über alle Wege mit Ergebnis je Weg. Störungen gehen über die Standard-Wege.
+- Übernahme: Die bisherigen Einstellungen (Push an alle/gewählte Visualisierungen, E-Mail) erscheinen als erste Meldewege und gelten weiter, bis du die Liste mit „Übernehmen“ speicherst.
+
 ## 0.1.26 (Build 27) — 13.10.2026
 
 - „🪟 Formular: Aufbau“ jetzt mit Kontrollkästchen statt Auswahlliste, genau wie der Batteriewächter 0.16.5 (Anregung Dietmar): Spalten Aufgeklappt | Zugeklappt | 🙈 Ausgeblendet | Position. Kein Haken = Standard; bei mehreren Haken gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt, die Liste zeigt dann nur den geltenden. Gespeicherte Einstellungen aus 0.1.24 werden weiter gelesen. Zurücksetzen leert alle Haken.
