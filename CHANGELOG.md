@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.25 (Build 26) — 13.10.2026
+
+- Wächter: Der Vergleichswert lässt sich aus den möglichen Werten der Variable auswählen („… oder aus den möglichen Werten der Variable wählen“) — aus der Darstellung (z. B. Matter-Kontakt „Offen“/„Geschlossen“), aus den Profil-Zuordnungen oder bei Schaltern „an / wahr“ / „aus / falsch“. Die Auswahl schreibt den echten Wert ins Feld (wichtig, wo „wahr“ „Geschlossen“ bedeutet) und stellt „ist an/aus“ auf „ist gleich“ um. Wechselt die Variable, folgt die Auswahl sofort; bei Messwerten ohne feste Werte bleibt nur das Eintippen. Meldungen zeigen die Beschriftung („ist gleich Offen … (aktuell Offen)“) statt „false“. Wunsch Dietmar.
+
 ## 0.1.24 (Build 25) — 13.10.2026
 
 - **Meldungen: was und wie entscheidet der Nutzer** (Aufbau wie beim Batteriewächter). Neuer Bereich „🔔 Meldungen“:

@@ -483,6 +483,10 @@ class Automat extends IPSModule
                 $ctx['melTimeout'][$m] = $this->melderTimeout($m);
             }
         }
+        if ($row['Type'] === 'waechter') {
+            $wv = (int)($row['wa_var'] ?? 0);
+            $ctx['labels'][$wv] = $this->valueLabels($wv);
+        }
         if ($row['Type'] === 'daemmerung') {
             $today = date('Y-m-d', $ctx['now']);
             foreach ([-1, 0, 1, 2] as $n) {
@@ -1642,6 +1646,7 @@ class Automat extends IPSModule
             ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
         $saved = $isNew ? null : $this->rowByUid($uid);
+        $this->editRow = $saved ?? [];
         $fieldProblems = $saved !== null && $saved['Type'] === $type ? AUTOMATKatalog::fieldProblems($saved, function (int $vid) {
             return IPS_VariableExists($vid);
         }) : [];
@@ -1721,6 +1726,9 @@ class Automat extends IPSModule
         return $els;
     }
 
+    /** Gespeicherte Zeile des gerade geöffneten Dialogs (für Felder, die von einer Variable abhängen). */
+    private array $editRow = [];
+
     private function fieldInputs(array $f): array
     {
         $k = $f['k'];
@@ -1754,11 +1762,82 @@ class Automat extends IPSModule
                 return [$base + ['type' => 'SelectTime', 'value' => $f['d']]];
             case 'text':
                 return [$base + ['type' => 'ValidationTextBox', 'value' => $f['d'], 'width' => '520px']];
+            case 'pick':
+                // Auswahl aus den möglichen Werten der gewählten Variable; schreibt ins Vergleichsfeld.
+                $opts = $this->pickOptions((int)($this->editRow[$f['src']] ?? 0));
+                return [$base + ['type' => 'Select', 'value' => '', 'options' => $opts, 'width' => '520px', 'visible' => count($opts) > 1,
+                    'onChange' => 'AUTOMAT_UIPickValue($id, \'' . $f['to'] . '\', \'' . $f['op'] . '\', (string)$' . $f['n'] . ', (int)$' . $f['op'] . ');']];
         }
         return [];
     }
 
     /** AUTOMAT_UIVarChanged($id, $field, $vid) — roten Hinweis unter einem Variablenfeld im offenen Dialog nachführen. */
+    /** AUTOMAT_UIPickValue($id, $to, $opField, $value, $op) — gewählten Wert ins Vergleichsfeld; „ist an/aus“ wird dabei zu „ist gleich“. */
+    public function UIPickValue(string $to, string $opField, string $value, int $op): void
+    {
+        if ($value === '') {
+            return;
+        }
+        $this->UpdateFormField($to, 'value', $value);
+        if ($op === 4 || $op === 5) {
+            $this->UpdateFormField($opField, 'value', 0);
+        }
+    }
+
+    /**
+     * Mögliche Werte einer Variable als [Wert => Beschriftung]: Darstellung (OPTIONS), sonst Profil-Zuordnungen,
+     * bei Bool notfalls „an/wahr“ / „aus/falsch“. Leer, wenn nichts Sinnvolles da ist (z. B. Messwerte).
+     */
+    private function valueLabels(int $vid): array
+    {
+        if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid)) {
+            return [];
+        }
+        $v = IPS_GetVariable($vid);
+        $out = [];
+        foreach ([$v['VariableCustomPresentation'] ?? [], $v['VariablePresentation'] ?? []] as $pres) {
+            $raw = is_array($pres) ? ($pres['OPTIONS'] ?? null) : null;
+            $opts = is_string($raw) ? json_decode($raw, true) : $raw;
+            foreach (is_array($opts) ? $opts : [] as $o) {
+                if (is_array($o) && array_key_exists('Value', $o) && trim((string)($o['Caption'] ?? '')) !== '') {
+                    $out[AUTOMATLogik::valueKey($o['Value'])] = trim((string)$o['Caption']);
+                }
+            }
+            if (count($out) > 0) {
+                return $out;
+            }
+        }
+        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: ($v['VariableProfile'] ?? ''));
+        if ($profile !== '' && IPS_VariableProfileExists($profile)) {
+            foreach ((array)(IPS_GetVariableProfile($profile)['Associations'] ?? []) as $a) {
+                if (trim((string)($a['Name'] ?? '')) !== '') {
+                    $key = (int)$v['VariableType'] === VARIABLETYPE_BOOLEAN ? AUTOMATLogik::valueKey((bool)$a['Value']) : AUTOMATLogik::valueKey($a['Value']);
+                    $out[$key] = trim((string)$a['Name']);
+                }
+            }
+        }
+        if (count($out) === 0 && (int)$v['VariableType'] === VARIABLETYPE_BOOLEAN) {
+            $out = ['true' => 'an / wahr', 'false' => 'aus / falsch'];
+        }
+        return $out;
+    }
+
+    /** Auswahlliste fürs Dialogfeld: erster Eintrag „bitte wählen“, dann „Beschriftung (Wert)“. */
+    private function pickOptions(int $vid): array
+    {
+        $labels = $this->valueLabels($vid);
+        if (count($labels) === 0) {
+            return [['caption' => '— keine festen Werte bekannt, oben eintippen —', 'value' => '']];
+        }
+        $opts = [['caption' => '— Wert wählen —', 'value' => '']];
+        foreach ($labels as $val => $cap) {
+            $val = (string)$val; // PHP macht aus Schlüsseln wie „0“ eine Zahl
+            $raw = $val === 'true' ? 'wahr' : ($val === 'false' ? 'falsch' : $val);
+            $opts[] = ['caption' => $cap . (mb_strpos(mb_strtolower($cap), mb_strtolower($raw)) !== false ? '' : ' (' . $raw . ')'), 'value' => $val];
+        }
+        return $opts;
+    }
+
     public function UIVarChanged(string $field, int $vid): void
     {
         if ($vid !== 0 && $vid < AUTOMATKatalog::$minId) {
@@ -1767,6 +1846,16 @@ class Automat extends IPSModule
             $vid = 0;
         }
         $bad = $vid >= AUTOMATKatalog::$minId && !IPS_VariableExists($vid);
+        // Hängt an dieser Variable eine Werteauswahl (Wächter), deren Einträge nachführen.
+        foreach (AUTOMATKatalog::TYPES as $t => $_) {
+            foreach (AUTOMATKatalog::fields($t) as $f) {
+                if (($f['k'] ?? '') === 'pick' && $f['src'] === $field) {
+                    $opts = $this->pickOptions($vid);
+                    $this->UpdateFormField($f['n'], 'options', json_encode($opts, JSON_UNESCAPED_UNICODE));
+                    $this->UpdateFormField($f['n'], 'visible', count($opts) > 1);
+                }
+            }
+        }
         $this->UpdateFormField('chk_' . $field, 'caption', $bad ? '⛔ Variable #' . $vid . ' existiert nicht — bitte neu wählen oder leeren.' : '');
         $this->UpdateFormField('chk_' . $field, 'visible', $bad);
     }

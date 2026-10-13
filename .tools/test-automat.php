@@ -1530,6 +1530,64 @@ $vals = json_decode($m->fieldUpdates[0][2] ?? '[]', true);
 check('Zurücksetzen: alle Bereiche „Standard“ in Grundreihenfolge (nur im offenen Formular)', count($vals) === 7 && array_unique(array_column($vals, 'Open')) === ['std'] && array_column($vals, 'Key')[0] === 'doc');
 $m->props['FormLayout'] = '[]';
 
+heading('C10. Wächter: Vergleichswert aus den möglichen Werten der Variable wählen');
+mkinst(1700, 'Esszimmer Terrassentür');
+mkvar(1701, VARIABLETYPE_BOOLEAN, true, 'Esszimmer Terrassentür', 1700, false, '', ['PRESENTATION' => '{3319437D-7CDE-699D-750A-3C6A3841FA75}', 'OPTIONS' => json_encode([['Value' => false, 'Caption' => 'Offen'], ['Value' => true, 'Caption' => 'Geschlossen']])]);
+$GLOBALS['PROFILES']['Garage.Tor'] = ['MaxValue' => 0, 'Suffix' => '', 'Assoc' => [], 'Associations' => [['Value' => 0, 'Name' => 'Zu'], ['Value' => 1, 'Name' => 'Auf'], ['Value' => 2, 'Name' => 'Halb offen']]];
+mkvar(1702, VARIABLETYPE_INTEGER, 0, 'Garagentor', 1700, false, 'Garage.Tor');
+mkvar(1703, VARIABLETYPE_BOOLEAN, false, 'Schalter ohne Beschriftung', 1700, true, '');
+mkvar(1704, VARIABLETYPE_FLOAT, 21.5, 'Temperatur', 1700, false, '');
+$wa = AUTOMATKatalog::defaults('waechter');
+$wa += ['Name' => 'Terrassentür offen', 'Room' => 'Esszimmer', 'Uid' => 'aterr1'];
+$wa['wa_var'] = 1701;
+$wa['wa_op'] = 0;
+$wa['wa_wert'] = 'false';
+$wa['wa_dauer'] = 15;
+$m->props['Automations'] = json_encode([$wa]);
+$m->ApplyChanges();
+$dlg = json_decode($m->UIEditForm('aterr1', 'waechter'), true);
+$pick = null;
+array_walk_recursive($dlg, function () {});
+$walk = function ($els) use (&$walk, &$pick) {
+    foreach ($els as $e) {
+        if (($e['name'] ?? '') === 'wa_pick') {
+            $pick = $e;
+        }
+        if (isset($e['items'])) {
+            $walk($e['items']);
+        }
+    }
+};
+$walk($dlg);
+$caps = array_column($pick['options'] ?? [], 'caption');
+check('Dialog: Auswahl zeigt die Beschriftungen der Tür (Matter: wahr = Geschlossen)', ($pick['visible'] ?? false) === true && in_array('Offen (falsch)', $caps, true) && in_array('Geschlossen (wahr)', $caps, true), json_encode($caps, JSON_UNESCAPED_UNICODE));
+check('Auswahl liefert den echten Wert („false“ für Offen), nicht die Beschriftung', array_column($pick['options'], 'value', 'caption')['Offen (falsch)'] === 'false');
+$m->fieldUpdates = [];
+$m->UIVarChanged('wa_var', 1702);
+$up = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'wa_pick' && $u[1] === 'options'));
+$opts2 = json_decode($up[0][2] ?? '[]', true);
+check('Variable gewechselt: Auswahl folgt sofort (Profil-Zuordnungen des Garagentors)', array_column($opts2, 'caption') === ['— Wert wählen —', 'Zu (0)', 'Auf (1)', 'Halb offen (2)'], json_encode($opts2, JSON_UNESCAPED_UNICODE));
+$m->fieldUpdates = [];
+$m->UIVarChanged('wa_var', 1703);
+$ob = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'wa_pick' && $u[1] === 'options'));
+check('Bool ohne Beschriftung: an / wahr und aus / falsch', in_array(['wa_pick', 'visible', true], $m->fieldUpdates, true) && array_column(json_decode($ob[0][2] ?? '[]', true), 'caption') === ['— Wert wählen —', 'an / wahr', 'aus / falsch']);
+$m->fieldUpdates = [];
+$m->UIVarChanged('wa_var', 1704);
+check('Messwert ohne feste Werte: Auswahl ausgeblendet, Feld zum Eintippen bleibt', in_array(['wa_pick', 'visible', false], $m->fieldUpdates, true));
+$m->fieldUpdates = [];
+$m->UIPickValue('wa_wert', 'wa_op', 'false', 4);
+check('Wert gewählt: steht im Vergleichsfeld, „ist an / wahr“ wird zu „ist gleich“', $m->fieldUpdates === [['wa_wert', 'value', 'false'], ['wa_op', 'value', 0]], json_encode($m->fieldUpdates));
+$GLOBALS['PUSH'] = [];
+at('12:00:00');
+fire($m, 1701, false);
+at('12:16:00');
+$m->Tick();
+$lm = GetValue(IPS_GetObjectIDByIdent('LastMessage', 12345));
+check('Meldung mit Beschriftung: „ist gleich Offen … (aktuell Offen)“ statt „false“', strpos($lm, 'ist gleich Offen') !== false && strpos($lm, '(aktuell Offen)') !== false && strpos($lm, 'false') === false, $lm);
+check('valueKey vereinheitlicht Werte (true/„1.0“/„Zu“)', AUTOMATLogik::valueKey(true) === 'true' && AUTOMATLogik::valueKey('1.0') === '1' && AUTOMATLogik::valueKey(2.0) === '2' && AUTOMATLogik::valueKey('Zu') === 'Zu');
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
 check('Kein IPS_LogMessage in module.php (Store-Review Punkt 15)', strpos($src, 'IPS_LogMessage') === false);
 check('Keine +86400-Rechnung (Stolperstein 18)', !preg_match('/[+-]\s*86400/', $src . file_get_contents(dirname(__DIR__) . '/Automat/AUTOMATLogik.php')));

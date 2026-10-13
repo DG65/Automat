@@ -209,6 +209,7 @@ class AUTOMATKatalog
                     ['n' => 'wa_var', 'k' => 'var', 'c' => 'Variable', 'req' => true],
                     ['n' => 'wa_op', 'k' => 'select', 'c' => 'Melden, wenn der Wert', 'd' => 4, 'options' => self::WA_OPS],
                     ['n' => 'wa_wert', 'k' => 'text', 'c' => 'Vergleichswert (für gleich/ungleich/größer/kleiner)', 'd' => ''],
+                    ['n' => 'wa_pick', 'k' => 'pick', 'c' => '… oder aus den möglichen Werten der Variable wählen', 'src' => 'wa_var', 'to' => 'wa_wert', 'op' => 'wa_op', 'd' => ''],
                     ['n' => 'wa_dauer', 'k' => 'int', 'c' => '… und zwar länger als', 'd' => 15, 'suffix' => ' min', 'min' => 0, 'max' => 10080],
                     ['k' => 'info', 'c' => 'Meldung'],
                     ['n' => 'wa_text', 'k' => 'text', 'c' => 'Meldungstext (leer = automatisch)', 'd' => ''],

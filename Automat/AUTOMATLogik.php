@@ -974,6 +974,21 @@ class AUTOMATLogik
         return $op === 0 ? $eq : ($op === 1 ? !$eq : false);
     }
 
+    /** Einheitlicher Schlüssel eines Werts für Beschriftungen: true/false, Zahlen ohne „.0“, Text wie er ist. */
+    public static function valueKey($v): string
+    {
+        if (is_bool($v)) {
+            return $v ? 'true' : 'false';
+        }
+        $s = trim((string)$v);
+        $n = str_replace(',', '.', $s);
+        if (is_numeric($n)) {
+            return (string)(0 + $n);
+        }
+        $l = mb_strtolower($s);
+        return in_array($l, ['true', 'false'], true) ? $l : $s;
+    }
+
     public static function fmtDuration(int $sec): string
     {
         if ($sec >= 86400) {
@@ -1001,15 +1016,17 @@ class AUTOMATLogik
         $v = $ctx['val'][$vid] ?? null;
         $cond = $v !== null && self::compare($v, $op, $ref);
         $opText = AUTOMATKatalog::WA_OPS[$op] ?? '';
-        $cmpText = in_array($op, [4, 5], true) ? $opText : $opText . ' ' . $ref;
+        // Beschriftungen der Variable (z. B. „Offen“ statt „true“), wenn das Modul sie mitgibt
+        $labels = (array)($ctx['labels'][$vid] ?? []);
+        $cmpText = in_array($op, [4, 5], true) ? $opText : $opText . ' ' . ($labels[self::valueKey($ref)] ?? $ref);
         $hard = self::hardBlock($ctx);
         $blocked = $hard !== '' ? $hard : self::softBlock($row, $ctx);
-        $text = function (int $since) use ($row, $varName, $cmpText, $now, $v) {
+        $text = function (int $since) use ($row, $varName, $cmpText, $now, $v, $labels) {
             $t = trim((string)($row['wa_text'] ?? ''));
             if ($t !== '') {
                 return $t;
             }
-            return $varName . ' ' . $cmpText . ' — seit ' . self::fmtDuration(max(60, $now - $since)) . ' (aktuell ' . self::fmtNum($v) . ').';
+            return $varName . ' ' . $cmpText . ' — seit ' . self::fmtDuration(max(60, $now - $since)) . ' (aktuell ' . ($labels[self::valueKey($v)] ?? self::fmtNum($v)) . ').';
         };
 
         if ($cond) {
