@@ -121,6 +121,17 @@ class Automat extends IPSModule
         $this->MaintainVariable('Pause', 'Alle Automatismen pausieren', VARIABLETYPE_BOOLEAN, '~Switch', 2, true);
         $this->EnableAction('Pause');
         $this->MaintainVariable('LastMessage', 'Letzte Meldung', VARIABLETYPE_STRING, '', 3, true);
+        // Gedächtnis der Automatismen (gemerkte Sollwerte, gelernte Zeiten, Melderzustände) als versteckte
+        // Variable statt Attribut: übersteht ein Neueinbinden des Moduls in der Modulverwaltung.
+        $this->MaintainVariable('store', 'Gedächtnis (intern)', VARIABLETYPE_STRING, '', 999, true);
+        $storeID = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
+        if ($storeID) {
+            IPS_SetHidden($storeID, true);
+            $old = $this->ReadAttributeString('States');
+            if ((string)GetValue($storeID) === '' && $old !== '' && $old !== '{}') {
+                SetValueString($storeID, $old); // Übernahme aus Versionen bis 0.1.13
+            }
+        }
 
         foreach ($this->GetMessageList() as $sender => $messages) {
             foreach ($messages as $message) {
@@ -176,15 +187,17 @@ class Automat extends IPSModule
         }
         // Zustände entfernter Automatismen vergessen.
         $uids = array_column($rows, 'Uid');
-        foreach (['States', 'Status', 'Due', 'End'] as $attr) {
+        foreach (['Status', 'Due', 'End'] as $attr) {
             $map = $this->attrMap($attr);
             $this->WriteAttributeString($attr, json_encode(array_intersect_key($map, array_flip($uids))));
         }
+        $this->statesWrite(array_intersect_key($this->statesMap(), array_flip($uids)));
 
         $this->SetStatus($enabled > 0 ? 102 : 104);
         $this->bootstrapMelders($rows);
         foreach ($rows as $row) {
-            $this->process($row, ['k' => 'flag']);
+            // 'startup': z. B. ein beim Neustart noch abgesenktes Thermostat bei geschlossenen Fenstern zurückstellen
+            $this->process($row, ['k' => 'flag', 'startup' => true]);
         }
         $this->evaluateMode(false);
         $this->reschedule();
@@ -288,7 +301,7 @@ class Automat extends IPSModule
     private function process(array $row, array $ev): void
     {
         $uid = $row['Uid'];
-        $states = $this->attrMap('States');
+        $states = $this->statesMap();
         $status = $this->attrMap('Status');
         $due = $this->attrMap('Due');
         if (empty($row['Enabled'])) {
@@ -328,7 +341,7 @@ class Automat extends IPSModule
         } else {
             unset($due[$uid]);
         }
-        $this->WriteAttributeString('States', json_encode($states));
+        $this->statesWrite($states);
         $this->WriteAttributeString('Status', json_encode($status));
         $this->WriteAttributeString('Due', json_encode($due));
 
@@ -661,7 +674,7 @@ class Automat extends IPSModule
                 $impulse[] = $this->varLabel($vid);
             }
         }
-        $stt = $this->attrMap('States')[$row['Uid'] ?? ''] ?? [];
+        $stt = $this->statesMap()[$row['Uid'] ?? ''] ?? [];
         $eff = AUTOMATLogik::effectiveNachlauf($row, is_array($stt) ? $stt : []);
         $fo = count((array)($stt['fo'] ?? []));
         if ($fo > 0 || $eff > max(1, (int)($row['bl_nachlauf'] ?? 120))) {
@@ -1661,6 +1674,26 @@ class Automat extends IPSModule
         return $uid;
     }
 
+    /** Gedächtnis aller Automatismen (versteckte Variable „store“). */
+    private function statesMap(): array
+    {
+        $id = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
+        $m = $id ? json_decode((string)GetValue($id), true) : null;
+        return is_array($m) ? $m : [];
+    }
+
+    private function statesWrite(array $states): void
+    {
+        $id = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
+        if (!$id) {
+            return;
+        }
+        $json = json_encode($states);
+        if ((string)GetValue($id) !== $json) {
+            SetValueString($id, $json);
+        }
+    }
+
     private function attrMap(string $name): array
     {
         $m = json_decode((string)$this->ReadAttributeString($name), true);
@@ -1789,7 +1822,7 @@ class Automat extends IPSModule
                 }
                 $hints = $this->melderHints($r);
                 $pre = isset($hints['bl_impuls']) ? 'ℹ️ Impuls-Melder erkannt (✏️) · ' : '';
-                $stt = $this->attrMap('States')[$r['Uid'] ?? ''] ?? [];
+                $stt = $this->statesMap()[$r['Uid'] ?? ''] ?? [];
                 $eff = AUTOMATLogik::effectiveNachlauf($r, is_array($stt) ? $stt : []);
                 $fo = count((array)($stt['fo'] ?? []));
                 $learned = $eff > max(1, (int)($r['bl_nachlauf'] ?? 120)) ? ' · 🕒 Nachlauf gelernt ' . AUTOMATKatalog::dur($eff) : '';

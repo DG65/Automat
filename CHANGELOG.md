@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.14 (Build 15) — 13.10.2026
+
+- Gedächtnis der Automatismen (gemerkte Heizungs-Sollwerte, gelernter Nachlauf, Melderzustände) liegt jetzt in einer versteckten Variable „Gedächtnis (intern)“ statt in einem Attribut — es übersteht damit ein Neueinbinden des Moduls in der Modulverwaltung. Der bisherige Stand wird beim ersten „Übernehmen“ übernommen.
+- Sicherheitsnetz beim Start: Steht ein Thermostat noch abgesenkt, obwohl alle Fenster des Automatismus zu sind (z. B. Fenster während eines Updates geschlossen), stellt Automat den gemerkten Sollwert zurück und vermerkt „Beim Start nachgeholt“ im Protokoll. Wunsch Dietmar.
+
 ## 0.1.13 (Build 14) — 13.10.2026
 
 - Bewegungslicht lernt aus Fehlabschaltungen: Geht das Licht innerhalb von 3 Minuten nach dem automatischen Ausschalten wieder an (Bewegung oder von Hand), verlängert sich der Nachlauf um die Hälfte (bis zum einstellbaren Höchstwert, Standard 30 min); ohne Fehlabschaltung geht er je Tag um 10 % Richtung Grundwert zurück. Kurz nach dem eigenen Aus zählt der Helligkeitssensor nicht (Restlicht). Anzeige in „Einstellungen“ („🕒 Nachlauf gelernt 4:30 min · 3× zu früh aus (7 Tage)“), im Dialog am Nachlauf-Feld und im Protokoll; abschaltbar. Standardmäßig an — auch für bestehende Bewegungslichter.

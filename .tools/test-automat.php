@@ -107,6 +107,9 @@ function IPS_GetObjectIDByIdent(string $ident, int $parent)
 function IPS_GetChildrenIDs(int $p): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['parent'] === $p)); }
 function IPS_DeleteVariable(int $id): bool { unset($GLOBALS['OBJ'][$id]); return true; }
 function IPS_GetName(int $id): string { return $GLOBALS['OBJ'][$id]['name'] ?? ''; }
+function IPS_SetHidden(int $id, bool $h): bool { $GLOBALS['OBJ'][$id]['hidden'] = $h; return true; }
+function SetValueString($id, string $v): bool { $GLOBALS['OBJ'][(int)$id]['value'] = $v; return true; }
+function testStates(): array { $id = IPS_GetObjectIDByIdent('store', 12345); return json_decode((string)GetValue($id), true) ?: []; }
 function IPS_SetName(int $id, string $n): bool { $GLOBALS['OBJ'][$id]['name'] = $n; return true; }
 function IPS_GetParent(int $id): int { return $GLOBALS['OBJ'][$id]['parent'] ?? 0; }
 function IPS_GetInstanceListByModuleID(string $guid): array { return $GLOBALS['MODULES'][$guid] ?? []; }
@@ -887,7 +890,7 @@ $GLOBALS['WRITES'] = [];
 fire($m, 1011, true);
 check('Bewegung → RequestAction auf das Licht', count($GLOBALS['WRITES']) === 1 && $GLOBALS['WRITES'][0][1] === 1001 && $GLOBALS['WRITES'][0][2] === true && $GLOBALS['WRITES'][0][3] === 'RequestAction');
 fire($m, 1001, true); // Echo des eigenen Befehls
-$states = json_decode($m->attrs['States'], true);
+$states = testStates();
 check('Echo des eigenen Befehls ist keine Handbedienung', $states['aflur1']['ph'] === 'an');
 fire($m, 1011, false);
 check('Melder still → Restzeit-Variable zeigt den Nachlauf', GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)) === '1:00 min', (string)GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)));
@@ -911,7 +914,7 @@ check('Vorwarnung: Licht kurz aus', GetValue(1081) === false);
 fire($m, 1081, false); // Echo des eigenen Aus-Befehls
 $GLOBALS['CLOCK'] += 1;
 $m->Tick();
-check('Echo der Vorwarnung nicht als Handbedienung gewertet: Licht wieder an', GetValue(1081) === true, json_encode(json_decode($m->attrs['States'], true)['atrepp']));
+check('Echo der Vorwarnung nicht als Handbedienung gewertet: Licht wieder an', GetValue(1081) === true, json_encode(testStates()['atrepp']));
 fire($m, 1081, true);
 $GLOBALS['CLOCK'] += 10;
 $m->Tick();
@@ -922,7 +925,7 @@ fire($m, 1011, true);
 fire($m, 1001, true);
 $GLOBALS['CLOCK'] += 5;
 fire($m, 1001, false); // von Hand aus
-$states = json_decode($m->attrs['States'], true);
+$states = testStates();
 check('Von Hand ausgeschaltet → Handpause', $states['aflur1']['ph'] === 'hand', $states['aflur1']['ph']);
 // Fenster
 $GLOBALS['WRITES'] = [];
@@ -961,6 +964,28 @@ fire($m, 1011, false);
 fire($m, 1011, true);
 $GLOBALS['FAIL_RA'] = false;
 check('Fehlgeschlagenes Schalten → LogMessage KL_WARNING', count(array_filter($m->logged, fn($l) => $l[0] === KL_WARNING)) >= 1, json_encode($m->logged, JSON_UNESCAPED_UNICODE));
+
+heading('C2b. Gedächtnis übersteht Neueinbinden; abgesenktes Thermostat wird beim Start zurückgestellt');
+$storeID = IPS_GetObjectIDByIdent('store', 12345);
+check('Gedächtnis als versteckte Variable', $GLOBALS['OBJ'][$storeID]['hidden'] === true);
+fire($m, 1031, true);
+check('Fenster auf → abgesenkt', GetValue(1021) === 12.0);
+fire($m, 1021, 12.0);
+// Neueinbinden in der Modulverwaltung: Attribute weg, Variablen bleiben; währenddessen Fenster geschlossen (Nachricht verpasst)
+$GLOBALS['OBJ'][1031]['value'] = false;
+$props = $m->props;
+$m = new AutomatTest();
+$m->props = $props;
+$m->Create();
+$m->ApplyChanges();
+check('Nach Neueinbinden mit verpasstem „zu“: Sollwert beim Start auf 21 °C zurück', GetValue(1021) === 21.0, var_export(GetValue(1021), true));
+check('… mit eigenem Protokolleintrag', strpos(json_encode(json_decode($m->attrs['Protocol'], true), JSON_UNESCAPED_UNICODE), 'Beim Start nachgeholt') !== false);
+// Übernahme aus Attribut (Versionen bis 0.1.13)
+$keep = GetValue($storeID);
+SetValueString($storeID, '');
+$m->attrs['States'] = $keep;
+$m->ApplyChanges();
+check('Gedächtnis aus dem alten Attribut übernommen', GetValue($storeID) !== '' && isset(testStates()['aflur1']));
 
 heading('C3. Formular');
 $form = json_decode($m->GetConfigurationForm(), true);
@@ -1151,7 +1176,7 @@ $m->props['Automations'] = json_encode([$bl]);
 $m->ApplyChanges();
 check('Variablen entfernter Automatismen gelöscht', @IPS_GetObjectIDByIdent('r_abad01', 12345) === false && @IPS_GetObjectIDByIdent('s_abad01', 12345) === false && @IPS_GetObjectIDByIdent('s_awasch', 12345) === false && @IPS_GetObjectIDByIdent('s_aflur1', 12345) !== false);
 check('Nachricht auf entferntem Kontakt abgemeldet', !isset($m->messages[1031]));
-check('Zustände entfernter Automatismen vergessen', array_keys(json_decode($m->attrs['States'], true)) === ['aflur1']);
+check('Zustände entfernter Automatismen vergessen', array_keys(testStates()) === ['aflur1']);
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
 check('Ohne Automatismen: Status 104, Timer aus', $m->status === 104 && $m->timers['Tick'] === 0);
@@ -1191,10 +1216,10 @@ check('„Einstellungen“ zeigt die verlorene Meldung', strpos($lv['Settings'] 
 $dlgL = json_encode(json_decode($m->UIEditForm('agang1', 'bewegung'), true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 check('Dialog: Funkhinweis direkt unter dem betroffenen Melder', strpos($dlgL, '📶 In den letzten 7 Tagen 1× „keine Bewegung“ nicht angekommen') !== false);
 check('Übersicht nennt die Hinweise', strpos($m->Overview(), '📶') !== false && strpos($m->Overview(), 'sendet offenbar nie') !== false);
-$sts = json_decode($m->attrs['States'], true);
+$sts = testStates();
 $sts['agang1']['learnN'] = 300;
 $sts['agang1']['fo'] = [$GLOBALS['CLOCK'] - 3600];
-$m->attrs['States'] = json_encode($sts);
+SetValueString(IPS_GetObjectIDByIdent('store', 12345), json_encode($sts));
 $fv = json_decode($m->GetConfigurationForm(), true);
 $lv = $find($fv['elements'], 'Automations')['values'][0] ?? [];
 check('„Einstellungen“ zeigt gelernten Nachlauf und Fehlabschaltungen', strpos($lv['Settings'] ?? '', '🕒 Nachlauf gelernt 5:00 min · 1× zu früh aus (7 Tage)') !== false, $lv['Settings'] ?? '');

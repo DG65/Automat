@@ -915,7 +915,7 @@ class AUTOMATLogik
                 $st['ph'] = 'zu';
                 $res['log'] = 'Fenster vor Ablauf der Verzögerung geschlossen — keine Absenkung.';
             } elseif ($st['ph'] === 'ab') {
-                $res['log'] = 'Fenster geschlossen — Sollwert zurück auf ' . $restore() . '.';
+                $res['log'] = (!empty($ev['startup']) ? 'Beim Start nachgeholt: alle Fenster zu, Thermostat stand noch abgesenkt' : 'Fenster geschlossen') . ' — Sollwert zurück auf ' . $restore() . '.';
                 $st['ph'] = 'zu';
             }
         }
