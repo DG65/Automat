@@ -39,6 +39,9 @@ class Automat extends IPSModule
     private const MODULE_GUID  = '{A92CA7FD-B746-45C4-902B-3CBAE1F3FA27}';
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
+    // Je Typ das Feld „Melden“ im Dialog (was gemeldet wird, entscheidet der Nutzer je Automatismus).
+    private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push'];
+    private const SMTP_GUID = '{375EAF21-35EF-4BC4-83B3-C780FD8BD88A}';
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     // Zeitpunkte der Location Control je Auswahlwert (Idents live geprüft). Die Werte 0–2 bleiben aus 0.1.17 gültig.
     private const DAY_EVENTS = [1 => 'Sunrise', 3 => 'CivilTwilightStart', 4 => 'NauticTwilightStart', 5 => 'AstronomicTwilightStart'];
@@ -95,6 +98,16 @@ class Automat extends IPSModule
         $this->RegisterPropertyString('cfg_NightFrom', AUTOMATKatalog::time(22, 30));
         $this->RegisterPropertyInteger('cfg_NightRef', 0);
         $this->RegisterPropertyInteger('cfg_NightOffset', 0);
+        $this->RegisterPropertyBoolean('cfg_NotifyPush', true);
+        $this->RegisterPropertyString('cfg_PushTargets', '[]');
+        $this->RegisterPropertyBoolean('cfg_NotifyMail', false);
+        $this->RegisterPropertyInteger('cfg_MailInstance', 0);
+        $this->RegisterPropertyString('cfg_MailTo', '');
+        $this->RegisterPropertyBoolean('cfg_QuietEnabled', false);
+        $this->RegisterPropertyInteger('cfg_QuietFrom', 22);
+        $this->RegisterPropertyInteger('cfg_QuietTo', 7);
+        $this->RegisterPropertyBoolean('cfg_NotifyFaults', false);
+        $this->RegisterPropertyString('FormLayout', '[]');
         $this->RegisterPropertyInteger('cfg_LightVar', 0);
         $this->RegisterPropertyFloat('cfg_LightDay', 50);
         $this->RegisterPropertyFloat('cfg_LightNight', 20);
@@ -119,6 +132,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeInteger('LastDiscoveryTs', 0);
         $this->RegisterAttributeInteger('LastAutoMode', -1);
         $this->RegisterAttributeString('LightState', '{}');
+        $this->RegisterAttributeString('Deferred', '[]');
         $this->RegisterAttributeBoolean('PurposeIntroGone', false);
         $this->RegisterAttributeString('SeenNews', '');
         $this->RegisterAttributeBoolean('ForumHintGone', false);
@@ -328,6 +342,7 @@ class Automat extends IPSModule
         foreach ($this->rows() as $row) {
             $this->process($row, ['k' => 'tick']);
         }
+        $this->flushDeferred();
         $this->reschedule();
         $this->refreshTile();
     }
@@ -392,9 +407,12 @@ class Automat extends IPSModule
         if ($res['log'] !== null) {
             $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
         }
-        $push = !empty($row['wa_push']) && $row['Type'] === 'waechter' || !empty($row['gf_push']) && $row['Type'] === 'fertig';
+        if (count($failed) > 0 && $this->ReadPropertyBoolean('cfg_NotifyFaults')) {
+            $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true);
+        }
+        $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
         foreach ($res['msg'] as [$title, $text]) {
-            $this->message((string)$title, (string)$text, $push);
+            $this->message((string)$title, (string)$text, $notify);
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
@@ -496,7 +514,7 @@ class Automat extends IPSModule
         $rows = array_filter($this->rows(), function ($r) {
             return !empty($r['Enabled']);
         });
-        if (count($rows) === 0 && !$this->ReadPropertyBoolean('cfg_ModeAuto')) {
+        if (count($rows) === 0 && !$this->ReadPropertyBoolean('cfg_ModeAuto') && $this->ReadAttributeString('Deferred') === '[]') {
             $this->SetTimerInterval('Tick', 0);
             return;
         }
@@ -903,40 +921,152 @@ class Automat extends IPSModule
     //  Meldungen und Protokoll
     // =====================================================================
 
-    private function message(string $title, string $text, bool $push): void
+    /**
+     * Meldung: steht immer in „Letzte Meldung“; zugestellt wird nur, wenn der Automatismus melden soll ($notify),
+     * über die Wege, die der Nutzer unter „Meldungen“ gewählt hat. In der Ruhezeit wird sie zurückgehalten.
+     */
+    private function message(string $title, string $text, bool $notify): void
     {
         $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — ' . $title . ': ' . $text);
-        if (!$push) {
+        if (!$notify) {
             return;
         }
-        $sent = 0;
-        foreach ($this->pushTargets() as $t) {
-            try {
-                if ($t['typ'] === 'kachel' && function_exists('VISU_PostNotificationEx')) {
-                    $ok = VISU_PostNotificationEx($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'Bell', 'bell', 0);
-                } elseif ($t['typ'] === 'webfront' && function_exists('WFC_PushNotification')) {
-                    $ok = WFC_PushNotification($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'bell', $this->InstanceID);
-                } else {
-                    continue;
-                }
-            } catch (Throwable $e) {
-                $ok = false;
-            }
-            if ($ok) {
-                $sent++;
-            } else {
-                $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
-            }
+        if ($this->inQuiet($this->now())) {
+            $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
+            $q[] = [$this->now(), $title, $text];
+            $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
+            $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten: ' . $title, 0);
+            return;
         }
-        $this->SendDebug('Meldung', $title . ' — ' . $text . ' (Push an ' . $sent . ' Ziel(e))', 0);
+        $this->deliver($title, $text);
     }
 
+    /** Ruhezeit (volle Stunden, über Mitternacht möglich). */
+    private function inQuiet(int $now): bool
+    {
+        if (!$this->ReadPropertyBoolean('cfg_QuietEnabled')) {
+            return false;
+        }
+        $h = (int)date('G', $now);
+        $from = $this->ReadPropertyInteger('cfg_QuietFrom');
+        $to = $this->ReadPropertyInteger('cfg_QuietTo');
+        return $from === $to ? false : ($from < $to ? $h >= $from && $h < $to : $h >= $from || $h < $to);
+    }
+
+    /** Nach der Ruhezeit zurückgehaltene Meldungen zustellen. */
+    private function flushDeferred(): void
+    {
+        $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
+        if (count($q) === 0 || $this->inQuiet($this->now())) {
+            return;
+        }
+        $this->WriteAttributeString('Deferred', '[]');
+        foreach ($q as [$ts, $title, $text]) {
+            $this->deliver((string)$title, $text . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$ts) . ' Uhr, Ruhezeit)');
+        }
+    }
+
+    /** Über die gewählten Wege zustellen. Rückgabe: Zusammenfassung je Weg (für die Testmeldung). */
+    private function deliver(string $title, string $text): string
+    {
+        $parts = [];
+        if ($this->ReadPropertyBoolean('cfg_NotifyPush')) {
+            $targets = $this->pushTargets();
+            $sent = 0;
+            foreach ($targets as $t) {
+                try {
+                    if ($t['typ'] === 'kachel' && function_exists('VISU_PostNotificationEx')) {
+                        $ok = VISU_PostNotificationEx($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'Bell', 'bell', 0);
+                    } elseif ($t['typ'] === 'webfront' && function_exists('WFC_PushNotification')) {
+                        $ok = WFC_PushNotification($t['id'], $this->truncateBytes($title, 32), $this->truncateBytes($text, 256), 'bell', $this->InstanceID);
+                    } else {
+                        $ok = false;
+                    }
+                } catch (Throwable $e) {
+                    $ok = false;
+                }
+                if ($ok) {
+                    $sent++;
+                } else {
+                    $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
+                }
+            }
+            $parts[] = count($targets) === 0 ? 'Push: ⚠️ keine Visualisierung gefunden' : 'Push: ' . ($sent === count($targets) ? '✅ ' : '⚠️ ') . $sent . ' von ' . count($targets) . ' Zielen';
+        }
+        if ($this->ReadPropertyBoolean('cfg_NotifyMail')) {
+            $err = $this->sendMail($title, $text);
+            $parts[] = 'E-Mail: ' . ($err === '' ? '✅ gesendet' : '⚠️ nicht gesendet — ' . $err);
+        }
+        $sum = count($parts) > 0 ? implode(' · ', $parts) : 'ℹ️ kein Weg gewählt (Push oder E-Mail unter „🔔 Meldungen“ ankreuzen)';
+        $this->SendDebug('Meldung', $title . ' — ' . $text . ' → ' . $sum, 0);
+        return $sum;
+    }
+
+    /** E-Mail über eine SMTP-Instanz; Rückgabe: '' bei Erfolg, sonst der Grund. */
+    private function sendMail(string $title, string $text): string
+    {
+        $inst = $this->ReadPropertyInteger('cfg_MailInstance');
+        if ($inst <= 0 || !IPS_InstanceExists($inst)) {
+            return 'keine SMTP-Instanz ausgewählt (oder die Instanz gibt es nicht mehr)';
+        }
+        $to = trim($this->ReadPropertyString('cfg_MailTo'));
+        $warnings = [];
+        $err = '';
+        // Das SMTP-Modul meldet den Grund (z. B. „Login denied“) als PHP-Warnung und gibt nur false zurück.
+        set_error_handler(function ($no, $str) use (&$warnings) {
+            $warnings[] = (string)$str;
+            return true;
+        });
+        $sent = false;
+        try {
+            if ($to === '') {
+                if (!function_exists('SMTP_SendMail')) {
+                    $err = 'die Funktion SMTP_SendMail gibt es nicht (SMTP-Modul fehlt?)';
+                } else {
+                    $sent = (bool)SMTP_SendMail($inst, $title, $text);
+                }
+            } elseif (!function_exists('SMTP_SendMailEx')) {
+                $err = 'die Funktion SMTP_SendMailEx gibt es nicht (SMTP-Modul fehlt?)';
+            } else {
+                foreach (array_filter(array_map('trim', preg_split('/[,;]+/', $to))) as $addr) {
+                    if (SMTP_SendMailEx($inst, $addr, $title, $text)) {
+                        $sent = true;
+                    } else {
+                        $this->LogMessage('E-Mail an „' . $addr . '“ fehlgeschlagen.', KL_WARNING);
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $warnings[] = $e->getMessage();
+        } finally {
+            restore_error_handler();
+        }
+        if ($sent) {
+            return '';
+        }
+        if ($err === '') {
+            $raw = trim(implode(' / ', array_filter(array_map('trim', $warnings))));
+            $err = $raw === '' ? 'das SMTP-Modul nennt keinen Grund (Debug der SMTP-Instanz zeigt den Dialog mit dem Server)' : AUTOMATLogik::mailError($raw);
+        }
+        $this->LogMessage('E-Mail-Versand fehlgeschlagen: ' . $err, KL_WARNING);
+        return $err;
+    }
+
+    /** Push-Ziele: Kachel-Visualisierung UND WebFront (SUITE.md Stolperstein 22); die Auswahl unter „Meldungen“ oder alle gefundenen. */
     private function pushTargets(): array
     {
+        $chosen = [];
+        foreach (json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: [] as $r) {
+            if ((int)($r['Instance'] ?? 0) > 0) {
+                $chosen[(int)$r['Instance']] = true;
+            }
+        }
         $out = [];
         foreach ([[self::VISU_GUID, 'kachel'], [self::WEBFRONT_GUID, 'webfront']] as [$guid, $typ]) {
             foreach (@IPS_GetInstanceListByModuleID($guid) ?: [] as $id) {
-                $out[] = ['id' => (int)$id, 'name' => IPS_GetName($id), 'typ' => $typ];
+                if (count($chosen) === 0 || isset($chosen[(int)$id])) {
+                    $out[] = ['id' => (int)$id, 'name' => IPS_GetName($id), 'typ' => $typ];
+                }
             }
         }
         return $out;
@@ -981,11 +1111,9 @@ class Automat extends IPSModule
     /** AUTOMAT_TestMessage($id): string — Testmeldung über alle Wege. */
     public function TestMessage(): string
     {
-        $targets = $this->pushTargets();
-        $this->message('🧪 Automat', 'Testmeldung — so sehen Meldungen von Wächter und „Gerät fertig“ aus.', true);
-        return count($targets) > 0
-            ? '✅ Testmeldung an ' . count($targets) . ' Visualisierung(en) gesendet und in „Letzte Meldung“ geschrieben. Kommt nichts an, steht der Grund im Meldungsprotokoll.'
-            : 'ℹ️ Keine Visualisierung gefunden — die Testmeldung steht nur in der Variable „Letzte Meldung“.';
+        // Gilt mit den gespeicherten Einstellungen; die Ruhezeit wird beim Test übergangen.
+        $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — 🧪 Automat: Testmeldung');
+        return '🧪 Testmeldung (gespeicherte Einstellungen, Ruhezeit übergangen): ' . $this->deliver('🧪 Automat', 'Testmeldung — so sehen Meldungen deiner Automatismen aus.');
     }
 
     // =====================================================================
@@ -2464,24 +2592,170 @@ class Automat extends IPSModule
         ];
     }
 
-    private function MessagesPanel(): array
+    private function NotifyPanel(): array
     {
         $t = $this->pushTargets();
-        $line = count($t) > 0
-            ? '✅ 🔗 ' . count($t) . ' Visualisierung(en) gefunden: ' . implode(', ', array_map(function ($x) {
+        $chosen = (json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: []) !== [];
+        $lines = [];
+        if (!$this->ReadPropertyBoolean('cfg_NotifyPush')) {
+            $lines[] = 'ℹ️ Push ist aus.';
+        } elseif (count($t) === 0) {
+            $lines[] = '⚠️ Push ist an, aber es gibt keine Visualisierung (Kachel oder WebFront).';
+        } else {
+            $lines[] = '✅ Push an ' . implode(', ', array_map(function ($x) {
                 return '„' . $x['name'] . '“';
-            }, $t)) . ' — Meldungen mit Push gehen dorthin.'
-            : 'ℹ️ Keine WebFront-/Kachel-Visualisierung gefunden — Meldungen landen nur in „Letzte Meldung“ und im Protokoll.';
+            }, $t)) . ($chosen ? ' (deine Auswahl)' : ' (alle gefundenen)') . '.';
+        }
+        $mi = $this->ReadPropertyInteger('cfg_MailInstance');
+        if (!$this->ReadPropertyBoolean('cfg_NotifyMail')) {
+            $lines[] = 'ℹ️ E-Mail ist aus.';
+        } elseif ($mi <= 0 || !IPS_InstanceExists($mi)) {
+            $lines[] = '⚠️ E-Mail ist an, aber keine SMTP-Instanz gewählt.';
+        } else {
+            $to = trim($this->ReadPropertyString('cfg_MailTo'));
+            $lines[] = '✅ E-Mail über „' . IPS_GetName($mi) . '“ an ' . ($to !== '' ? $to : 'den in der SMTP-Instanz eingestellten Empfänger') . '.';
+        }
+        if ($this->ReadPropertyBoolean('cfg_QuietEnabled')) {
+            $lines[] = '🌙 Ruhezeit ' . $this->ReadPropertyInteger('cfg_QuietFrom') . '–' . $this->ReadPropertyInteger('cfg_QuietTo') . ' Uhr: Meldungen werden danach nachgeholt.';
+        }
+        $who = [];
+        foreach ($this->rows() as $r) {
+            if (!empty($r['Enabled']) && !empty($r[self::NOTIFY_FIELD[$r['Type']] ?? ''])) {
+                $who[] = '„' . $this->rowName($r) . '“';
+            }
+        }
+        $smtp = @IPS_GetInstanceListByModuleID(self::SMTP_GUID) ?: [];
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🔔  Meldungen, Protokoll und Kachel',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🔔  Meldungen',
             'items' => [
-                ['type' => 'Label', 'caption' => $line, 'color' => strpos($line, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'Button', 'caption' => '🔔 Testmeldung senden', 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
+                ['type' => 'Label', 'caption' => implode(' ', $lines)],
+                ['type' => 'Label', 'caption' => '— Was wird gemeldet —', 'bold' => true],
+                ['type' => 'Label', 'caption' => count($who) > 0
+                    ? '🔔 Diese Automatismen melden: ' . implode(', ', $who) . '. Ein- und ausschalten je Automatismus im Dialog (✏️) mit „Melden“.'
+                    : 'ℹ️ Kein Automatismus meldet etwas. Melden können Wächter, „Gerät fertig“ und „Anwesenheit zusammenfassen“ — im Dialog (✏️) „Melden“ ankreuzen.'],
+                ['type' => 'CheckBox', 'name' => 'cfg_NotifyFaults', 'caption' => 'Auch Störungen melden (ein Gerät ließ sich nicht schalten)'],
+                ['type' => 'Label', 'caption' => '— Wie wird gemeldet —', 'bold' => true],
+                ['type' => 'CheckBox', 'name' => 'cfg_NotifyPush', 'caption' => 'Per Push (Kachel-Visualisierung und WebFront)'],
+                [
+                    'type' => 'List', 'name' => 'cfg_PushTargets', 'caption' => 'Nur an diese Visualisierungen (leer = alle gefundenen)', 'rowCount' => 3, 'add' => true, 'delete' => true,
+                    'columns' => [
+                        ['caption' => 'Instanz', 'name' => 'Instance', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectInstance']],
+                    ],
+                ],
+                ['type' => 'CheckBox', 'name' => 'cfg_NotifyMail', 'caption' => 'Per E-Mail'],
+                ['type' => 'SelectInstance', 'name' => 'cfg_MailInstance', 'caption' => 'SMTP-Instanz' . (count($smtp) > 0 ? ' (vorhanden: ' . implode(', ', array_map(function ($i) {
+                    return '„' . IPS_GetName($i) . '“ #' . $i;
+                }, array_slice($smtp, 0, 3))) . ')' : ' (noch keine angelegt — Instanz „SMTP“ hinzufügen)'), 'width' => '520px'],
+                ['type' => 'ValidationTextBox', 'name' => 'cfg_MailTo', 'caption' => 'Empfänger (mehrere mit Komma; leer = der in der SMTP-Instanz eingestellte)', 'width' => '520px'],
+                ['type' => 'CheckBox', 'name' => 'cfg_QuietEnabled', 'caption' => 'Ruhezeit: nachts nicht melden (die Meldung wird danach nachgeholt)'],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietFrom', 'caption' => 'Ruhezeit von', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
+                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietTo', 'caption' => 'bis', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
+                ]],
+                ['type' => 'Button', 'caption' => '📨 Testmeldung senden', 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
+                ['type' => 'Label', 'caption' => 'ℹ️ Die Testmeldung nutzt die gespeicherten Einstellungen — nach Änderungen erst „Übernehmen“. Jede Meldung steht außerdem in der Variable „Letzte Meldung“.'],
+            ],
+        ];
+    }
+
+    private function ProtocolPanel(): array
+    {
+        return [
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📜  Protokoll und Kachel',
+            'items' => [
                 ['type' => 'Label', 'caption' => 'Protokoll (neueste zuerst) — warum etwas geschaltet oder gemeldet wurde:'],
                 ['type' => 'Label', 'name' => 'ProtocolText', 'caption' => implode("\n", $this->protocolLines(30)) ?: '— noch leer —'],
                 ['type' => 'CheckBox', 'name' => 'cfg_TileLight', 'caption' => 'Helle Darstellung der Kachel'],
             ],
         ];
+    }
+
+    // =====================================================================
+    //  Formular: Aufbau (wie Batteriewächter, zusätzlich „Ausgeblendet“)
+    // =====================================================================
+
+    private const LAYOUT_KEYS = ['doc', 'automations', 'discover', 'catalog', 'mode', 'notify', 'protocol'];
+
+    /** Reihenfolge und Zustand je Bereich: key => ['open' => std|open|closed|hidden, 'pos' => int]. */
+    private function formLayout(): array
+    {
+        $by = [];
+        foreach (json_decode($this->ReadPropertyString('FormLayout'), true) ?: [] as $r) {
+            if (is_array($r) && isset($r['Key'])) {
+                $by[(string)$r['Key']] = $r;
+            }
+        }
+        $out = [];
+        foreach (self::LAYOUT_KEYS as $i => $k) {
+            $open = (string)($by[$k]['Open'] ?? 'std');
+            $out[$k] = [
+                'open' => in_array($open, ['open', 'closed', 'hidden'], true) ? $open : 'std',
+                'pos'  => isset($by[$k]['Pos']) ? max(1, min(99, (int)$by[$k]['Pos'])) : $i + 1,
+                'idx'  => $i,
+            ];
+        }
+        uasort($out, function ($a, $b) {
+            return [$a['pos'], $a['idx']] <=> [$b['pos'], $b['idx']];
+        });
+        return $out;
+    }
+
+    private function layoutPanels(): array
+    {
+        return [
+            'doc' => $this->DocPanel(), 'automations' => $this->AutomationsPanel(), 'discover' => $this->DiscoverPanel(),
+            'catalog' => $this->CatalogPanel(), 'mode' => $this->ModePanel(), 'notify' => $this->NotifyPanel(), 'protocol' => $this->ProtocolPanel(),
+        ];
+    }
+
+    private function LayoutPanel(array $layout, array $panels): array
+    {
+        $rows = [];
+        $hidden = [];
+        foreach ($layout as $k => $l) {
+            $cap = trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k)));
+            $rows[] = ['Key' => $k, 'Panel' => $cap, 'Open' => $l['open'], 'Pos' => $l['pos']];
+            if ($l['open'] === 'hidden') {
+                $hidden[] = $cap;
+            }
+        }
+        return [
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🪟  Formular: Aufbau' . (count($hidden) > 0 ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'items' => [
+                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen aufgeklappt sind, in welcher Reihenfolge sie stehen und welche du gar nicht sehen willst — z. B. „Katalog“ oder „Entdecken“, wenn alles eingerichtet ist. Symcon merkt sich das Auf- und Zuklappen nicht selbst. Wirkt nach „Übernehmen“ beim nächsten Öffnen.'],
+                ['type' => 'Label', 'caption' => count($hidden) > 0
+                    ? '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen hier auf „Standard“ stellen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.'
+                    : 'ℹ️ „Standard“ heißt: wie das Modul es vorsieht. Oben (Wozu, Neu) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
+                [
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'loadValuesFromConfiguration' => false, 'values' => $rows,
+                    'columns' => [
+                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => 'Beim Öffnen', 'name' => 'Open', 'width' => '180px', 'add' => 'std', 'edit' => ['type' => 'Select', 'options' => [
+                            ['caption' => 'Standard', 'value' => 'std'],
+                            ['caption' => 'Aufgeklappt', 'value' => 'open'],
+                            ['caption' => 'Zugeklappt', 'value' => 'closed'],
+                            ['caption' => '🙈 Ausgeblendet', 'value' => 'hidden'],
+                        ]]],
+                        ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
+                    ],
+                ],
+                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo AUTOMAT_ResetFormLayout($id);'],
+            ],
+        ];
+    }
+
+    /** AUTOMAT_ResetFormLayout($id): string — Aufbau im offenen Formular auf Standard (gilt nach „Übernehmen“). */
+    public function ResetFormLayout(): string
+    {
+        $panels = $this->layoutPanels();
+        $rows = [];
+        foreach (self::LAYOUT_KEYS as $i => $k) {
+            $rows[] = ['Key' => $k, 'Panel' => trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k))), 'Open' => 'std', 'Pos' => $i + 1];
+        }
+        $this->UpdateFormField('FormLayout', 'values', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        return 'ℹ️ Alle Bereiche wieder sichtbar und in Standardreihenfolge. Zum Speichern unten „Übernehmen“ klicken.';
     }
 
     private function ForumHint(): ?array
@@ -2517,11 +2791,26 @@ class Automat extends IPSModule
     public function GetConfigurationForm()
     {
         $base = json_decode((string)file_get_contents(__DIR__ . '/form.json'), true);
-        $elements = array_values(array_filter([
-            $this->PurposeIntro(), $this->NewsBanner(), $this->DocPanel(),
-            $this->AutomationsPanel(), $this->DiscoverPanel(), $this->CatalogPanel(), $this->ModePanel(), $this->MessagesPanel(),
-            $this->ForumHint(), $this->LicenseHint(),
-        ]));
+        $panels = $this->layoutPanels();
+        $layout = $this->formLayout();
+        $middle = [];
+        foreach ($layout as $k => $l) {
+            $p = $panels[$k];
+            if ($l['open'] === 'open') {
+                $p['expanded'] = true;
+            } elseif ($l['open'] === 'closed') {
+                $p['expanded'] = false;
+            } elseif ($l['open'] === 'hidden') {
+                // unsichtbar statt weggelassen: die Felder bleiben im Formular, gespeicherte Werte bleiben erhalten
+                $p['visible'] = false;
+            }
+            $middle[] = $p;
+        }
+        $elements = array_values(array_filter(array_merge(
+            [$this->PurposeIntro(), $this->NewsBanner()],
+            $middle,
+            [$this->LayoutPanel($layout, $panels), $this->ForumHint(), $this->LicenseHint()]
+        )));
         return json_encode(['elements' => $elements, 'actions' => [], 'status' => $base['status'] ?? []]);
     }
 }

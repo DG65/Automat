@@ -1189,6 +1189,28 @@ class AUTOMATLogik
         return $evening ? 1 : 0;
     }
 
+    /** Rohe SMTP-Fehlermeldung in einen verständlichen Grund übersetzen (wie Batteriewächter). */
+    public static function mailError(string $raw): string
+    {
+        $h = mb_strtolower($raw);
+        if (strpos($h, 'login denied') !== false || strpos($h, 'authentication') !== false || strpos($h, 'auth failed') !== false || strpos($h, '535') !== false) {
+            $why = 'Anmeldung abgelehnt: Benutzername oder Passwort der SMTP-Instanz stimmen nicht (bei Anbietern mit Zwei-Faktor-Anmeldung braucht es ein App-Passwort)';
+        } elseif (strpos($h, 'resolve') !== false || strpos($h, 'getaddrinfo') !== false) {
+            $why = 'Server nicht gefunden: Servername der SMTP-Instanz prüfen';
+        } elseif (strpos($h, 'timed out') !== false || strpos($h, 'timeout') !== false) {
+            $why = 'Zeitüberschreitung: der Mailserver antwortet nicht (Server, Port und Netzwerk prüfen)';
+        } elseif (strpos($h, 'refused') !== false) {
+            $why = 'Verbindung abgelehnt: Server oder Port der SMTP-Instanz prüfen';
+        } elseif (strpos($h, 'certificate') !== false || strpos($h, 'ssl') !== false || strpos($h, 'tls') !== false) {
+            $why = 'Verschlüsselung oder Zertifikat: SSL-Einstellung und Port der SMTP-Instanz prüfen';
+        } elseif (strpos($h, 'recipient') !== false || strpos($h, 'rcpt') !== false) {
+            $why = 'Empfänger abgelehnt: Empfängeradresse prüfen';
+        } else {
+            $why = 'Meldung des SMTP-Moduls';
+        }
+        return $why . ' („' . $raw . '“)';
+    }
+
     /**
      * Hell oder dunkel nach einem Helligkeits-/Einstrahlungssensor, mit zwei Schwellen und Haltezeit,
      * damit eine Wolke oder ein Schatten nicht umschaltet. $st: ['day' => bool, 'cand' => Zeitstempel|0].
@@ -1243,6 +1265,9 @@ class AUTOMATLogik
             if ($st['ph'] !== 'da') {
                 $res['self'] = true;
                 $res['log'] = ($st['ph'] === 'weg' ? 'Jemand ist nach Hause gekommen' : 'Doch wieder jemand da') . ' (' . implode(', ', $came ?: $home) . ').';
+                if ($st['ph'] === 'weg' && !empty($row['an_push'])) {
+                    $res['msg'][] = ['🏠 Heimgekommen', implode(', ', $came ?: $home) . ' ist nach Hause gekommen.'];
+                }
                 $st['since'] = $now;
             } elseif (count($came) > 0 || count($left) > 0) {
                 $res['log'] = trim((count($came) > 0 ? implode(', ', $came) . ' gekommen. ' : '') . (count($left) > 0 ? implode(', ', $left) . ' gegangen. ' : '') . 'Zu Hause: ' . implode(', ', $home) . '.');
@@ -1260,6 +1285,9 @@ class AUTOMATLogik
                 $st['since'] = $now;
                 $res['self'] = false;
                 $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Niemand mehr zu Hause.';
+                if (!empty($row['an_push'])) {
+                    $res['msg'][] = ['🚪 Alle weg', 'Niemand mehr zu Hause (seit ' . date('H:i', $now) . ' Uhr).'];
+                }
             }
         }
         $st['home'] = $home;

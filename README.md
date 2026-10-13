@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.23:** neu gebaut und am Prüfstand (349 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.24:** neu gebaut und am Prüfstand (369 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -39,6 +39,12 @@ Geräten vor, was sich lohnt.
 - **Hausmodus** Tag/Abend/Nacht/Abwesend/Urlaub als Variable dieser Instanz — von Hand, per Skript oder
   automatisch nach Uhrzeit, Sonnenstand/Dämmerung oder „Ist es Tag“ (Location Control), Helligkeitssensor (z. B. Wetterstation) und Anwesenheit. Jeder Automatismus lässt sich auf Modi
   beschränken, Licht nutzt bei „Nacht" einen eigenen Helligkeitswert.
+- **Meldungen — was und wie entscheidest du**: je Automatismus „Melden“ (Wächter, Gerät fertig, Anwesenheit),
+  dazu wahlweise Störungen (Gerät ließ sich nicht schalten). Wege unter „🔔 Meldungen“: Push an alle oder
+  ausgewählte Visualisierungen (Kachel und WebFront), E-Mail über eine SMTP-Instanz (mehrere Empfänger),
+  Ruhezeit mit Nachholen danach, Testmeldung mit Ergebnis je Weg.
+- **Formular: Aufbau** — je Bereich wählen, ob er beim Öffnen auf- oder zugeklappt ist, an welcher Position er
+  steht oder ob er ganz ausgeblendet wird (z. B. „Katalog“ und „Entdecken“, wenn alles eingerichtet ist).
 - **Bedingungen** über Symcons eigene Bedingungs-Auswahl (z. B. nur werktags, nur wenn ein Schalter an ist).
 - **Handbedienung hat Vorrang** — Automat erkennt das Echo eigener Befehle und unterscheidet es von
   Schaltungen von Hand.

@@ -214,7 +214,7 @@ class AUTOMATKatalog
                     ['n' => 'wa_text', 'k' => 'text', 'c' => 'Meldungstext (leer = automatisch)', 'd' => ''],
                     ['n' => 'wa_wdh', 'k' => 'int', 'c' => 'Wiederholen alle (0 = einmal)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                     ['n' => 'wa_ende', 'k' => 'bool', 'c' => 'Entwarnung melden, wenn der Zustand vorbei ist', 'd' => true],
-                    ['n' => 'wa_push', 'k' => 'bool', 'c' => 'Als Push-Nachricht an alle Visualisierungen senden', 'd' => true],
+                    ['n' => 'wa_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest: Push, E-Mail, Ruhezeit)', 'd' => true],
                 ];
             case 'anwesenheit':
                 return [
@@ -227,6 +227,7 @@ class AUTOMATKatalog
                         ]]],
                     ['k' => 'info', 'c' => 'Ergebnis'],
                     ['n' => 'an_weg', 'k' => 'int', 'c' => '„Niemand da“ erst, wenn alle so lange weg sind', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
+                    ['n' => 'an_push', 'k' => 'bool', 'c' => '„Alle weg“ und „Jemand ist heimgekommen“ melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
             case 'fertig':
                 return [
@@ -238,7 +239,7 @@ class AUTOMATKatalog
                     ['n' => 'gf_nach', 'k' => 'int', 'c' => 'Fertig, wenn so lange unter der Schwelle', 'd' => 3, 'suffix' => ' min', 'min' => 0, 'max' => 120],
                     ['k' => 'info', 'c' => 'Meldung'],
                     ['n' => 'gf_text', 'k' => 'text', 'c' => 'Meldungstext (leer = „<Name> ist fertig.“)', 'd' => ''],
-                    ['n' => 'gf_push', 'k' => 'bool', 'c' => 'Als Push-Nachricht an alle Visualisierungen senden', 'd' => true],
+                    ['n' => 'gf_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest: Push, E-Mail, Ruhezeit)', 'd' => true],
                 ];
         }
         return [];

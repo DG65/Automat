@@ -129,6 +129,7 @@ function IPS_GetLocation(int $id): string { $p = []; while ($id > 0 && isset($GL
 function AC_GetLoggingStatus(int $ac, int $vid): bool { return isset($GLOBALS['ARCHIVE'][$vid]); }
 function AC_GetLoggedValues(int $ac, int $vid, int $from, int $to, int $limit): array { return array_reverse($GLOBALS['ARCHIVE'][$vid] ?? []); }
 function VISU_PostNotificationEx(int $id, string $t, string $x, string $i, string $s, int $target): bool { $GLOBALS['PUSH'][] = [$id, $t, $x]; return true; }
+function SMTP_SendMailEx(int $id, string $to, string $t, string $x): bool { if (!empty($GLOBALS['MAIL_FAIL'])) { trigger_error('Login denied', E_USER_WARNING); return false; } $GLOBALS['MAIL'][] = [$id, $to, $t, $x]; return true; }
 // Bewusst KEIN IPS_LogMessage()-Stub: ein Aufruf im Modul wäre ein Fatal Error (SUITE.md Store-Review Punkt 15).
 
 class IPSModule
@@ -753,6 +754,22 @@ foreach (range(1, 6) as $i) {
     $an6['an_p' . $i] = 709 + $i;
 }
 check('Anwesenheit: 8 Plätze, 6 Personen werden alle gezählt', AUTOMATKatalog::slots('an_p') === 8 && array_key_exists('an_p8', $an6) && count(AUTOMATKatalog::vars($an6, 'an_p')) === 6 && AUTOMATKatalog::slots('bl_mel') === AUTOMATKatalog::SLOTS);
+$anP = $an;
+$anP['an_push'] = true;
+$stP = [];
+at('12:00:00');
+step($anP, $stP, ['k' => 'tick'], ['val' => [700 => true, 701 => false], 'names' => $names]);
+$rP = step($anP, $stP, ['k' => 'trigger', 'vid' => 700, 'v' => false], ['val' => [700 => false, 701 => false], 'names' => $names]);
+check('Mit „melden“: beim Gehen noch keine Meldung (Wartezeit)', $rP['msg'] === []);
+at('12:11:00');
+$rP = step($anP, $stP, ['k' => 'tick'], ['val' => [700 => false, 701 => false], 'names' => $names]);
+check('Mit „melden“: „Alle weg“ nach der Wartezeit', count($rP['msg']) === 1 && $rP['msg'][0][0] === '🚪 Alle weg');
+$rP = step($anP, $stP, ['k' => 'trigger', 'vid' => 701, 'v' => true], ['val' => [700 => false, 701 => true], 'names' => $names]);
+check('Mit „melden“: „Heimgekommen“ nennt die Person', count($rP['msg']) === 1 && strpos($rP['msg'][0][1], 'Svetlana ist nach Hause gekommen') !== false);
+$stQ = [];
+step($an, $stQ, ['k' => 'tick'], ['val' => [700 => true, 701 => false], 'names' => $names]);
+at('12:00:00');
+check('Ohne „melden“ (Standard): keine Meldungen', AUTOMATKatalog::defaults('anwesenheit')['an_push'] === false);
 check('Katalog: Ein- und Ausgänge des Typs', AUTOMATKatalog::variables($an)['in'] === [700, 701] && AUTOMATKatalog::variables($an)['out'] === []);
 
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
@@ -1424,6 +1441,94 @@ $m->props['cfg_EveningRef'] = 0;
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
 check('Ergebnisvariable verschwindet mit dem Automatismus', @IPS_GetObjectIDByIdent('p_aanw02', 12345) === false);
+
+heading('C9. Meldungen: was und wie entscheidet der Nutzer; Formular-Aufbau mit Ausblenden');
+$msg = new ReflectionMethod('Automat', 'message');
+$GLOBALS['PUSH'] = [];
+$GLOBALS['MAIL'] = [];
+mkinst(13001, 'WebFront alt');
+$GLOBALS['MODULES']['{3565B1F2-8F7B-4311-A4B6-1BF1D868F39E}'] = [13001];
+function WFC_PushNotification(int $id, string $t, string $x, string $s, int $target): bool { $GLOBALS['PUSH'][] = [$id, $t, $x]; return true; }
+at('12:00:00');
+$msg->invoke($m, 'Titel', 'nicht melden', false);
+check('Automatismus ohne „Melden“: nur „Letzte Meldung“, keine Zustellung', $GLOBALS['PUSH'] === [] && strpos(GetValue(IPS_GetObjectIDByIdent('LastMessage', 12345)), 'nicht melden') !== false);
+$msg->invoke($m, 'Titel', 'an alle', true);
+check('Push ohne Auswahl: an alle Visualisierungen (Kachel und WebFront)', array_column($GLOBALS['PUSH'], 0) === [13000, 13001]);
+$m->props['cfg_PushTargets'] = json_encode([['Instance' => 13001]]);
+$GLOBALS['PUSH'] = [];
+$msg->invoke($m, 'Titel', 'nur WebFront', true);
+check('Push mit Auswahl: nur an die gewählte Visualisierung', array_column($GLOBALS['PUSH'], 0) === [13001]);
+mkinst(14223, 'SMTP');
+$m->props['cfg_NotifyPush'] = false;
+$m->props['cfg_NotifyMail'] = true;
+$m->props['cfg_MailInstance'] = 14223;
+$m->props['cfg_MailTo'] = 'a@example.org, b@example.org';
+$GLOBALS['PUSH'] = [];
+$msg->invoke($m, 'Waschmaschine', 'fertig', true);
+check('Push aus, E-Mail an: an beide Empfänger, kein Push', $GLOBALS['PUSH'] === [] && array_column($GLOBALS['MAIL'], 1) === ['a@example.org', 'b@example.org']);
+$GLOBALS['MAIL_FAIL'] = true;
+$tm = $m->TestMessage();
+unset($GLOBALS['MAIL_FAIL']);
+check('Testmeldung nennt den Grund eines Mailfehlers verständlich', strpos($tm, 'E-Mail: ⚠️ nicht gesendet — Anmeldung abgelehnt') !== false, $tm);
+$m->props['cfg_NotifyMail'] = false;
+check('Testmeldung ohne Weg sagt das', strpos($m->TestMessage(), 'kein Weg gewählt') !== false);
+$m->props['cfg_NotifyPush'] = true;
+$m->props['cfg_PushTargets'] = '[]';
+$m->props['cfg_QuietEnabled'] = true;
+$m->props['cfg_QuietFrom'] = 22;
+$m->props['cfg_QuietTo'] = 7;
+$GLOBALS['PUSH'] = [];
+at('23:30:00');
+$msg->invoke($m, '🧺 Trockner', 'fertig', true);
+check('Ruhezeit: Meldung zurückgehalten', $GLOBALS['PUSH'] === [] && count(json_decode($m->attrs['Deferred'], true)) === 1);
+$m->Tick();
+check('Noch Ruhezeit: Takt stellt nicht zu', $GLOBALS['PUSH'] === []);
+$GLOBALS['CLOCK'] = ts('2026-10-14 07:01:00');
+$m->Tick();
+check('Nach der Ruhezeit nachgeholt, mit Hinweis', count($GLOBALS['PUSH']) === 2 && strpos($GLOBALS['PUSH'][0][2], 'zurückgehalten seit 13.10.2026 23:30') !== false && $m->attrs['Deferred'] === '[]');
+$m->props['cfg_QuietEnabled'] = false;
+at('12:00:00');
+$runWash = function (bool $notify) use ($m, $gf) {
+    $row = $gf;
+    $row['Uid'] = $notify ? 'awasch3' : 'awasch2';
+    $row['gf_push'] = $notify;
+    $m->props['Automations'] = json_encode([$row]);
+    $m->ApplyChanges();
+    $GLOBALS['PUSH'] = [];
+    fire($m, 1041, 1500.0);
+    $GLOBALS['CLOCK'] += 3600;
+    fire($m, 1041, 1.0);
+    $GLOBALS['CLOCK'] += 181;
+    $m->Tick();
+};
+$runWash(false);
+check('„Gerät fertig“ ohne „Melden“: keine Zustellung, aber „Letzte Meldung“', $GLOBALS['PUSH'] === [] && strpos(GetValue(IPS_GetObjectIDByIdent('LastMessage', 12345)), 'Waschmaschine') !== false);
+$runWash(true);
+check('„Gerät fertig“ mit „Melden“: zugestellt', count($GLOBALS['PUSH']) === 2);
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+at('12:00:00');
+$fv = json_decode($m->GetConfigurationForm(), true);
+$caps = array_map(fn($e) => (string)($e['caption'] ?? ''), $fv['elements']);
+check('Eigene Bereiche „🔔 Meldungen“ und „📜 Protokoll und Kachel“, dazu „🪟 Formular: Aufbau“', count(array_filter($caps, fn($c) => strpos($c, '🔔  Meldungen') === 0)) === 1 && count(array_filter($caps, fn($c) => strpos($c, '📜  Protokoll') === 0)) === 1 && count(array_filter($caps, fn($c) => strpos($c, '🪟  Formular: Aufbau') === 0)) === 1);
+$m->props['FormLayout'] = json_encode([['Key' => 'catalog', 'Open' => 'hidden', 'Pos' => 4], ['Key' => 'discover', 'Open' => 'hidden', 'Pos' => 3], ['Key' => 'mode', 'Open' => 'open', 'Pos' => 1], ['Key' => 'doc', 'Open' => 'std', 'Pos' => 2]]);
+$fv = json_decode($m->GetConfigurationForm(), true);
+$byCap = [];
+foreach ($fv['elements'] as $e) {
+    $byCap[(string)($e['caption'] ?? '')] = $e;
+}
+$catalogEl = array_values(array_filter($fv['elements'], fn($e) => strpos((string)($e['caption'] ?? ''), 'Katalog') !== false))[0] ?? [];
+$modeIdx = array_search(true, array_map(fn($e) => strpos((string)($e['caption'] ?? ''), '🏠  Hausmodus') === 0, $fv['elements']), true);
+$docIdx = array_search(true, array_map(fn($e) => strpos((string)($e['caption'] ?? ''), 'Dokumentation') !== false, $fv['elements']), true);
+check('Ausgeblendet: Bereich bleibt im Formular, ist aber unsichtbar', ($catalogEl['visible'] ?? true) === false);
+check('Position 1 + „Aufgeklappt“: Hausmodus steht vor der Dokumentation und ist offen', $modeIdx !== false && $docIdx !== false && $modeIdx < $docIdx && ($fv['elements'][$modeIdx]['expanded'] ?? false) === true);
+$lay = array_values(array_filter($fv['elements'], fn($e) => strpos((string)($e['caption'] ?? ''), '🪟  Formular: Aufbau') === 0))[0];
+check('Aufbau-Panel nennt die Zahl und die Namen der ausgeblendeten Bereiche', strpos($lay['caption'], '(2 ausgeblendet)') !== false && strpos(json_encode($lay, JSON_UNESCAPED_UNICODE), '🙈 Ausgeblendet: ') !== false);
+$m->fieldUpdates = [];
+$m->ResetFormLayout();
+$vals = json_decode($m->fieldUpdates[0][2] ?? '[]', true);
+check('Zurücksetzen: alle Bereiche „Standard“ in Grundreihenfolge (nur im offenen Formular)', count($vals) === 7 && array_unique(array_column($vals, 'Open')) === ['std'] && array_column($vals, 'Key')[0] === 'doc');
+$m->props['FormLayout'] = '[]';
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
 check('Kein IPS_LogMessage in module.php (Store-Review Punkt 15)', strpos($src, 'IPS_LogMessage') === false);

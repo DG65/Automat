@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.24 (Build 25) — 13.10.2026
+
+- **Meldungen: was und wie entscheidet der Nutzer** (Aufbau wie beim Batteriewächter). Neuer Bereich „🔔 Meldungen“:
+  - Was: je Automatismus „Melden“ im Dialog (Wächter, Gerät fertig — und neu „Anwesenheit zusammenfassen“: „Alle weg“ / „Heimgekommen“, Standard aus); Übersicht, welche Automatismen melden; wahlweise auch Störungen (Gerät ließ sich nicht schalten).
+  - Wie: Push an alle oder nur ausgewählte Visualisierungen (Kachel und WebFront), E-Mail über eine SMTP-Instanz an einen oder mehrere Empfänger (Fehlergrund verständlich, z. B. „Anmeldung abgelehnt“), Ruhezeit (z. B. 22–7 Uhr) mit Nachholen danach.
+  - Testmeldung zeigt das Ergebnis je Weg.
+  - Bisher ging Push fest an alle Visualisierungen; das bleibt der Standard, bis du etwas anderes wählst.
+- **🪟 Formular: Aufbau** (wie Batteriewächter, zusätzlich „🙈 Ausgeblendet“): je Bereich beim Öffnen auf-/zugeklappt, Position, oder ganz ausblenden — für Bereiche, die man selten oder nur einmal braucht (Katalog, Entdecken, Dokumentation). Ausgeblendete Bereiche arbeiten weiter; die Kopfzeile nennt, wie viele ausgeblendet sind, Zurücksetzen holt alle zurück.
+- „Meldungen, Protokoll und Kachel“ aufgeteilt in „🔔 Meldungen“ und „📜 Protokoll und Kachel“.
+- Wunsch Dietmar.
+
 ## 0.1.23 (Build 24) — 13.10.2026
 
 - Hausmodus/Helligkeitssensor: Die Sensor-Vorschläge („💡 Passende Sensoren gefunden …“) erscheinen jetzt sofort beim Umstellen auf „wenn es hell/dunkel wird“, nicht erst nach dem Übernehmen; Einstrahlung von Wetterstationen steht vor Lux-Sensoren in Räumen. Hinweis, dass manche Wetterstationen W/m² mit „lx“ beschriften. Rückmeldung Dietmar.
