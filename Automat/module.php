@@ -2211,8 +2211,24 @@ class Automat extends IPSModule
         $this->UpdateFormField('ModeAutoState', 'caption', $this->modeAutoLine($auto) . ' (noch nicht übernommen)');
     }
 
+    /** AUTOMAT_UIDayRefChanged($id, $ref) — nur die zur Auswahl passenden Felder zeigen (Uhrzeit bzw. Versatz). */
+    public function UIDayRefChanged(int $ref): void
+    {
+        $this->UpdateFormField('cfg_DayFrom', 'visible', $ref === 0);
+        $this->UpdateFormField('cfg_DayOffset', 'visible', $ref === 1);
+    }
+
+    /** AUTOMAT_UIEveRefChanged($id, $ref) — wie oben für den Abend (0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“). */
+    public function UIEveRefChanged(int $ref): void
+    {
+        $this->UpdateFormField('cfg_EveningFrom', 'visible', $ref === 1);
+        $this->UpdateFormField('cfg_EveningOffset', 'visible', $ref === 0);
+    }
+
     private function ModePanel(): array
     {
+        $dayRef = $this->ReadPropertyInteger('cfg_DayRef');
+        $eveRef = $this->ReadPropertyInteger('cfg_EveningRef');
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
         $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
         [, $presText] = $this->presenceSource();
@@ -2233,20 +2249,20 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
                 ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
-                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'options' => [
+                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIDayRefChanged($id, $cfg_DayRef);', 'options' => [
                     ['caption' => 'zur Uhrzeit', 'value' => 0],
                     ['caption' => 'bei Sonnenaufgang (± Versatz)', 'value' => 1],
                     ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2],
                 ]],
-                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Uhrzeit für „Tag“ (bei „zur Uhrzeit“)'],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz zum Sonnenaufgang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240],
-                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'options' => [
+                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag beginnt um', 'visible' => $dayRef === 0],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz zum Sonnenaufgang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $dayRef === 1],
+                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIEveRefChanged($id, $cfg_EveningRef);', 'options' => [
                     ['caption' => 'bei Sonnenuntergang (± Versatz)', 'value' => 0],
                     ['caption' => 'zur Uhrzeit', 'value' => 1],
                     ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2],
                 ]],
-                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Uhrzeit für „Abend“ (bei „zur Uhrzeit“)'],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz zum Sonnenuntergang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240],
+                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend beginnt um', 'visible' => $eveRef === 1],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz zum Sonnenuntergang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $eveRef === 0],
                 ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um'],
                 ['type' => 'Label', 'caption' => $loc, 'color' => strpos($loc, '🔗') !== false ? 0x2E8B3D : -1],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],

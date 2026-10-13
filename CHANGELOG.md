@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.20 (Build 21) — 13.10.2026
+
+- Hausmodus: Es sind nur noch die Felder sichtbar, die zur Auswahl passen — „zur Uhrzeit“ zeigt die Uhrzeit, Sonnenaufgang/-untergang den Versatz, „Ist es Tag“ keins von beiden. Wechselt sofort beim Umstellen. Rückmeldung Dietmar.
+
 ## 0.1.19 (Build 20) — 13.10.2026
 
 - Hausmodus/Anwesenheit: Gibt es einen Automatismus „Anwesenheit zusammenfassen“, wird das Feld für eine eigene Anwesenheits-Variable ausgeblendet — dessen Ergebnis nutzt der Hausmodus ohnehin. Ist dort die Ergebnisvariable selbst eingetragen, gilt sie als automatische Quelle (mit Hinweis, dass der Eintrag nicht nötig ist). Steht dort eine fremde Variable, bleibt das Feld sichtbar und hat Vorrang. Rückmeldung Dietmar.
