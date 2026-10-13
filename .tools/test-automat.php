@@ -791,7 +791,7 @@ $txt = json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 $captions = array_map(fn($e) => $e['caption'] ?? '', $form['elements']);
 check('Reihenfolge: Wozu → Doku → Automatismen → Entdecken → Katalog → Hausmodus → Meldungen → Rückmeldungen → Über', strpos($captions[0], 'Wozu') !== false && strpos($captions[1], 'Dokumentation') !== false && strpos($captions[2], 'Automatismen') !== false && strpos($captions[3], 'Entdecken') !== false && strpos(end($captions), 'Über dieses Modul') !== false, implode(' | ', $captions));
 check('Kein „Neu“-Panel vor der ersten Veröffentlichung', strpos($txt, 'Neu bis Version') === false);
-check('Versionsnummer im Doku-Panel', strpos($txt, 'Automat Version 0.1.0-beta.1') !== false);
+check('Versionsnummer im Doku-Panel (aus library.json)', strpos($txt, 'Automat Version ' . json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true)['version'] . '-beta.1') !== false);
 check('Link-Buttons mit echo + link:true', strpos($txt, '"link":true') !== false && strpos($txt, "echo 'https://github.com/DG65/Automat/blob/main/LICENSE'") !== false);
 check('Kein Datum im Format JJJJ-MM-TT sichtbar', !preg_match('/\b20\d\d-\d\d-\d\d\b/', $txt));
 $list = null;
