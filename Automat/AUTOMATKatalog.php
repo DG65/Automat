@@ -19,6 +19,13 @@ class AUTOMATKatalog
     /** Anzahl Variablen-Plätze je Mehrfach-Feld (Melder, Ausgänge, Kontakte, …). */
     public const SLOTS = 4;
 
+    /**
+     * Kleinste echte Objekt-ID in Symcon (IDs sind fünfstellig, 10000–59999). Kleinere Werte in einem
+     * Variablenfeld heißen „nicht gewählt“ — das Auswahlfeld kann beim Leeren/Abbrechen z. B. 1 speichern
+     * (an Dietmars Instanz gesehen, 13.10.2026).
+     */
+    public static int $minId = 10000; // im Prüfstand mit Kurz-IDs herabsetzbar
+
     /** Hausmodi (Werte der Variable „Hausmodus“). */
     public const MODES = [0 => 'Tag', 1 => 'Abend', 2 => 'Nacht', 3 => 'Abwesend', 4 => 'Urlaub'];
     public const MODE_NIGHT = 2;
@@ -219,13 +226,66 @@ class AUTOMATKatalog
         return $row;
     }
 
+    /** Alle Variablenfelder einer Zeile bereinigen: Werte unter MIN_ID werden 0 („nicht gewählt“). */
+    public static function sanitize(array $row): array
+    {
+        foreach (self::TYPES as $t => $_) {
+            foreach (self::fields($t) as $f) {
+                if (!isset($f['n']) || ($f['k'] !== 'var' && $f['k'] !== 'vars')) {
+                    continue;
+                }
+                $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
+                    return $f['n'] . $i;
+                }, range(1, self::SLOTS)) : [$f['n']];
+                foreach ($names as $n) {
+                    if (array_key_exists($n, $row) && (int)$row[$n] < self::$minId) {
+                        $row[$n] = 0;
+                    }
+                }
+            }
+        }
+        return $row;
+    }
+
+    /**
+     * Probleme je Feld für den Dialog: [Feldname => Text]. Fehlt eine Pflichtangabe, steht der
+     * Hinweis am ersten Platz des Felds.
+     */
+    public static function fieldProblems(array $row, callable $exists): array
+    {
+        $t = (string)($row['Type'] ?? '');
+        $out = [];
+        foreach (self::fields($t) as $f) {
+            if (!isset($f['n']) || ($f['k'] !== 'var' && $f['k'] !== 'vars')) {
+                continue;
+            }
+            $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
+                return $f['n'] . $i;
+            }, range(1, self::SLOTS)) : [$f['n']];
+            $any = false;
+            foreach ($names as $n) {
+                $v = (int)($row[$n] ?? 0);
+                if ($v >= self::$minId) {
+                    $any = true;
+                    if (!$exists($v)) {
+                        $out[$n] = '⛔ Variable #' . $v . ' existiert nicht mehr — bitte neu wählen oder leeren.';
+                    }
+                }
+            }
+            if (!$any && !empty($f['req'])) {
+                $out[$names[0]] = '⛔ Bitte wählen — ohne „' . $f['c'] . '“ kann der Automatismus nicht arbeiten.';
+            }
+        }
+        return $out;
+    }
+
     /** Variablen eines Mehrfach-Felds (0 und doppelte entfernt). */
     public static function vars(array $row, string $name): array
     {
         $out = [];
         for ($i = 1; $i <= self::SLOTS; $i++) {
             $v = (int)($row[$name . $i] ?? 0);
-            if ($v > 0 && !in_array($v, $out, true)) {
+            if ($v >= self::$minId && !in_array($v, $out, true)) {
                 $out[] = $v;
             }
         }
@@ -248,13 +308,13 @@ class AUTOMATKatalog
             case 'bewegung':
                 $in = self::vars($row, 'bl_mel');
                 $out = self::vars($row, 'bl_out');
-                if ((int)($row['bl_lux'] ?? 0) > 0) {
+                if ((int)($row['bl_lux'] ?? 0) >= self::$minId) {
                     $read[] = (int)$row['bl_lux'];
                 }
                 break;
             case 'daemmerung':
                 $out = self::vars($row, 'dz_out');
-                if ((int)($row['dz_lux'] ?? 0) > 0) {
+                if ((int)($row['dz_lux'] ?? 0) >= self::$minId) {
                     $read[] = (int)$row['dz_lux'];
                 }
                 break;
@@ -263,12 +323,12 @@ class AUTOMATKatalog
                 $out = self::vars($row, 'fo_soll');
                 break;
             case 'waechter':
-                if ((int)($row['wa_var'] ?? 0) > 0) {
+                if ((int)($row['wa_var'] ?? 0) >= self::$minId) {
                     $in[] = (int)$row['wa_var'];
                 }
                 break;
             case 'fertig':
-                if ((int)($row['gf_var'] ?? 0) > 0) {
+                if ((int)($row['gf_var'] ?? 0) >= self::$minId) {
                     $in[] = (int)$row['gf_var'];
                 }
                 break;
@@ -291,7 +351,7 @@ class AUTOMATKatalog
             if (empty($f['req'])) {
                 continue;
             }
-            $vals = $f['k'] === 'vars' ? self::vars($row, $f['n']) : (((int)($row[$f['n']] ?? 0) > 0) ? [(int)$row[$f['n']]] : []);
+            $vals = $f['k'] === 'vars' ? self::vars($row, $f['n']) : (((int)($row[$f['n']] ?? 0) >= self::$minId) ? [(int)$row[$f['n']]] : []);
             if (count($vals) === 0) {
                 $p[] = '„' . $f['c'] . '“ ist nicht gewählt.';
             }
@@ -305,7 +365,7 @@ class AUTOMATKatalog
         }
         if ($t === 'daemmerung') {
             $needLux = (int)($row['dz_ein'] ?? 0) === 2 || (int)($row['dz_aus'] ?? 0) === 2;
-            if ($needLux && (int)($row['dz_lux'] ?? 0) <= 0) {
+            if ($needLux && (int)($row['dz_lux'] ?? 0) < self::$minId) {
                 $p[] = 'Für „Dunkelheit“/„Helligkeit“ fehlt der Helligkeitssensor.';
             }
         }
@@ -364,7 +424,7 @@ class AUTOMATKatalog
                 break;
             case 'bewegung':
                 $p[] = 'Nachlauf ' . self::dur((int)($row['bl_nachlauf'] ?? 0));
-                if ((int)($row['bl_lux'] ?? 0) > 0) {
+                if ((int)($row['bl_lux'] ?? 0) >= self::$minId) {
                     $now = $live((int)$row['bl_lux']);
                     $p[] = 'unter ' . rtrim(rtrim(number_format((float)($row['bl_luxschwelle'] ?? 0), 1, ',', ''), '0'), ',') . ' lx' . ($now !== null ? ' (jetzt ' . $now . ')' : '');
                 }
@@ -385,7 +445,7 @@ class AUTOMATKatalog
                 if ((int)($row['dz_zufall'] ?? 0) > 0) {
                     $p[] = 'Zufall ±' . (int)$row['dz_zufall'] . ' min';
                 }
-                if ((int)($row['dz_lux'] ?? 0) > 0 && ($ein === 2 || $aus === 2)) {
+                if ((int)($row['dz_lux'] ?? 0) >= self::$minId && ($ein === 2 || $aus === 2)) {
                     $now = $live((int)$row['dz_lux']);
                     $p[] = 'Schwelle ' . rtrim(rtrim(number_format((float)($row['dz_luxschwelle'] ?? 0), 1, ',', ''), '0'), ',') . ' lx' . ($now !== null ? ' (jetzt ' . $now . ')' : '');
                 }

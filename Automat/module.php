@@ -1198,14 +1198,22 @@ class Automat extends IPSModule
             ['type' => 'ValidationTextBox', 'name' => 'Uid', 'caption' => 'Kennung', 'visible' => false, 'value' => $isNew ? $this->newUid($this->rows()) : $uid],
             ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
+        $saved = $isNew ? null : $this->rowByUid($uid);
+        $fieldProblems = $saved !== null && $saved['Type'] === $type ? AUTOMATKatalog::fieldProblems($saved, function (int $vid) {
+            return IPS_VariableExists($vid);
+        }) : [];
+        if (count($fieldProblems) > 0) {
+            array_splice($el, 2, 0, [['type' => 'Label', 'caption' => '⛔ ' . count($fieldProblems) . ' Feld(er) unten brauchen Aufmerksamkeit (rot markiert).', 'color' => 0xFF0000, 'bold' => true]]);
+        }
         foreach (AUTOMATKatalog::TYPES as $t => $def) {
             $items = [];
             foreach (AUTOMATKatalog::fields($t) as $f) {
-                foreach ($this->fieldElements($f) as $e) {
+                foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : []) as $e) {
                     $items[] = $e;
                 }
             }
-            $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => $def['icon'] . ' Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
+            $bad = $t === $type && count($fieldProblems) > 0;
+            $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
         }
         $modeItems = [['type' => 'Label', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):']];
         foreach (AUTOMATKatalog::MODES as $m => $label) {
@@ -1242,9 +1250,17 @@ class Automat extends IPSModule
     }
 
     /** Formular-Elemente eines Katalog-Felds, ggf. mit Hilfe-Knopf (volle Frage als Beschriftung, SUITE.md Feld-Hilfestellung). */
-    private function fieldElements(array $f): array
+    private function fieldElements(array $f, array $problems): array
     {
-        $els = $this->fieldInputs($f);
+        $els = [];
+        foreach ($this->fieldInputs($f) as $e) {
+            $els[] = $e;
+            if (($e['type'] ?? '') === 'SelectVariable') {
+                // Roter Hinweis direkt unter dem Feld; verschwindet, sobald eine gültige Variable gewählt ist.
+                $msg = $problems[$e['name']] ?? '';
+                $els[] = ['type' => 'Label', 'name' => 'chk_' . $e['name'], 'caption' => $msg, 'color' => 0xFF0000, 'visible' => $msg !== ''];
+            }
+        }
         if (isset($f['help'])) {
             [$question, $lines] = $f['help'];
             $els[] = ['type' => 'PopupButton', 'caption' => $question, 'width' => '420px', 'popup' => [
@@ -1268,11 +1284,12 @@ class Automat extends IPSModule
             case 'vars':
                 $o = [];
                 for ($i = 1; $i <= AUTOMATKatalog::SLOTS; $i++) {
-                    $o[] = ['type' => 'SelectVariable', 'name' => $f['n'] . $i, 'caption' => $f['c'] . ' ' . $i . ($i > 1 || empty($f['req']) ? ' (optional)' : ''), 'value' => 0, 'width' => '520px'];
+                    $o[] = ['type' => 'SelectVariable', 'name' => $f['n'] . $i, 'caption' => $f['c'] . ' ' . $i . ($i > 1 || empty($f['req']) ? ' (optional)' : ''), 'value' => 0, 'width' => '520px',
+                        'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . $i . '\', (int)$' . $f['n'] . $i . ');'];
                 }
                 return $o;
             case 'var':
-                return [$base + ['type' => 'SelectVariable', 'value' => 0, 'width' => '520px']];
+                return [$base + ['type' => 'SelectVariable', 'value' => 0, 'width' => '520px', 'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . '\', (int)$' . $f['n'] . ');']];
             case 'int':
                 return [$base + ['type' => 'NumberSpinner', 'value' => $f['d'], 'suffix' => $f['suffix'] ?? '', 'minimum' => $f['min'] ?? 0, 'maximum' => $f['max'] ?? 100000]];
             case 'float':
@@ -1291,6 +1308,14 @@ class Automat extends IPSModule
                 return [$base + ['type' => 'ValidationTextBox', 'value' => $f['d'], 'width' => '520px']];
         }
         return [];
+    }
+
+    /** AUTOMAT_UIVarChanged($id, $field, $vid) — roten Hinweis unter einem Variablenfeld im offenen Dialog nachführen. */
+    public function UIVarChanged(string $field, int $vid): void
+    {
+        $bad = $vid >= AUTOMATKatalog::$minId && !IPS_VariableExists($vid);
+        $this->UpdateFormField('chk_' . $field, 'caption', $bad ? '⛔ Variable #' . $vid . ' existiert nicht — bitte neu wählen oder leeren.' : '');
+        $this->UpdateFormField('chk_' . $field, 'visible', $bad);
     }
 
     /** AUTOMAT_UIDialogType($id, $type) — im offenen Dialog den passenden Einstellungsblock zeigen. */
@@ -1404,7 +1429,7 @@ class Automat extends IPSModule
                 $r['Uid'] = 'r' . $i; // Rückfall für Zeilen ohne Kennung
             }
             $r['Type'] = (string)($r['Type'] ?? '');
-            $out[] = $r;
+            $out[] = AUTOMATKatalog::sanitize($r);
         }
         return $out;
     }

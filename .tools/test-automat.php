@@ -181,6 +181,8 @@ class IPSModule
 }
 
 require dirname(__DIR__) . '/Automat/module.php';
+// Der Prüfstand arbeitet mit Kurz-IDs (100, 1001 …); echte Symcon-IDs sind fünfstellig. Block A9 prüft die echte Grenze.
+AUTOMATKatalog::$minId = 1;
 
 class AutomatTest extends Automat
 {
@@ -575,6 +577,23 @@ check('23 Uhr = Nacht, 5 Uhr = Nacht', AUTOMATLogik::autoMode(ts('2026-10-13 23:
 check('Niemand da = Abwesend', AUTOMATLogik::autoMode(ts('2026-10-13 12:00'), $day, 1, $eve, $night, null, false, 0) === 3);
 check('Urlaub bleibt Urlaub', AUTOMATLogik::autoMode(ts('2026-10-13 23:00'), $day, 1, $eve, $night, null, false, 4) === 4);
 
+heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
+AUTOMATKatalog::$minId = 10000;
+$bad = AUTOMATKatalog::defaults('bewegung');
+$bad['bl_mel1'] = 34618;
+$bad['bl_mel2'] = 1;
+$bad['bl_mel3'] = 1;
+$bad['bl_out1'] = 27348;
+$bad['bl_out2'] = 55555;
+check('Wert 1 gilt als „nicht gewählt“, nicht als fehlende Variable', AUTOMATKatalog::vars($bad, 'bl_mel') === [34618]);
+check('sanitize setzt Werte unter 10000 auf 0', AUTOMATKatalog::sanitize($bad)['bl_mel2'] === 0 && AUTOMATKatalog::sanitize($bad)['bl_mel1'] === 34618);
+$fp = AUTOMATKatalog::fieldProblems($bad, fn($v) => $v !== 55555);
+check('Feldhinweis genau am fehlenden Ausgang 2, nicht an den Meldern', array_keys($fp) === ['bl_out2'] && strpos($fp['bl_out2'], '#55555') !== false, json_encode($fp, JSON_UNESCAPED_UNICODE));
+$empty = AUTOMATKatalog::defaults('bewegung');
+$fp2 = AUTOMATKatalog::fieldProblems($empty, fn($v) => true);
+check('Leeres Pflichtfeld: Hinweis am ersten Platz', isset($fp2['bl_mel1'], $fp2['bl_out1']) && count($fp2) === 2);
+AUTOMATKatalog::$minId = 1;
+
 // ===========================================================================
 // TEIL B — Erkennung
 // ===========================================================================
@@ -864,6 +883,22 @@ check('Dialog: Hilfe-Knopf zum Impuls-Schalter mit voller Frage, ohne zusätzlic
 check('Dialog: Kennung bleibt beim Bearbeiten erhalten', $find($dlg, 'Uid')['value'] === 'aflur1');
 $dlgNew = json_decode($m->UIEditForm('', ''), true);
 check('Neuer Dialog: neue Kennung, kein Abschnitt sichtbar', preg_match('/^a[0-9a-f]{5}$/', $find($dlgNew, 'Uid')['value']) === 1 && count(array_filter($dlgNew, fn($e) => strpos($e['name'] ?? '', 'sec_') === 0 && $e['name'] !== 'sec_when' && $e['visible'])) === 0);
+// Feldhinweise im Dialog: fehlende Variable rot markiert, onChange führt nach
+$rowsBad = json_decode($m->props['Automations'], true);
+foreach ($rowsBad as &$rb) { if ($rb['Uid'] === 'aflur1') { $rb['bl_out2'] = 9999; } }
+unset($rb);
+$m->props['Automations'] = json_encode($rowsBad);
+$dlgBad = json_decode($m->UIEditForm('aflur1', 'bewegung'), true);
+$chk = $find($dlgBad, 'chk_bl_out2');
+check('Dialog: fehlende Variable unter dem Feld rot markiert', $chk !== null && $chk['visible'] === true && $chk['color'] === 0xFF0000 && strpos($chk['caption'], '#9999') !== false, json_encode($chk, JSON_UNESCAPED_UNICODE));
+check('Dialog: Abschnitt und Kopf zeigen ⛔', strpos($find($dlgBad, 'sec_bewegung')['caption'], '⛔') === 0 && strpos(json_encode($dlgBad, JSON_UNESCAPED_UNICODE), 'brauchen Aufmerksamkeit') !== false);
+check('Dialog: Variablenfelder führen den Hinweis per onChange nach', strpos(json_encode($dlgBad, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), "AUTOMAT_UIVarChanged(\$id, 'bl_out2', (int)\$bl_out2);") !== false);
+$m->fieldUpdates = [];
+$m->UIVarChanged('bl_out2', 1001);
+check('Gültige Variable gewählt → Hinweis verschwindet', in_array(['chk_bl_out2', 'visible', false], $m->fieldUpdates, true));
+foreach ($rowsBad as &$rb) { if ($rb['Uid'] === 'aflur1') { $rb['bl_out2'] = 0; } }
+unset($rb);
+$m->props['Automations'] = json_encode($rowsBad);
 $m->fieldUpdates = [];
 $m->UIDialogType('fenster');
 $vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] === true);

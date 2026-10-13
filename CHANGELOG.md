@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9 (Build 10) — 13.10.2026
+
+- Leere Variablenfelder: Symcons Auswahlfeld speichert beim Leeren teils den Wert 1 statt 0 — Werte unter 10000 (echte Objekt-IDs sind fünfstellig) gelten jetzt als „nicht gewählt“. Die falsche Meldung „Variable #1 existiert nicht mehr“ verschwindet.
+- Bearbeiten-Dialog markiert Problemfelder: Unter jedem Variablenfeld, dessen Variable nicht mehr existiert oder das als Pflichtfeld leer ist, steht ein roter Hinweis; der Abschnitt trägt ⛔, oben steht eine Zusammenfassung. Wählt man eine gültige Variable, verschwindet der Hinweis sofort. Wunsch Dietmar.
+
 ## 0.1.8 (Build 9) — 13.10.2026
 
 - Räume: Kurz- und Langform gelten als derselbe Raum — Essen/Esszimmer, Wohnen/Wohnzimmer, Schlafen/Schlafzimmer, Kind/Kinderzimmer, Bad/Badezimmer, Gäste/Gästezimmer, Arbeiten/Arbeitszimmer. Nummern bleiben unterschieden („Kind II“ → „Kinderzimmer II“). Der Raumname folgt Raumstruktur, falls vorhanden. Hinweis Dietmar.
