@@ -55,6 +55,7 @@ class Automat extends IPSModule
 
     private const PROFILE_MODE = 'AUTOMAT.Hausmodus';
     private const MAX_TICK_S   = 60;   // spätestens minütlich nachsehen (Dämmerung, Hausmodus, Wächter)
+    private const REST_TICK_S  = 5;    // so oft wird „… · Restzeit" nachgeführt, solange unter einer Stunde läuft
     private const ECHO_S       = 15;   // so lange gilt eine Wertänderung als Echo des eigenen Befehls
     private const PROTOCOL_MAX = 200;
 
@@ -78,6 +79,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('States', '{}');
         $this->RegisterAttributeString('Status', '{}');
         $this->RegisterAttributeString('Due', '{}');
+        $this->RegisterAttributeString('End', '{}');
         $this->RegisterAttributeString('Sent', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
         $this->RegisterAttributeString('Suggestions', '[]');
@@ -124,13 +126,14 @@ class Automat extends IPSModule
         foreach ($rows as $i => $row) {
             $uid = $row['Uid'];
             $name = $this->rowName($row);
-            $pos = 10 + $i * 3;
+            $pos = 10 + $i * 4;
             $this->ensureVar('s_' . $uid, $name . ' · Status', VARIABLETYPE_STRING, '', $pos);
-            $this->ensureVar('l_' . $uid, $name . ' · gesperrt', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 1);
+            $this->ensureVar('r_' . $uid, $name . ' · Restzeit', VARIABLETYPE_STRING, '', $pos + 1);
+            $this->ensureVar('l_' . $uid, $name . ' · gesperrt', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
             $this->EnableAction('l_' . $uid);
-            $keep['s_' . $uid] = $keep['l_' . $uid] = true;
+            $keep['s_' . $uid] = $keep['r_' . $uid] = $keep['l_' . $uid] = true;
             if (!empty(AUTOMATKatalog::TYPES[$row['Type']]['light']) && $row['Type'] !== 'daemmerung') {
-                $this->ensureVar('d_' . $uid, $name . ' · Dauerlicht', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
+                $this->ensureVar('d_' . $uid, $name . ' · Dauerlicht', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 3);
                 $this->EnableAction('d_' . $uid);
                 $keep['d_' . $uid] = true;
             }
@@ -157,13 +160,13 @@ class Automat extends IPSModule
         // Variablen entfernter Automatismen aufräumen (nur eigene Idents).
         foreach (IPS_GetChildrenIDs($this->InstanceID) as $cid) {
             $ident = (string)(IPS_GetObject($cid)['ObjectIdent'] ?? '');
-            if (preg_match('/^[sld]_[a-z0-9]+$/', $ident) && !isset($keep[$ident]) && IPS_VariableExists($cid)) {
+            if (preg_match('/^[sldr]_[a-z0-9]+$/', $ident) && !isset($keep[$ident]) && IPS_VariableExists($cid)) {
                 IPS_DeleteVariable($cid);
             }
         }
         // Zustände entfernter Automatismen vergessen.
         $uids = array_column($rows, 'Uid');
-        foreach (['States', 'Status', 'Due'] as $attr) {
+        foreach (['States', 'Status', 'Due', 'End'] as $attr) {
             $map = $this->attrMap($attr);
             $this->WriteAttributeString($attr, json_encode(array_intersect_key($map, array_flip($uids))));
         }
@@ -281,6 +284,7 @@ class Automat extends IPSModule
             unset($due[$uid]);
             $this->WriteAttributeString('Status', json_encode($status));
             $this->WriteAttributeString('Due', json_encode($due));
+            $this->setEnd($uid, null);
             $this->setVarIfChanged('s_' . $uid, $status[$uid]);
             return;
         }
@@ -292,6 +296,7 @@ class Automat extends IPSModule
             unset($due[$uid]);
             $this->WriteAttributeString('Status', json_encode($status));
             $this->WriteAttributeString('Due', json_encode($due));
+            $this->setEnd($uid, null);
             $this->setVarIfChanged('s_' . $uid, $status[$uid]);
             return;
         }
@@ -329,6 +334,21 @@ class Automat extends IPSModule
             $this->message((string)$title, (string)$text, $push);
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
+        $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
+    }
+
+    /** Zeitpunkt des nächsten Ereignisses merken und „… · Restzeit" nachführen. */
+    private function setEnd(string $uid, ?int $end): void
+    {
+        $map = $this->attrMap('End');
+        if ($end !== null && $end > $this->now()) {
+            $map[$uid] = $end;
+        } else {
+            unset($map[$uid]);
+            $end = null;
+        }
+        $this->WriteAttributeString('End', json_encode($map));
+        $this->setVarIfChanged('r_' . $uid, $end === null ? '' : AUTOMATLogik::fmtRest($end, $this->now()));
     }
 
     /** Schnappschuss der Umgebung für die Logik. */
@@ -401,6 +421,12 @@ class Automat extends IPSModule
         $next = $now + self::MAX_TICK_S;
         foreach ($this->attrMap('Due') as $ts) {
             $next = min($next, (int)$ts);
+        }
+        // Läuft irgendwo ein Countdown unter einer Stunde, „Restzeit" alle paar Sekunden nachführen.
+        foreach ($this->attrMap('End') as $ts) {
+            if ((int)$ts > $now && (int)$ts - $now <= 3600) {
+                $next = min($next, $now + self::REST_TICK_S);
+            }
         }
         $this->SetTimerInterval('Tick', max(1, $next - $now) * 1000);
     }
@@ -1097,7 +1123,7 @@ class Automat extends IPSModule
     private function tilePayload(): array
     {
         $status = $this->attrMap('Status');
-        $due = $this->attrMap('Due');
+        $due = $this->attrMap('End');
         $groups = [];
         foreach ($this->rows() as $row) {
             $uid = $row['Uid'];
@@ -1226,7 +1252,7 @@ class Automat extends IPSModule
         if ($id) {
             // MaintainVariable benennt nicht um (Pitfall 16): nur Standardnamen nachziehen, Nutzernamen bleiben.
             $cur = IPS_GetName($id);
-            if ($cur !== $name && preg_match('/ · (Status|gesperrt|Dauerlicht)$/u', $cur)) {
+            if ($cur !== $name && preg_match('/ · (Status|Restzeit|gesperrt|Dauerlicht)$/u', $cur)) {
                 IPS_SetName($id, $name);
             }
         }
@@ -1415,7 +1441,7 @@ class Automat extends IPSModule
             'items' => [
                 ['type' => 'Label', 'caption' => $ver],
                 ['type' => 'Label', 'caption' => 'Anlegen: „Entdecken“ schlägt Automatismen aus den vorhandenen Geräten vor, „Katalog“ legt einen leeren Automatismus eines Typs an, „+“ an der Liste öffnet den Dialog direkt. Immer gilt: mit ✏️ prüfen, dann unten „Übernehmen“.'],
-                ['type' => 'Label', 'caption' => 'Je Automatismus entstehen unter der Instanz: „… · Status“ (Zustand und Grund), „… · gesperrt“ (Schalter: Automatismus tut nichts, z. B. Putzen, Party, Handwerker) und bei Licht-Automatismen „… · Dauerlicht“. Alle drei sind auch aus WebFront, Kachel und Skript (IPS_RequestAction) bedienbar.'],
+                ['type' => 'Label', 'caption' => 'Je Automatismus entstehen unter der Instanz: „… · Status“ (Zustand und Grund), „… · Restzeit“ (läuft mit, solange etwas ansteht: Licht aus, Absenkung, Meldung — sonst leer), „… · gesperrt“ (Schalter: Automatismus tut nichts, z. B. Putzen, Party, Handwerker) und bei Licht-Automatismen „… · Dauerlicht“. Alle drei sind auch aus WebFront, Kachel und Skript (IPS_RequestAction) bedienbar.'],
                 ['type' => 'Label', 'caption' => 'Handbedienung hat Vorrang: Wer ein Licht von Hand ausschaltet, beendet die laufende Zeit; beim Bewegungslicht pausiert die Automatik danach für die eingestellte Zeit. Wer es von Hand einschaltet, bekommt beim Zeitlicht die normale Leuchtdauer, beim Bewegungslicht die längere aus Nachlauf und Handpause.'],
                 ['type' => 'Label', 'caption' => 'Hausmodus: „Nacht“ nutzt bei Licht-Automatismen den Nacht-Helligkeitswert; jeder Automatismus kann auf bestimmte Modi beschränkt werden (im Dialog unter „Wann ist der Automatismus aktiv?“). Die Automatik stellt den Modus nur bei einem Übergang um — eine Handeinstellung bleibt bis zum nächsten Übergang. Urlaub wird nie automatisch gesetzt oder verlassen.'],
                 ['type' => 'Label', 'caption' => 'Sperre und Pause sind „hart“ (gar nichts passiert, laufende Zeiten werden abgebrochen, ein abgesenkter Heizungs-Sollwert wird zurückgestellt). Hausmodus und Bedingung sind „weich“: es wird nichts NEU eingeschaltet oder gemeldet, laufende Zeiten laufen aber zu Ende.'],

@@ -32,7 +32,8 @@ class AUTOMATLogik
     public static function step(array $row, array $st, array $ev, array $ctx): array
     {
         $type = (string)($row['Type'] ?? '');
-        $res = ['st' => $st, 'cmd' => [], 'msg' => [], 'log' => null, 'status' => '', 'due' => null];
+        // 'end' = Zeitpunkt des nächsten sichtbaren Ereignisses (Licht aus, Absenkung, Meldung) für die Restzeit-Anzeige.
+        $res = ['st' => $st, 'cmd' => [], 'msg' => [], 'log' => null, 'status' => '', 'due' => null, 'end' => null];
         switch ($type) {
             case 'zeitlicht':
                 return self::zeitlicht($row, $st, $ev, $ctx, $res);
@@ -187,6 +188,22 @@ class AUTOMATLogik
             : ($rest >= 60 ? floor($rest / 60) . ':' . sprintf('%02d', $rest % 60) . ' min' : $rest . ' s');
         $day = date('Y-m-d', $ts) === date('Y-m-d', $now) ? '' : date('d.m.Y ', $ts);
         return $day . date('H:i:s', $ts) . ' Uhr (in ' . $txt . ')';
+    }
+
+    /** Restzeit kurz: „45 s", „1:35 min", „2 h 05 min"; '' wenn vorbei. */
+    public static function fmtRest(int $end, int $now): string
+    {
+        $r = $end - $now;
+        if ($r <= 0) {
+            return '';
+        }
+        if ($r >= 3600) {
+            return intdiv($r, 3600) . ' h ' . sprintf('%02d', intdiv($r % 3600, 60)) . ' min';
+        }
+        if ($r >= 60) {
+            return intdiv($r, 60) . ':' . sprintf('%02d', $r % 60) . ' min';
+        }
+        return $r . ' s';
     }
 
     public static function fmtNum($v): string
@@ -347,6 +364,7 @@ class AUTOMATLogik
                 if ((int)$st['until'] > 0) {
                     $res['due'] = $vorwarn > 0 && (int)$st['until'] - $vorwarn > $now ? (int)$st['until'] - $vorwarn : (int)$st['until'];
                     $res['status'] = '💡 An — aus um ' . self::fmtClock((int)$st['until'], $now);
+                    $res['end'] = (int)$st['until'];
                 } else {
                     $res['status'] = '💡 An — Bewegung erkannt, Nachlauf startet danach';
                 }
@@ -354,14 +372,17 @@ class AUTOMATLogik
             case 'flash':
                 $res['due'] = (int)$st['fl'];
                 $res['status'] = '⚠️ Vorwarnung — aus um ' . self::fmtClock((int)$st['until'], $now);
+                $res['end'] = (int)$st['until'];
                 break;
             case 'warn':
                 $res['due'] = (int)$st['until'];
                 $res['status'] = '⚠️ Vorwarnung — aus um ' . self::fmtClock((int)$st['until'], $now);
+                $res['end'] = (int)$st['until'];
                 break;
             case 'hand':
                 $res['due'] = (int)($st['hu'] ?? 0) ?: null;
                 $res['status'] = '✋ Von Hand ausgeschaltet — Automatik pausiert bis ' . date('H:i', (int)($st['hu'] ?? $now)) . ' Uhr';
+                $res['end'] = (int)($st['hu'] ?? 0) ?: null;
                 break;
             default:
                 $soft = self::softBlock($row, $ctx);
@@ -634,12 +655,14 @@ class AUTOMATLogik
         if ($res['status'] === '') {
             if ($st['on']) {
                 $res['status'] = '💡 An' . ($win !== null && $aus !== 3 && $aus !== 2 ? ' — aus um ' . self::fmtClock($win[1], $now) : '');
+                $res['end'] = $win !== null && $aus !== 3 && $aus !== 2 ? $win[1] : null;
             } elseif ($win !== null && $st['manual'] === $key) {
                 $res['status'] = '✋ Von Hand aus — wieder ab dem nächsten Schaltfenster';
             } elseif ($win !== null && $ein === 2) {
                 $res['status'] = '⚪ Aus — wartet auf Dunkelheit' . ($lux !== null ? ' (' . self::fmtNum($lux) . ' lx)' : ' (Helligkeitssensor fehlt)');
             } else {
                 $res['status'] = '⚪ Aus' . ($next !== null ? ' — nächste Schaltung ' . self::fmtClock($next, $now) : '');
+                $res['end'] = $next;
             }
         }
         return $res;
@@ -741,6 +764,7 @@ class AUTOMATLogik
             case 'wartet':
                 $res['due'] = (int)$st['until'];
                 $res['status'] = '🪟 Offen — Absenkung um ' . self::fmtClock((int)$st['until'], $now);
+                $res['end'] = (int)$st['until'];
                 break;
             case 'ab':
                 $res['status'] = '🪟 Offen — abgesenkt auf ' . self::fmtNum($absenk) . ' °C';
@@ -854,6 +878,7 @@ class AUTOMATLogik
         $res['st'] = $st;
         if ($st['ph'] === 'zaehlt') {
             $res['due'] = (int)$st['since'] + $dauer;
+            $res['end'] = (int)$st['since'] + $dauer;
             $res['status'] = '⏳ ' . $varName . ' ' . $cmpText . ' — Meldung um ' . self::fmtClock((int)$st['since'] + $dauer, $now)
                 . ($blocked !== '' ? ' (wird nicht gemeldet: ' . $blocked . ')' : '');
             if ($now >= (int)$st['since'] + $dauer) {
@@ -926,6 +951,7 @@ class AUTOMATLogik
             case 'auslauf':
                 $res['due'] = (int)$st['below'] + $nach;
                 $res['status'] = '⏳ Fast fertig — Meldung um ' . self::fmtClock((int)$st['below'] + $nach, $now);
+                $res['end'] = (int)$st['below'] + $nach;
                 break;
             default:
                 $res['status'] = !empty($st['last']) ? '⚪ Aus — zuletzt fertig ' . date('d.m.Y H:i', (int)$st['last']) . ' Uhr' : '⚪ Aus';

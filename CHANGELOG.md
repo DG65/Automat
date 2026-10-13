@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 (Build 4) — 13.10.2026
+
+- Neue Variable „… · Restzeit“ je Automatismus: zeigt, wie lange es noch dauert, bis das Licht ausgeht, die Heizung abgesenkt, eine Meldung gesendet oder die nächste Dämmerungsschaltung fällig ist; wird alle 5 s nachgeführt, solange der Countdown unter einer Stunde liegt, sonst minütlich; leer, wenn nichts ansteht (Wunsch Dietmar).
+- Kachel zählt jetzt bis zum eigentlichen Ereignis herunter (vorher bei Vorwarnung bis zum Warnzeitpunkt).
+
 ## 0.1.2 (Build 3) — 13.10.2026
 
 - Bewegungslicht: verständlicherer Text für den Schalter „Melder setzt die Variable nie (oder erst sehr spät) auf „aus“ zurück“ und ein Hilfe-Knopf „Wann brauche ich diesen Schalter?“ direkt darunter (Rückmeldung Dietmar aus dem ersten Live-Test).

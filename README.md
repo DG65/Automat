@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.2-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.3-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.2:** neu gebaut und am Prüfstand (203 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.3:** neu gebaut und am Prüfstand (207 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -31,6 +31,7 @@ Geräten vor, was sich lohnt.
 
 ## Für alle Automatismen gleich
 
+- **Restzeit** je Automatismus als Variable „… · Restzeit“ (z. B. „1:35 min“ bis das Licht ausgeht, bis zur Absenkung oder Meldung), sonst leer.
 - **Sperre** je Automatismus als Variable „… · gesperrt" — sichtbar, aus WebFront, Kachel und Skript schaltbar
   (Putzen, Party, Handwerker). Gesperrt heißt: tut gar nichts.
 - **Pause** für alle auf einmal (Variable „Alle Automatismen pausieren").

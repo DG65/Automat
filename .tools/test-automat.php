@@ -700,7 +700,7 @@ $m->Create();
 $m->props['Automations'] = json_encode([$bl, $fo, $gf, $zl]);
 $m->ApplyChanges();
 check('Status 102', $m->status === 102);
-foreach (['s_aflur1', 'l_aflur1', 'd_aflur1', 's_abad01', 'l_abad01', 'Hausmodus', 'Pause', 'LastMessage'] as $ident) {
+foreach (['s_aflur1', 'r_aflur1', 'l_aflur1', 'd_aflur1', 's_abad01', 'l_abad01', 'Hausmodus', 'Pause', 'LastMessage'] as $ident) {
     check('Variable „' . $ident . '“ angelegt', @IPS_GetObjectIDByIdent($ident, 12345) !== false);
 }
 check('Kein Dauerlicht für Fenster-Automatismus', @IPS_GetObjectIDByIdent('d_abad01', 12345) === false);
@@ -718,7 +718,12 @@ fire($m, 1001, true); // Echo des eigenen Befehls
 $states = json_decode($m->attrs['States'], true);
 check('Echo des eigenen Befehls ist keine Handbedienung', $states['aflur1']['ph'] === 'an');
 fire($m, 1011, false);
-check('Melder still → Timer auf Nachlauf (60 s)', $m->timers['Tick'] === 60000, (string)$m->timers['Tick']);
+check('Melder still → Restzeit-Variable zeigt den Nachlauf', GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)) === '1:00 min', (string)GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)));
+check('Countdown läuft → Timer alle 5 s (Restzeit nachführen)', $m->timers['Tick'] === 5000, (string)$m->timers['Tick']);
+$GLOBALS['CLOCK'] += 20;
+$m->Tick();
+check('Restzeit zählt herunter', GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)) === '40 s', (string)GetValue(IPS_GetObjectIDByIdent('r_aflur1', 12345)) . ' / ' . GetValue(IPS_GetObjectIDByIdent('s_aflur1', 12345)));
+$GLOBALS['CLOCK'] -= 20;
 $GLOBALS['CLOCK'] += 61;
 $m->Tick();
 check('Tick nach Nachlauf schaltet aus', GetValue(1001) === false);
@@ -739,6 +744,7 @@ fire($m, 1081, true);
 $GLOBALS['CLOCK'] += 10;
 $m->Tick();
 check('Nach Ablauf aus', GetValue(1081) === false);
+check('Nach Ablauf: Restzeit leer', GetValue(IPS_GetObjectIDByIdent('r_atrepp', 12345)) === '');
 // Handbedienung über echte Nachricht (kein eigener Befehl offen)
 fire($m, 1011, true);
 fire($m, 1001, true);
@@ -895,7 +901,7 @@ check('Ungültige Kachel-Anfrage wird still ignoriert', true);
 heading('C6. Aufräumen und Hygiene');
 $m->props['Automations'] = json_encode([$bl]);
 $m->ApplyChanges();
-check('Variablen entfernter Automatismen gelöscht', @IPS_GetObjectIDByIdent('s_abad01', 12345) === false && @IPS_GetObjectIDByIdent('s_awasch', 12345) === false && @IPS_GetObjectIDByIdent('s_aflur1', 12345) !== false);
+check('Variablen entfernter Automatismen gelöscht', @IPS_GetObjectIDByIdent('r_abad01', 12345) === false && @IPS_GetObjectIDByIdent('s_abad01', 12345) === false && @IPS_GetObjectIDByIdent('s_awasch', 12345) === false && @IPS_GetObjectIDByIdent('s_aflur1', 12345) !== false);
 check('Nachricht auf entferntem Kontakt abgemeldet', !isset($m->messages[1031]));
 check('Zustände entfernter Automatismen vergessen', array_keys(json_decode($m->attrs['States'], true)) === ['aflur1']);
 $m->props['Automations'] = '[]';
