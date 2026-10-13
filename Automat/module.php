@@ -338,6 +338,9 @@ class Automat extends IPSModule
                 $failed[] = $this->varLabel((int)$vid);
             }
         }
+        if (!empty($res['lost'])) {
+            $this->recordLost($res['lost']);
+        }
         if ($res['log'] !== null) {
             $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
         }
@@ -519,13 +522,17 @@ class Automat extends IPSModule
             return;
         }
         $stats = $this->attrMap('MelStats');
-        $st = $stats[$vid] ?? ['d' => [], 't' => null, 'boot' => false];
+        $st = ($stats[$vid] ?? []) + ['d' => [], 't' => null, 'boot' => false, 'on' => 0, 'off' => 0];
         $now = $this->now();
         if (AUTOMATLogik::isTrue($value)) {
+            $st['on']++;
             if ($st['t'] === null) {
                 $st['t'] = $now;
             }
-        } elseif ($st['t'] !== null) {
+        } else {
+            $st['off']++;
+        }
+        if (!AUTOMATLogik::isTrue($value) && $st['t'] !== null) {
             $d = $now - (int)$st['t'];
             if ($d >= 0 && $d <= 7200) {
                 $st['d'][] = $d;
@@ -561,8 +568,12 @@ class Automat extends IPSModule
                         $d = [];
                         foreach ($vals as $e) {
                             if (AUTOMATLogik::isTrue($e['Value'])) {
+                                $st['on'] = ($st['on'] ?? 0) + 1;
                                 $start = $start ?? (int)$e['TimeStamp'];
-                            } elseif ($start !== null) {
+                            } else {
+                                $st['off'] = ($st['off'] ?? 0) + 1;
+                            }
+                            if (!AUTOMATLogik::isTrue($e['Value']) && $start !== null) {
                                 $d[] = (int)$e['TimeStamp'] - $start;
                                 $start = null;
                             }
@@ -594,6 +605,66 @@ class Automat extends IPSModule
         sort($d);
         $p90 = (int)$d[(int)floor((count($d) - 1) * 0.9)];
         return max(30, min(3600, 3 * $p90));
+    }
+
+    /** Melder sendet offenbar nie „aus“ (mindestens 10 × „an“, kein einziges „aus“) → Impuls-Melder. */
+    private function isImpulseMelder(int $vid): bool
+    {
+        $st = $this->attrMap('MelStats')[$vid] ?? [];
+        return (int)($st['on'] ?? 0) >= 10 && (int)($st['off'] ?? 0) === 0;
+    }
+
+    /** Eingriffe des Melder-Rückfalls je Melder mitschreiben (Zeitpunkte der letzten 30 Tage). */
+    private function recordLost(array $vids): void
+    {
+        $stats = $this->attrMap('MelStats');
+        $now = $this->now();
+        $cut = strtotime('-30 days', $now);
+        foreach ($vids as $vid) {
+            $st = ($stats[$vid] ?? []) + ['d' => [], 't' => null, 'boot' => true, 'on' => 0, 'off' => 0, 'lost' => []];
+            $st['lost'] = array_values(array_filter((array)$st['lost'], function ($t) use ($cut) {
+                return (int)$t >= $cut;
+            }));
+            $st['lost'][] = $now;
+            $stats[$vid] = $st;
+        }
+        $this->WriteAttributeString('MelStats', json_encode($stats));
+    }
+
+    /** Anzahl verlorener „aus“-Meldungen eines Melders in den letzten 7 Tagen. */
+    private function lostCount(int $vid): int
+    {
+        $cut = strtotime('-7 days', $this->now());
+        return count(array_filter((array)($this->attrMap('MelStats')[$vid]['lost'] ?? []), function ($t) use ($cut) {
+            return (int)$t >= $cut;
+        }));
+    }
+
+    /** Hinweise je Feld zum Verhalten der Melder (Impuls erkannt, Funkqualität) — für Dialog und Liste. */
+    private function melderHints(array $row): array
+    {
+        $out = [];
+        if (($row['Type'] ?? '') !== 'bewegung') {
+            return $out;
+        }
+        $impulse = [];
+        for ($i = 1; $i <= AUTOMATKatalog::SLOTS; $i++) {
+            $vid = (int)($row['bl_mel' . $i] ?? 0);
+            if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid)) {
+                continue;
+            }
+            $n = $this->lostCount($vid);
+            if ($n > 0) {
+                $out['bl_mel' . $i] = '📶 In den letzten 7 Tagen ' . $n . '× „keine Bewegung“ nicht angekommen (Rückfall hat eingegriffen) — Empfang, Batterie oder Standort des Melders prüfen.';
+            }
+            if (empty($row['bl_impuls']) && $this->isImpulseMelder($vid)) {
+                $impulse[] = $this->varLabel($vid);
+            }
+        }
+        if (count($impulse) > 0) {
+            $out['bl_impuls'] = 'ℹ️ ' . implode(', ', $impulse) . ' sendet offenbar nie „aus“ (nur „Bewegung“) — diesen Schalter einschalten, dann beginnt der Nachlauf bei jeder Meldung.';
+        }
+        return $out;
     }
 
     // =====================================================================
@@ -1317,10 +1388,11 @@ class Automat extends IPSModule
         if (count($fieldProblems) > 0) {
             array_splice($el, 2, 0, [['type' => 'Label', 'caption' => '⛔ ' . count($fieldProblems) . ' Feld(er) unten brauchen Aufmerksamkeit (rot markiert).', 'color' => 0xFF0000, 'bold' => true]]);
         }
+        $infoHints = $saved !== null && $saved['Type'] === $type ? $this->melderHints($saved) : [];
         foreach (AUTOMATKatalog::TYPES as $t => $def) {
             $items = [];
             foreach (AUTOMATKatalog::fields($t) as $f) {
-                foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : []) as $e) {
+                foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : [], $t === $type ? $infoHints : []) as $e) {
                     $items[] = $e;
                 }
             }
@@ -1362,11 +1434,15 @@ class Automat extends IPSModule
     }
 
     /** Formular-Elemente eines Katalog-Felds, ggf. mit Hilfe-Knopf (volle Frage als Beschriftung, SUITE.md Feld-Hilfestellung). */
-    private function fieldElements(array $f, array $problems): array
+    private function fieldElements(array $f, array $problems, array $hints): array
     {
         $els = [];
         foreach ($this->fieldInputs($f) as $e) {
             $els[] = $e;
+            if (isset($e['name'], $hints[$e['name']])) {
+                // Hinweis aus dem beobachteten Verhalten (z. B. Impuls-Melder, verlorene Meldungen)
+                $els[] = ['type' => 'Label', 'caption' => $hints[$e['name']], 'bold' => true];
+            }
             if (($e['type'] ?? '') === 'SelectVariable') {
                 // Roter Hinweis direkt unter dem Feld; verschwindet, sobald eine gültige Variable gewählt ist.
                 $msg = $problems[$e['name']] ?? '';
@@ -1700,6 +1776,15 @@ class Automat extends IPSModule
                     $r['Settings'] .= ' · Melder-Rückfall auto ' . AUTOMATKatalog::dur(max($t));
                 }
             }
+            if (($r['Type'] ?? '') === 'bewegung') {
+                $lost = 0;
+                foreach (AUTOMATKatalog::vars($r, 'bl_mel') as $m) {
+                    $lost += $this->lostCount($m);
+                }
+                $hints = $this->melderHints($r);
+                $pre = isset($hints['bl_impuls']) ? 'ℹ️ Impuls-Melder erkannt (✏️) · ' : '';
+                $r['Settings'] = $pre . $r['Settings'] . ($lost > 0 ? ' · 📶 ' . $lost . '× Meldung verloren (7 Tage)' : '');
+            }
             // Sortierschlüssel: Raum → Art → Name bzw. Art → Raum → Name (Spaltenkopf oder „Ordnen nach“).
             $room = mb_strtolower(trim((string)($r['Room'] ?? '')) ?: '~');
             $type = (string)($r['Type'] ?? '');
@@ -1771,6 +1856,9 @@ class Automat extends IPSModule
         $lines = ['🏠 Hausmodus: ' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '')];
         foreach ($rows as $r) {
             $lines[] = (AUTOMATKatalog::TYPES[$r['Type']]['icon'] ?? '❔') . ' ' . $this->rowName($r) . ': ' . ($status[$r['Uid']] ?? '—');
+            foreach ($this->melderHints($r) as $h) {
+                $lines[] = '      ' . $h;
+            }
         }
         return implode("\n", $lines);
     }

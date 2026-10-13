@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.12 (Build 13) — 13.10.2026
+
+- Impuls-Melder werden erkannt: Sendet ein Melder mindestens 10× „Bewegung“ und nie „keine Bewegung“, steht in „Einstellungen“ „ℹ️ Impuls-Melder erkannt“ und im Dialog direkt am Schalter „Nachlauf bei jeder Bewegungsmeldung“ ein Hinweis mit dem Meldernamen.
+- Funkqualität: Jeder Eingriff des Melder-Rückfalls wird je Melder gezählt — „📶 3× Meldung verloren (7 Tage)“ in „Einstellungen“, im Dialog direkt unter dem betroffenen Melder mit Tipp (Empfang, Batterie, Standort), auch in der Übersicht.
+- README: Abschnitt „Melder unterschiedlicher Systeme“.
+
 ## 0.1.11 (Build 12) — 13.10.2026
 
 - Bewegungslicht: Melder-Rückfall für verlorene „keine Bewegung“-Meldungen (z. B. Z-Wave). Automat lernt je Melder, wie lange „Bewegung“ üblicherweise ansteht — zum Start aus dem Archiv der letzten 3 Tage, danach laufend — und wertet einen Melder nach dem Dreifachen des 90-%-Werts (30 s bis 1 h, ohne Daten 10 min) ohne neue Meldung als still. Steht im Protokoll; eine neue Bewegungsmeldung setzt die Zeit zurück. Fester Wert im Dialog möglich (0 = automatisch), gelernter Wert in der Spalte „Einstellungen“. Anlass: Dietmars Z-Wave-Melder (üblich 10 s, einzelne Fälle 8–15 min).

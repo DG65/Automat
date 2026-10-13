@@ -1076,6 +1076,47 @@ check('Zustände entfernter Automatismen vergessen', array_keys(json_decode($m->
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
 check('Ohne Automatismen: Status 104, Timer aus', $m->status === 104 && $m->timers['Tick'] === 0);
+heading('C7. Melderverhalten: Impuls-Melder erkennen, verlorene Meldungen zählen');
+mkinst(1200, 'Sensor Gang');
+mkvar(1201, VARIABLETYPE_BOOLEAN, false, 'Bewegung', 1200, false, '~Motion');
+mkinst(1202, 'Licht Gang');
+mkvar(1203, VARIABLETYPE_BOOLEAN, false, 'Status', 1202, true, '~Switch');
+mkinst(1204, 'Sensor Diele');
+mkvar(1205, VARIABLETYPE_BOOLEAN, false, 'Bewegung', 1204, false, '~Motion');
+$GLOBALS['ARCHIVE'][1201] = [];
+for ($i = 0; $i < 12; $i++) { $GLOBALS['ARCHIVE'][1201][] = ['TimeStamp' => ts('2026-10-12 08:00:00') + $i * 600, 'Value' => true]; }
+$imp = AUTOMATKatalog::defaults('bewegung');
+$imp += ['Name' => 'Ganglicht', 'Room' => 'Gang', 'Uid' => 'agang1'];
+$imp['bl_mel1'] = 1201;
+$imp['bl_mel2'] = 1205;
+$imp['bl_out1'] = 1203;
+$m->props['Automations'] = json_encode([$imp]);
+$m->ApplyChanges();
+$fv = json_decode($m->GetConfigurationForm(), true);
+$lv = $find($fv['elements'], 'Automations')['values'][0] ?? [];
+check('Nur „an“ im Archiv (12×, nie „aus“) → Impuls-Melder erkannt, Hinweis in „Einstellungen“', strpos($lv['Settings'] ?? '', 'ℹ️ Impuls-Melder erkannt') === 0, $lv['Settings'] ?? '');
+$dlgI = json_encode(json_decode($m->UIEditForm('agang1', 'bewegung'), true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+check('Dialog: Hinweis direkt beim Impuls-Schalter mit Meldername', strpos($dlgI, 'Sensor Gang / Bewegung sendet offenbar nie „aus“') !== false);
+// Diele: „aus“ geht verloren → Rückfall greift → wird gezählt
+$GLOBALS['CLOCK'] = ts('2026-10-14 20:00:00');
+fire($m, 1205, true);
+$GLOBALS['CLOCK'] += 601;
+$m->Tick();
+$GLOBALS['CLOCK'] += 200;
+$m->Tick();
+$ms = json_decode($m->attrs['MelStats'], true);
+check('Rückfall-Eingriff für den Diele-Melder gezählt', count($ms[1205]['lost'] ?? []) === 1, json_encode($ms[1205] ?? null));
+$fv = json_decode($m->GetConfigurationForm(), true);
+$lv = $find($fv['elements'], 'Automations')['values'][0] ?? [];
+check('„Einstellungen“ zeigt die verlorene Meldung', strpos($lv['Settings'] ?? '', '📶 1× Meldung verloren (7 Tage)') !== false, $lv['Settings'] ?? '');
+$dlgL = json_encode(json_decode($m->UIEditForm('agang1', 'bewegung'), true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+check('Dialog: Funkhinweis direkt unter dem betroffenen Melder', strpos($dlgL, '📶 In den letzten 7 Tagen 1× „keine Bewegung“ nicht angekommen') !== false);
+check('Übersicht nennt die Hinweise', strpos($m->Overview(), '📶') !== false && strpos($m->Overview(), 'sendet offenbar nie') !== false);
+$GLOBALS['CLOCK'] = strtotime('+8 days', $GLOBALS['CLOCK']);
+$fv = json_decode($m->GetConfigurationForm(), true);
+$lv = $find($fv['elements'], 'Automations')['values'][0] ?? [];
+check('Nach 7 Tagen fällt der Eingriff aus der Anzeige', strpos($lv['Settings'] ?? '', '📶') === false);
+
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
 check('Kein IPS_LogMessage in module.php (Store-Review Punkt 15)', strpos($src, 'IPS_LogMessage') === false);
 check('Keine +86400-Rechnung (Stolperstein 18)', !preg_match('/[+-]\s*86400/', $src . file_get_contents(dirname(__DIR__) . '/Automat/AUTOMATLogik.php')));

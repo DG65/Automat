@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.11-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.12-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.11:** neu gebaut und am Prüfstand (256 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.12:** neu gebaut und am Prüfstand (263 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -57,6 +57,19 @@ gruppiert: aus dem **DG65-Toolkit Raumstruktur**, falls installiert, sonst aus d
 
 Vorschläge stehen in einer sortierbaren Liste (nach Raum oder Funktion geordnet). Angehakte Vorschläge landen erst nach „Angehakte in die Liste übernehmen" in der Liste und arbeitet erst nach
 „Übernehmen". Unpassende Vorschläge lassen sich ausblenden.
+
+## Melder unterschiedlicher Systeme
+
+Automat achtet nicht auf das Funksystem, sondern auf das Verhalten der Melder-Variable — meist ist nichts einzustellen:
+
+| Verhalten | Was Automat tut |
+|---|---|
+| Melder setzt nach einigen Sekunden zurück, „aus“ geht aber gelegentlich verloren (Z-Wave, Zigbee, Funk-Homematic, WLAN) | lernt die übliche Meldedauer je Melder (Archiv der letzten 3 Tage, danach laufend) und wertet ihn nach dem Dreifachen ohne neue Meldung als still; jeder Eingriff wird gezählt („📶 3× Meldung verloren (7 Tage)“) |
+| Präsenzmelder mit langer Belegung (Radar/mmWave, Zigbee mit eigener Belegungszeit) | lernt automatisch eine lange Zeit (bis 1 h) |
+| Melder wiederholt bei Anwesenheit regelmäßig „an“ (z. B. KNX-Präsenzmelder) | jede Wiederholung verlängert |
+| Melder sendet nie „aus“ | wird erkannt („ℹ️ Impuls-Melder erkannt“) — dann im Dialog „Nachlauf bei jeder Bewegungsmeldung“ einschalten |
+
+Häufen sich verlorene Meldungen bei einem Melder, lohnt ein Blick auf Empfang, Batterie oder Standort (bei Z-Wave/Zigbee hilft oft ein Repeater in der Nähe).
 
 ## Einrichten
 

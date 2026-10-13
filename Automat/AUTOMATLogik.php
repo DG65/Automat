@@ -33,7 +33,8 @@ class AUTOMATLogik
     {
         $type = (string)($row['Type'] ?? '');
         // 'end' = Zeitpunkt des nächsten sichtbaren Ereignisses (Licht aus, Absenkung, Meldung) für die Restzeit-Anzeige.
-        $res = ['st' => $st, 'cmd' => [], 'msg' => [], 'log' => null, 'status' => '', 'due' => null, 'end' => null];
+        // 'lost' = Melder, bei denen der Rückfall eingreifen musste („aus“-Meldung verloren) — fürs Funkqualitäts-Protokoll.
+        $res = ['st' => $st, 'cmd' => [], 'msg' => [], 'log' => null, 'status' => '', 'due' => null, 'end' => null, 'lost' => []];
         switch ($type) {
             case 'zeitlicht':
                 return self::zeitlicht($row, $st, $ev, $ctx, $res);
@@ -513,6 +514,7 @@ class AUTOMATLogik
                 if ($now - (int)$st['since'][$m] >= $limit) {
                     $st['act'][$m] = false;
                     unset($st['since'][$m]);
+                    $res['lost'][] = $m;
                     $lost[] = ((string)($ctx['names'][$m] ?? ('#' . $m))) . ' (seit ' . self::fmtDuration(max(60, $limit)) . ')';
                 } else {
                     $t = (int)$st['since'][$m] + $limit;
