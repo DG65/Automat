@@ -1511,7 +1511,7 @@ at('12:00:00');
 $fv = json_decode($m->GetConfigurationForm(), true);
 $caps = array_map(fn($e) => (string)($e['caption'] ?? ''), $fv['elements']);
 check('Eigene Bereiche „🔔 Meldungen“ und „📜 Protokoll und Kachel“, dazu „🪟 Formular: Aufbau“', count(array_filter($caps, fn($c) => strpos($c, '🔔  Meldungen') === 0)) === 1 && count(array_filter($caps, fn($c) => strpos($c, '📜  Protokoll') === 0)) === 1 && count(array_filter($caps, fn($c) => strpos($c, '🪟  Formular: Aufbau') === 0)) === 1);
-$m->props['FormLayout'] = json_encode([['Key' => 'catalog', 'Open' => 'hidden', 'Pos' => 4], ['Key' => 'discover', 'Open' => 'hidden', 'Pos' => 3], ['Key' => 'mode', 'Open' => 'open', 'Pos' => 1], ['Key' => 'doc', 'Open' => 'std', 'Pos' => 2]]);
+$m->props['FormLayout'] = json_encode([['Key' => 'catalog', 'Opened' => true, 'Closed' => false, 'Hidden' => true, 'Pos' => 4], ['Key' => 'discover', 'Hidden' => true, 'Pos' => 3], ['Key' => 'mode', 'Opened' => true, 'Pos' => 1], ['Key' => 'doc', 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => 2]]);
 $fv = json_decode($m->GetConfigurationForm(), true);
 $byCap = [];
 foreach ($fv['elements'] as $e) {
@@ -1527,7 +1527,14 @@ check('Aufbau-Panel nennt die Zahl und die Namen der ausgeblendeten Bereiche', s
 $m->fieldUpdates = [];
 $m->ResetFormLayout();
 $vals = json_decode($m->fieldUpdates[0][2] ?? '[]', true);
-check('Zurücksetzen: alle Bereiche „Standard“ in Grundreihenfolge (nur im offenen Formular)', count($vals) === 7 && array_unique(array_column($vals, 'Open')) === ['std'] && array_column($vals, 'Key')[0] === 'doc');
+check('Zurücksetzen: alle Haken leer, Grundreihenfolge (nur im offenen Formular)', count($vals) === 7 && array_unique(array_merge(array_column($vals, 'Opened'), array_column($vals, 'Closed'), array_column($vals, 'Hidden'))) === [false] && array_column($vals, 'Key')[0] === 'doc');
+$lv = array_column($lay['items'][3]['values'], null, 'Key');
+check('Widerspruch (Aufgeklappt + Ausgeblendet): Ausgeblendet gilt, die Liste zeigt nur diesen Haken', $lv['catalog']['Hidden'] === true && $lv['catalog']['Opened'] === false && $lv['mode']['Opened'] === true && $lv['doc']['Opened'] === false);
+check('Aufbau-Panel selbst bleibt sichtbar', ($lay['visible'] ?? true) === true);
+$m->props['FormLayout'] = json_encode([['Key' => 'catalog', 'Open' => 'hidden', 'Pos' => 4]]);
+$fv = json_decode($m->GetConfigurationForm(), true);
+$catalogEl = array_values(array_filter($fv['elements'], fn($e) => strpos((string)($e['caption'] ?? ''), 'Katalog') !== false))[0] ?? [];
+check('Frühere Speicherung (Auswahl „Open“ aus 0.1.24) wird weiter gelesen', ($catalogEl['visible'] ?? true) === false);
 $m->props['FormLayout'] = '[]';
 
 heading('C10. Wächter: Vergleichswert aus den möglichen Werten der Variable wählen');

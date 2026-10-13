@@ -2776,7 +2776,13 @@ class Automat extends IPSModule
         }
         $out = [];
         foreach (self::LAYOUT_KEYS as $i => $k) {
-            $open = (string)($by[$k]['Open'] ?? 'std');
+            $r = $by[$k] ?? [];
+            if (array_key_exists('Opened', $r) || array_key_exists('Closed', $r) || array_key_exists('Hidden', $r)) {
+                // Kontrollkästchen; bei mehreren Haken gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt (wie Batteriewächter)
+                $open = !empty($r['Hidden']) ? 'hidden' : (!empty($r['Closed']) ? 'closed' : (!empty($r['Opened']) ? 'open' : 'std'));
+            } else {
+                $open = (string)($r['Open'] ?? 'std'); // frühere Auswahlliste (0.1.24)
+            }
             $out[$k] = [
                 'open' => in_array($open, ['open', 'closed', 'hidden'], true) ? $open : 'std',
                 'pos'  => isset($by[$k]['Pos']) ? max(1, min(99, (int)$by[$k]['Pos'])) : $i + 1,
@@ -2803,7 +2809,7 @@ class Automat extends IPSModule
         $hidden = [];
         foreach ($layout as $k => $l) {
             $cap = trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k)));
-            $rows[] = ['Key' => $k, 'Panel' => $cap, 'Open' => $l['open'], 'Pos' => $l['pos']];
+            $rows[] = ['Key' => $k, 'Panel' => $cap, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed', 'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
             if ($l['open'] === 'hidden') {
                 $hidden[] = $cap;
             }
@@ -2812,21 +2818,19 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🪟  Formular: Aufbau' . (count($hidden) > 0 ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
             'items' => [
                 ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen aufgeklappt sind, in welcher Reihenfolge sie stehen und welche du gar nicht sehen willst — z. B. „Katalog“ oder „Entdecken“, wenn alles eingerichtet ist. Symcon merkt sich das Auf- und Zuklappen nicht selbst. Wirkt nach „Übernehmen“ beim nächsten Öffnen.'],
+                ['type' => 'Label', 'caption' => 'Kein Haken heißt Standard (wie das Modul es vorsieht). Sind mehrere Haken gesetzt, gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt. Oben (Wozu, Neu) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
                 ['type' => 'Label', 'caption' => count($hidden) > 0
-                    ? '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen hier auf „Standard“ stellen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.'
-                    : 'ℹ️ „Standard“ heißt: wie das Modul es vorsieht. Oben (Wozu, Neu) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
+                    ? '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.'
+                    : 'ℹ️ Nichts ausgeblendet.'],
                 [
                     'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false, 'values' => $rows,
                     'columns' => [
                         ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
                         ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
-                        ['caption' => 'Beim Öffnen', 'name' => 'Open', 'width' => '180px', 'add' => 'std', 'edit' => ['type' => 'Select', 'options' => [
-                            ['caption' => 'Standard', 'value' => 'std'],
-                            ['caption' => 'Aufgeklappt', 'value' => 'open'],
-                            ['caption' => 'Zugeklappt', 'value' => 'closed'],
-                            ['caption' => '🙈 Ausgeblendet', 'value' => 'hidden'],
-                        ]]],
+                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '140px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
                     ],
                 ],
@@ -2841,7 +2845,7 @@ class Automat extends IPSModule
         $panels = $this->layoutPanels();
         $rows = [];
         foreach (self::LAYOUT_KEYS as $i => $k) {
-            $rows[] = ['Key' => $k, 'Panel' => trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k))), 'Open' => 'std', 'Pos' => $i + 1];
+            $rows[] = ['Key' => $k, 'Panel' => trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k))), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => $i + 1];
         }
         $this->UpdateFormField('FormLayout', 'values', json_encode($rows, JSON_UNESCAPED_UNICODE));
         return 'ℹ️ Alle Bereiche wieder sichtbar und in Standardreihenfolge. Zum Speichern unten „Übernehmen“ klicken.';
