@@ -40,7 +40,10 @@ class Automat extends IPSModule
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     // Je Typ das Feld „Melden“ im Dialog (was gemeldet wird, entscheidet der Nutzer je Automatismus).
-    private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push', 'szene' => 'sz_push'];
+    private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push', 'szene' => 'sz_push',
+        'alarm' => 'al_push', 'rollladen' => 'rl_push', 'standby' => 'sb_push', 'lueften' => 'lf_push'];
+    // Typen, die beim Wechsel des Hausmodus ein eigenes Ereignis (von → nach) bekommen.
+    private const MODE_EVENT_TYPES = ['szene', 'heizung', 'rollladen', 'wecklicht'];
     private const SMTP_GUID = '{375EAF21-35EF-4BC4-83B3-C780FD8BD88A}';
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     // Zeitpunkte der Location Control je Auswahlwert (Idents live geprüft). Die Werte 0–2 bleiben aus 0.1.17 gültig.
@@ -423,10 +426,14 @@ class Automat extends IPSModule
         }
         $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
         foreach ($res['msg'] as [$title, $text]) {
-            $this->message((string)$title, (string)$text, $notify, $row);
+            $this->message((string)$title, (string)$text, $notify, $row, !empty($res['urgent']));
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
+        if (isset($res['mode']) && isset(AUTOMATKatalog::MODES[(int)$res['mode']])) {
+            // Taster setzt den Hausmodus (erst jetzt, nachdem der eigene Zustand gespeichert ist)
+            $this->setMode((int)$res['mode'], 'Taster „' . $this->rowName($row) . '“');
+        }
         if (array_key_exists('self', $res) && $res['self'] !== null) {
             // Ergebnis eines Automatismus, der selbst eine Variable führt (Anwesenheit zusammenfassen)
             $pid = @IPS_GetObjectIDByIdent('p_' . $uid, $this->InstanceID);
@@ -498,7 +505,7 @@ class Automat extends IPSModule
             $wv = (int)($row['wa_var'] ?? 0);
             $ctx['labels'][$wv] = $this->valueLabels($wv);
         }
-        if ($row['Type'] === 'daemmerung') {
+        if ($row['Type'] === 'daemmerung' || $row['Type'] === 'rollladen') {
             $today = date('Y-m-d', $ctx['now']);
             foreach ([-1, 0, 1, 2] as $n) {
                 $d = AUTOMATLogik::addDays($today, $n);
@@ -799,7 +806,7 @@ class Automat extends IPSModule
         $this->SetValue('Hausmodus', $mode);
         $this->addLog('', '🏠 Hausmodus „' . AUTOMATKatalog::MODES[$mode] . '“ (' . $source . ').');
         foreach ($this->rows() as $row) {
-            $this->process($row, $row['Type'] === 'szene' ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
+            $this->process($row, in_array($row['Type'], self::MODE_EVENT_TYPES, true) ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
         }
     }
 
@@ -946,13 +953,14 @@ class Automat extends IPSModule
      * über die Meldewege, die er gewählt hat (sonst die Standard-Wege). Wege mit „Ruhezeit beachten“ halten
      * die Meldung in der Ruhezeit zurück; die übrigen stellen sofort zu.
      */
-    private function message(string $title, string $text, bool $notify, ?array $row): void
+    private function message(string $title, string $text, bool $notify, ?array $row, bool $urgent = false): void
     {
         $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — ' . $title . ': ' . $text);
         if (!$notify) {
             return;
         }
-        $quiet = $this->inQuiet($this->now());
+        // Alarm (Wasser/Rauch) wartet nie auf das Ende der Ruhezeit.
+        $quiet = !$urgent && $this->inQuiet($this->now());
         $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
         foreach ($this->waysFor($row) as $w) {
             if ($quiet && $w['quiet']) {
@@ -1555,8 +1563,8 @@ class Automat extends IPSModule
                     continue;
                 }
                 foreach (array_intersect($outs, AUTOMATKatalog::variables($r)['out']) as $vid) {
-                    if ($row['Type'] === 'szene' || ($r['Type'] ?? '') === 'szene') {
-                        $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“ schaltet „' . $this->varLabel($vid) . '“ ebenfalls — gewollt: die Szene schaltet nur beim Wechsel des Hausmodus, der andere arbeitet danach normal weiter (ohne Handpause).'];
+                    if (in_array($row['Type'], ['szene', 'alarm'], true) || in_array($r['Type'] ?? '', ['szene', 'alarm'], true)) {
+                        $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“ schaltet „' . $this->varLabel($vid) . '“ ebenfalls — gewollt: Szene bzw. Alarm schalten nur bei ihrem Anlass, der andere arbeitet danach normal weiter (ohne Handpause).'];
                         continue;
                     }
                     $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“' . ($iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : ' (diese Instanz)') . ' schaltet „' . $this->varLabel($vid) . '“ ebenfalls.'];
@@ -1767,9 +1775,9 @@ class Automat extends IPSModule
             $bad = $t === $type && count($fieldProblems) > 0;
             $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
         }
-        $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):', 'visible' => $type !== 'szene']];
+        $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):', 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)]];
         foreach (AUTOMATKatalog::MODES as $m => $label) {
-            $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true, 'visible' => $type !== 'szene'];
+            $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true, 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)];
         }
         $modeItems[] = ['type' => 'SelectCondition', 'name' => 'Cond', 'caption' => 'Zusätzliche Bedingung (optional, z. B. nur werktags oder nur wenn ein Schalter an ist)', 'multi' => true];
         $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_when', 'caption' => '🕒 Wann ist der Automatismus aktiv?', 'expanded' => false, 'items' => $modeItems];
@@ -1988,9 +1996,10 @@ class Automat extends IPSModule
         }
         $this->UpdateFormField('TypeLabel', 'value', AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : '');
         // Bei der Szene ist der Hausmodus der Auslöser — die allgemeinen Modus-Häkchen wären dort verwirrend.
-        $this->UpdateFormField('ModesLabel', 'visible', $type !== 'szene');
+        $modeFilter = !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true);
+        $this->UpdateFormField('ModesLabel', 'visible', $modeFilter);
         foreach (AUTOMATKatalog::MODES as $m => $_) {
-            $this->UpdateFormField('m' . $m, 'visible', $type !== 'szene');
+            $this->UpdateFormField('m' . $m, 'visible', $modeFilter);
         }
         $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.');
     }
@@ -2057,12 +2066,12 @@ class Automat extends IPSModule
         $problems = AUTOMATKatalog::problems($row, function (int $vid) {
             return IPS_VariableExists($vid);
         });
-        foreach (['🔔', '⚠️', '❔', '⛔'] as $p) {
+        foreach (['🔔', '⚠️', '❔', '⛔', '🚨', '💨 Bitte'] as $p) {
             if (count($problems) > 0 || strpos($status, $p) === 0) {
                 return 'warn';
             }
         }
-        foreach (['💡', '🔆', '▶️', '⏳', '🪟', '🚪 Alle weg'] as $p) {
+        foreach (['💡', '🔆', '▶️', '⏳', '🪟', '🚪 Alle weg', '🌅 Wird', '🌙 Wird', '🌡 Abgesenkt', '💤 Standby'] as $p) {
             if (strpos($status, $p) === 0) {
                 return 'run';
             }

@@ -838,6 +838,203 @@ check('Kein Modus angekreuzt: als unvollständig gemeldet', count(array_filter(A
 check('Szene: 16 Plätze für Geräte', AUTOMATKatalog::slots('sz_out') === 16 && AUTOMATKatalog::variables($sz)['out'] === [500, 501, 502]);
 at('12:00:00');
 
+heading('A8d. Wasser-/Rauchmelder-Reaktion');
+$al = AUTOMATKatalog::defaults('alarm') + ['Uid' => 'aalm01', 'Name' => 'Wasseralarm'];
+$al['al_mel1'] = 600;
+$al['al_licht1'] = 610;
+$al['al_hoch1'] = 620;
+$al['al_aus1'] = 630;
+$nm = [600 => 'Wassermelder Keller', 610 => 'Licht Keller', 620 => 'Rollladen Küche', 630 => 'Wasserventil'];
+$st = [];
+at('03:00:00');
+$r = step($al, $st, ['k' => 'trigger', 'vid' => 600, 'v' => true], ['val' => [600 => true, 610 => false, 620 => 100, 630 => true], 'dim' => [610 => 100], 'names' => $nm, 'paused' => true, 'mode' => 2]);
+check('Alarm: Licht voll, Rollladen auf, Ventil zu — auch bei Pause und Nacht', cmdMap($r) === ['610=100', '620=0.0', '630=false'], implode(',', cmdMap($r)));
+check('Alarm: dringende Meldung mit Melder und Maßnahmen', !empty($r['urgent']) && count($r['msg']) === 1 && strpos($r['msg'][0][1], 'ALARM: Wassermelder Keller') !== false && strpos($r['msg'][0][1], 'Wasserventil') !== false);
+at('03:05:00');
+$r = step($al, $st, ['k' => 'tick'], ['val' => [600 => true], 'names' => $nm]);
+check('Alarm: noch keine Erinnerung nach 5 min', $r['msg'] === [] && $r['due'] === ts('2026-10-13 03:10:00'));
+at('03:10:00');
+$r = step($al, $st, ['k' => 'tick'], ['val' => [600 => true], 'names' => $nm]);
+check('Alarm: Erinnerung nach 10 min, ohne erneut zu schalten', count($r['msg']) === 1 && strpos($r['msg'][0][0], 'Erinnerung') !== false && $r['cmd'] === []);
+$r = step($al, $st, ['k' => 'trigger', 'vid' => 600, 'v' => false], ['val' => [600 => false], 'names' => $nm]);
+check('Entwarnung gemeldet, nichts zurückgeschaltet (Ventil bleibt zu)', count($r['msg']) === 1 && strpos($r['msg'][0][0], '✅') === 0 && $r['cmd'] === []);
+$st = [];
+$r = step($al, $st, ['k' => 'trigger', 'vid' => 600, 'v' => true], ['val' => [600 => true], 'locked' => true]);
+check('Gesperrt: reagiert nicht', $r['cmd'] === [] && strpos($r['status'], 'Gesperrt') !== false);
+
+heading('A8e. Rollladen nach Zeit/Sonne');
+$rl = AUTOMATKatalog::defaults('rollladen') + ['Uid' => 'arol01', 'Name' => 'Rollläden'];
+$rl['rl_out1'] = 700;
+$rl['rl_tuer1'] = 710;
+$sunR = ['2026-10-13' => ['sr' => ts('2026-10-13 07:40'), 'ss' => ts('2026-10-13 18:30')], '2026-10-17' => ['sr' => ts('2026-10-17 07:45'), 'ss' => ts('2026-10-17 18:22')]];
+$st = [];
+at('05:00:00');
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 100, 710 => false], 'sun' => $sunR]);
+check('Erster Lauf vor Sonnenaufgang: nichts, wartet', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 07:40'));
+at('07:40:00');
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 100, 710 => false], 'sun' => $sunR]);
+check('Sonnenaufgang (nach „frühestens 6:30“): auf', cmdMap($r) === ['700=0.0']);
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => false], 'sun' => $sunR]);
+check('Nur einmal am Tag öffnen', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 18:30'));
+at('18:30:00');
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => true], 'sun' => $sunR]);
+check('Sonnenuntergang, Tür offen: Aussperrschutz hält auf', $r['cmd'] === [] && $st['wait'] === true && strpos((string)$r['log'], 'Aussperrschutz') !== false);
+at('18:45:00');
+$r = step($rl, $st, ['k' => 'trigger', 'vid' => 710, 'v' => false], ['val' => [700 => 0, 710 => false], 'sun' => $sunR]);
+check('Tür zu: jetzt schließen', cmdMap($r) === ['700=100.0'] && strpos((string)$r['log'], 'Tür jetzt zu') !== false);
+$st = [];
+at('12:00:00');
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 50, 710 => false], 'sun' => $sunR]);
+check('Mittags eingerichtet: fährt nicht sofort hoch', $r['cmd'] === []);
+$GLOBALS['CLOCK'] = ts('2026-10-17 07:50:00'); // Samstag
+$st = ['up' => '', 'down' => '', 'wait' => false];
+$r = step($rl, $st, ['k' => 'tick'], ['val' => [700 => 100], 'sun' => $sunR]);
+check('Wochenende: trotz Sonnenaufgang 7:45 erst ab 8:00', $r['cmd'] === [] && $r['due'] === ts('2026-10-17 08:00'));
+$rlL = $rl;
+$rlL['rl_downref'] = 2;
+$rlL['rl_lux'] = 720;
+$st = ['up' => '2026-10-13', 'down' => '', 'wait' => false];
+at('08:00:00');
+$r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => false, 720 => 3.0], 'sun' => $sunR]);
+check('Dunkelheit am Morgen schließt nicht', $r['cmd'] === []);
+at('17:50:00');
+$r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => false, 720 => 8.0], 'sun' => $sunR]);
+check('Dunkel am Abend (8 lx < 20): zu', cmdMap($r) === ['700=100.0']);
+
+heading('A8f. Standby-Abschaltung');
+$sb = AUTOMATKatalog::defaults('standby') + ['Uid' => 'astb01', 'Name' => 'Fernseher'];
+$sb['sb_power'] = 800;
+$sb['sb_out'] = 801;
+$sb['sb_push'] = true;
+$st = [];
+at('20:00:00');
+$r = step($sb, $st, ['k' => 'trigger', 'vid' => 800, 'v' => 95.0], ['val' => [800 => 95.0, 801 => true]]);
+check('In Betrieb: nichts', $r['cmd'] === [] && strpos($r['status'], 'In Betrieb') !== false);
+$r = step($sb, $st, ['k' => 'trigger', 'vid' => 800, 'v' => 1.2], ['val' => [800 => 1.2, 801 => true]]);
+check('Standby: Zeit läuft (30 min)', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 20:30:00'));
+at('20:10:00');
+step($sb, $st, ['k' => 'trigger', 'vid' => 800, 'v' => 40.0], ['val' => [800 => 40.0, 801 => true]]);
+$r = step($sb, $st, ['k' => 'trigger', 'vid' => 800, 'v' => 1.0], ['val' => [800 => 1.0, 801 => true]]);
+check('Zwischendurch wieder an: Zeit beginnt neu', $r['due'] === ts('2026-10-13 20:40:00'));
+at('20:40:00');
+$r = step($sb, $st, ['k' => 'tick'], ['val' => [800 => 1.0, 801 => true]]);
+check('Nach 30 min Standby: aus, mit Meldung', cmdMap($r) === ['801=false'] && count($r['msg']) === 1);
+
+heading('A8g. Lüftungserinnerung');
+$lf = AUTOMATKatalog::defaults('lueften') + ['Uid' => 'alft01', 'Name' => 'Bad lüften'];
+$lf['lf_var'] = 900;
+$lf['lf_kon1'] = 901;
+$nm = [900 => 'Feuchte Bad', 901 => 'Badfenster'];
+$st = [];
+at('07:00:00');
+$r = step($lf, $st, ['k' => 'trigger', 'vid' => 900, 'v' => 72.0], ['val' => [900 => 72.0, 901 => false], 'names' => $nm]);
+check('Zu feucht: erst nach 10 min melden', $r['msg'] === [] && $r['due'] === ts('2026-10-13 07:10:00'));
+at('07:10:00');
+$r = step($lf, $st, ['k' => 'tick'], ['val' => [900 => 71.0, 901 => false], 'names' => $nm]);
+check('Nach 10 min: „Bitte lüften“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Bitte lüften: 71') !== false);
+at('07:15:00');
+$r = step($lf, $st, ['k' => 'trigger', 'vid' => 901, 'v' => true], ['val' => [900 => 66.0, 901 => true], 'names' => $nm]);
+check('Fenster auf: Status „wird gelüftet“, keine Erinnerung', $r['msg'] === [] && strpos($r['status'], 'Wird gelüftet') !== false);
+at('07:25:00');
+$r = step($lf, $st, ['k' => 'trigger', 'vid' => 900, 'v' => 52.0], ['val' => [900 => 52.0, 901 => true], 'names' => $nm]);
+check('Luft gut und Fenster offen: „kann wieder zu“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Badfenster kann wieder zu') !== false);
+$st = [];
+at('08:00:00');
+step($lf, $st, ['k' => 'trigger', 'vid' => 900, 'v' => 70.0], ['val' => [900 => 70.0, 901 => false], 'names' => $nm]);
+at('08:05:00');
+step($lf, $st, ['k' => 'trigger', 'vid' => 900, 'v' => 60.0], ['val' => [900 => 60.0, 901 => false], 'names' => $nm]);
+at('08:11:00');
+$r = step($lf, $st, ['k' => 'tick'], ['val' => [900 => 60.0, 901 => false], 'names' => $nm]);
+check('Kurz zu feucht (Dusche vorbei vor Ablauf): keine Erinnerung', $r['msg'] === [] && $st['ph'] === 'ok');
+
+heading('A8h. Heizung nach Hausmodus');
+$hz = AUTOMATKatalog::defaults('heizung') + ['Uid' => 'ahzg01', 'Name' => 'Heizung'];
+$hz['hz_soll1'] = 950;
+$hz['hz_soll2'] = 951;
+$nm = [950 => 'Wohnzimmer', 951 => 'Bad'];
+$st = [];
+$r = step($hz, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [950 => 21.5, 951 => 23.0], 'names' => $nm]);
+check('„Abwesend“: beide auf 17 °C, alte Werte gemerkt', cmdMap($r) === ['950=17.0', '951=17.0'] && $st['saved'] === ['950' => 21.5, '951' => 23.0]);
+$r = step($hz, $st, ['k' => 'tick'], ['mode' => 3, 'val' => [950 => 17.0, 951 => 17.0], 'names' => $nm]);
+check('Bleibt abgesenkt ohne neue Befehle', $r['cmd'] === [] && strpos($r['status'], 'Abgesenkt auf 17') !== false);
+$r = step($hz, $st, ['k' => 'output', 'vid' => 951, 'v' => 20.0], ['mode' => 3, 'val' => [950 => 17.0, 951 => 20.0], 'names' => $nm]);
+check('Bad von Hand auf 20 °C: bleibt so', $r['cmd'] === [] && strpos((string)$r['log'], 'Bad von Hand') !== false);
+$r = step($hz, $st, ['k' => 'mode', 'from' => 3, 'to' => 0], ['mode' => 0, 'val' => [950 => 17.0, 951 => 20.0], 'names' => $nm]);
+check('Zurück auf „Tag“: nur Wohnzimmer auf 21,5 °C zurück, Bad bleibt 20', cmdMap($r) === ['950=21.5'] && $st['saved'] === []);
+$r = step($hz, $st, ['k' => 'mode', 'from' => 0, 'to' => 2], ['mode' => 2, 'val' => [950 => 21.5, 951 => 20.0], 'names' => $nm]);
+check('„Nacht“ nicht angekreuzt: nichts', $r['cmd'] === []);
+$r = step($hz, $st, ['k' => 'mode', 'from' => 2, 'to' => 4], ['mode' => 4, 'val' => [950 => 21.5, 951 => 20.0], 'names' => $nm]);
+check('„Urlaub“: 15 °C', cmdMap($r) === ['950=15.0', '951=15.0']);
+
+heading('A8i. Taster-Zuordnung');
+$tg = AUTOMATKatalog::defaults('taster') + ['Uid' => 'atst01', 'Name' => 'Taster Flur'];
+$tg['tg_in'] = 960;
+$tg['tg_kziel'] = 961;
+$tg['tg_dakt'] = 5;
+$tg['tg_dzwert'] = 2.0;
+$tg['tg_lakt'] = 3;
+$tg['tg_lziel'] = 962;
+$nm = [961 => 'Flurlicht', 962 => 'Alles'];
+$st = [];
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => 'single'], ['val' => [960 => 'single', 961 => false], 'names' => $nm]);
+check('„single“ = kurz: Flurlicht umschalten (an)', cmdMap($r) === ['961=true'] && strpos($r['status'], 'kurz → Flurlicht an') !== false);
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => 1], ['val' => [960 => 1, 961 => true], 'names' => $nm]);
+check('Wert 1 = kurz: wieder aus', cmdMap($r) === ['961=false']);
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => 'DOUBLE'], ['val' => [], 'names' => $nm]);
+check('„double“ = doppelt: Hausmodus „Nacht“', ($r['mode'] ?? null) === 2 && $r['cmd'] === []);
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => 'hold'], ['val' => [962 => true], 'names' => $nm]);
+check('„hold“ = lang: ausschalten', cmdMap($r) === ['962=false']);
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => ''], ['val' => []]);
+check('Leerer Wert (Rücksetzen nach dem Druck): nichts', $r['cmd'] === [] && $r['log'] === null);
+$r = step($tg, $st, ['k' => 'trigger', 'vid' => 960, 'v' => 'triple'], ['val' => []]);
+check('Unbekannter Wert: Hinweis im Protokoll', strpos((string)$r['log'], 'Unbekannter Tasterwert „triple“') !== false);
+$tgB = AUTOMATKatalog::defaults('taster');
+$tgB['tg_in'] = 960;
+$tgB['tg_kziel'] = 961;
+$st = [];
+$r = step($tgB, $st, ['k' => 'trigger', 'vid' => 960, 'v' => true], ['val' => [961 => false]]);
+check('Einfacher Schalter (wahr) zählt als kurz', cmdMap($r) === ['961=true']);
+check('Taster ohne Ziel für „umschalten“: unvollständig', count(AUTOMATKatalog::problems(AUTOMATKatalog::defaults('taster') + ['tg_in' => 960], fn($v) => true)) >= 1);
+
+heading('A8j. Aufwach-/Einschlaflicht');
+$wl = AUTOMATKatalog::defaults('wecklicht') + ['Uid' => 'awlc01', 'Name' => 'Aufwachen'];
+$wl['wl_out1'] = 970;
+$st = [];
+at('06:00:00');
+$r = step($wl, $st, ['k' => 'tick'], ['val' => [970 => 0], 'dim' => [970 => 100]]);
+check('Vor dem Start: wartet bis 6:10 (6:30 − 20 min)', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 06:10:00'));
+at('06:10:00');
+$r = step($wl, $st, ['k' => 'tick'], ['val' => [970 => 0], 'dim' => [970 => 100]]);
+check('Start: 1 %', cmdMap($r) === ['970=1'] && $st['ph'] === 'ramp');
+at('06:20:00');
+$r = step($wl, $st, ['k' => 'tick'], ['val' => [970 => 1], 'dim' => [970 => 100]]);
+check('Halbzeit: etwa 40 %', cmdMap($r) === ['970=41'], implode(',', cmdMap($r)));
+at('06:30:00');
+$r = step($wl, $st, ['k' => 'tick'], ['val' => [970 => 41], 'dim' => [970 => 100]]);
+check('Weckzeit: 80 %, fertig', cmdMap($r) === ['970=80'] && $st['ph'] === 'idle');
+$st = [];
+at('06:15:00');
+step($wl, $st, ['k' => 'tick'], ['val' => [970 => 0], 'dim' => [970 => 100]]);
+$r = step($wl, $st, ['k' => 'output', 'vid' => 970, 'v' => 0], ['val' => [970 => 0], 'dim' => [970 => 100]]);
+check('Von Hand verstellt: Rampe endet', $st['ph'] === 'idle' && strpos((string)$r['log'], 'Rampe beendet') !== false);
+$GLOBALS['CLOCK'] = ts('2026-10-17 06:15:00');
+$st = [];
+$r = step($wl, $st, ['k' => 'tick'], ['val' => [970 => 0], 'dim' => [970 => 100]]);
+check('Wochenende (nicht angekreuzt): nichts', $r['cmd'] === []);
+$wlE = $wl;
+$wlE['wl_richtung'] = 1;
+$wlE['wl_start'] = 2;
+$wlE['wl_dauer'] = 10;
+$st = [];
+at('22:00:00');
+$r = step($wlE, $st, ['k' => 'mode', 'from' => 1, 'to' => 2], ['mode' => 2, 'val' => [970 => 60], 'dim' => [970 => 100]]);
+check('Einschlafen bei „Nacht“: startet beim aktuellen Wert', $st['ph'] === 'ramp' && $st['from'] === 60);
+at('22:10:00');
+$r = step($wlE, $st, ['k' => 'tick'], ['mode' => 2, 'val' => [970 => 30], 'dim' => [970 => 100]]);
+check('Nach 10 min: aus', cmdMap($r) === ['970=0'] && $st['ph'] === 'idle');
+check('Weckzeit aus Variable: Zeitstempel und „HH:MM“', AUTOMATLogik::wakeTime(ts('2026-10-20 05:45'), '2026-10-13') === ts('2026-10-13 05:45') && AUTOMATLogik::wakeTime('6:05', '2026-10-13') === ts('2026-10-13 06:05') && AUTOMATLogik::wakeTime('', '2026-10-13') === null);
+at('12:00:00');
+
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
 AUTOMATKatalog::$minId = 10000;
 $bad = AUTOMATKatalog::defaults('bewegung');
@@ -884,6 +1081,16 @@ $cases = [
     ['', ['type' => 0, 'name' => 'Zu Hause', 'inst' => 'Model Y', 'ident' => 'stat_at_home', 'module' => 'Tessie']],
     ['', ['type' => 0, 'name' => 'Geplante Anwesenheit', 'inst' => 'Kalender', 'ident' => 'PlannedPresence', 'module' => 'iCal Calendar Reader']],
     ['motion', ['type' => 0, 'profile' => '~Presence', 'name' => 'Belegung', 'inst' => 'Bad Anwesenheitssensor', 'ident' => 'OccupancySensing_Occupancy']],
+    ['alarm', ['type' => 0, 'name' => 'Zustand', 'inst' => 'Wasserleck Küche', 'ident' => 'BooleanState_State']],
+    ['alarm', ['type' => 0, 'profile' => '~Alert', 'name' => 'Alarm', 'inst' => 'Rauchmelder Flur']],
+    ['', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Warmwasser-Temperatur', 'inst' => 'HeishaMon']],
+    ['shutter', ['type' => 1, 'action' => true, 'profile' => '~ShutterPosition.100', 'name' => 'Position', 'inst' => 'Rollladen Wohnzimmer']],
+    ['air', ['type' => 1, 'profile' => '~Humidity', 'name' => 'Luftfeuchtigkeit', 'inst' => 'Bad Multisensor']],
+    ['air', ['type' => 1, 'suffix' => 'ppm', 'name' => 'CO2', 'inst' => 'Luftqualität Büro']],
+    ['', ['type' => 1, 'profile' => '~Humidity', 'name' => 'Bodenfeuchte Rasen', 'inst' => 'Wetterstation']],
+    ['', ['type' => 2, 'profile' => 'OpenWeatherMap.Humidity', 'name' => 'Luftfeuchtigkeit #34', 'inst' => 'Wetter-Prognose']],
+    ['button', ['type' => 3, 'name' => 'action', 'inst' => 'Taster Flur', 'ident' => 'action']],
+    ['button', ['type' => 1, 'name' => 'Central Scene', 'inst' => 'Wandschalter Küche']],
 ];
 foreach ($cases as [$want, $a]) {
     $got = AUTOMATErkennung::role($it($a));
@@ -1783,7 +1990,7 @@ $walkM($dlgS);
 check('Dialog der Szene: allgemeine Modus-Häkchen ausgeblendet', $hiddenModes);
 check('Schalter heißt „Aktiv“ (Dialog, Listenspalte, Zustand „Nicht aktiv“)', strpos(json_encode($dlgS, JSON_UNESCAPED_UNICODE), '"name":"Enabled","caption":"Aktiv"') !== false && strpos($src0 = file_get_contents(dirname(__DIR__) . '/Automat/module.php'), "['caption' => 'Aktiv', 'name' => 'Enabled'") !== false && strpos($src0, "'⚫ Nicht aktiv'") !== false && strpos($src0, "'Eingeschaltet'") === false);
 $cS = json_encode(json_decode($m->UIEditForm('aszn02', 'szene'), true), JSON_UNESCAPED_UNICODE);
-check('Doppelregelung mit dem Bewegungslicht nur als ℹ️ (gewollt)', strpos($cS, 'gewollt: die Szene schaltet nur beim Wechsel') !== false);
+check('Doppelregelung mit dem Bewegungslicht nur als ℹ️ (gewollt)', strpos($cS, 'gewollt: Szene bzw. Alarm schalten nur bei ihrem Anlass') !== false);
 $m->props['Automations'] = json_encode([$blr]);
 $m->ApplyChanges();
 $m->Discover();
@@ -1791,6 +1998,53 @@ $sugS = array_values(array_filter(json_decode($m->attrs['Suggestions'], true), f
 check('Entdecken schlägt „Zentral-Aus nach Hausmodus“ mit den gefundenen Lichtern vor', count($sugS) === 1 && count(AUTOMATKatalog::vars($sugS[0]['row'], 'sz_out')) >= 2);
 $m->props['Automations'] = '[]';
 $m->props['cfg_ModeAuto'] = true;
+$m->ApplyChanges();
+
+heading('C13. Neue Typen im Modul: Hausmodus-Ereignis, dringende Meldung, Taster setzt Modus');
+mkinst(1900, 'Thermostat Wohnzimmer');
+mkvar(1901, VARIABLETYPE_FLOAT, 21.5, 'Sollwert', 1900, true, '~Temperature.Room');
+mkinst(1910, 'Wasserleck Keller');
+mkvar(1911, VARIABLETYPE_BOOLEAN, false, 'Zustand', 1910, false, '');
+mkinst(1920, 'Taster Flur');
+mkvar(1921, VARIABLETYPE_STRING, '', 'action', 1920, false, '', [], 'action');
+$hzr = AUTOMATKatalog::defaults('heizung') + ['Uid' => 'ahzg02', 'Name' => 'Heizung', 'Enabled' => true];
+$hzr['hz_soll1'] = 1901;
+$alr = AUTOMATKatalog::defaults('alarm') + ['Uid' => 'aalm02', 'Name' => 'Wasseralarm', 'Enabled' => true];
+$alr['al_mel1'] = 1911;
+$tgr = AUTOMATKatalog::defaults('taster') + ['Uid' => 'atst02', 'Name' => 'Taster', 'Enabled' => true];
+$tgr['tg_in'] = 1921;
+$tgr['tg_kakt'] = 5;
+$tgr['tg_kzwert'] = 3.0;
+$m->props['Automations'] = json_encode([$hzr, $alr, $tgr]);
+$m->props['cfg_ModeAuto'] = false;
+$m->props['cfg_Ways'] = json_encode([['Id' => 'kachel', 'Name' => 'Kachel', 'Typ' => 'push', 'Target' => 13000, 'To' => '', 'Std' => true, 'Quiet' => true]]);
+$m->props['cfg_QuietEnabled'] = true;
+$m->props['cfg_QuietFrom'] = 22;
+$m->props['cfg_QuietTo'] = 7;
+at('12:00:00');
+$m->ApplyChanges();
+$m->RequestAction('Hausmodus', 0);
+fire($m, 1921, 'single');
+check('Taster setzt Hausmodus „Abwesend“', GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 3);
+check('… und die Heizung bekommt den Wechsel: 17 °C', GetValue(1901) === 17.0);
+fire($m, 1901, 17.0); // Echo der Absenkung
+$m->RequestAction('Hausmodus', 0);
+check('Zurück auf „Tag“: Sollwert wieder 21,5 °C', GetValue(1901) === 21.5);
+$m->RequestAction('Pause', true);
+$GLOBALS['PUSH'] = [];
+at('23:30:00');
+fire($m, 1911, true);
+check('Alarm in Ruhezeit und Pause: sofort zugestellt', count($GLOBALS['PUSH']) === 1 && strpos($GLOBALS['PUSH'][0][2], 'ALARM') !== false && $m->attrs['Deferred'] === '[]');
+$m->RequestAction('Pause', false);
+$dlgA2 = json_decode($m->UIEditForm('aalm02', 'alarm'), true);
+$hiddenModes = true;
+$walkM($dlgA2);
+check('Dialog Alarm: allgemeine Modus-Häkchen ausgeblendet', $hiddenModes);
+$m->props['cfg_QuietEnabled'] = false;
+$m->props['cfg_Ways'] = '[]';
+$m->props['Automations'] = '[]';
+$m->props['cfg_ModeAuto'] = true;
+at('12:00:00');
 $m->ApplyChanges();
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

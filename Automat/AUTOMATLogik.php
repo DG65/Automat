@@ -52,6 +52,20 @@ class AUTOMATLogik
                 return self::anwesenheit($row, $st, $ev, $ctx, $res);
             case 'szene':
                 return self::szene($row, $st, $ev, $ctx, $res);
+            case 'alarm':
+                return self::alarm($row, $st, $ev, $ctx, $res);
+            case 'rollladen':
+                return self::rollladen($row, $st, $ev, $ctx, $res);
+            case 'standby':
+                return self::standby($row, $st, $ev, $ctx, $res);
+            case 'lueften':
+                return self::lueften($row, $st, $ev, $ctx, $res);
+            case 'heizung':
+                return self::heizung($row, $st, $ev, $ctx, $res);
+            case 'taster':
+                return self::taster($row, $st, $ev, $ctx, $res);
+            case 'wecklicht':
+                return self::wecklicht($row, $st, $ev, $ctx, $res);
         }
         $res['status'] = '❔ Unbekannter Typ';
         return $res;
@@ -1255,6 +1269,615 @@ class AUTOMATLogik
             return ['day' => !$st['day'], 'cand' => 0];
         }
         return ['day' => (bool)$st['day'], 'cand' => $cand];
+    }
+
+    // ------------------------------------------------------------------
+    // Gemeinsam für die Typen ab 0.1.31
+    // ------------------------------------------------------------------
+
+    /** Namen der Variablen, deren Wert „aktiv“ ist (bei $invert umgekehrt). Fehlende Werte zählen nicht. */
+    private static function activeOf(array $vids, array $ctx, bool $invert): array
+    {
+        $out = [];
+        foreach ($vids as $vid) {
+            if (!array_key_exists($vid, $ctx['val'] ?? [])) {
+                continue;
+            }
+            if (self::isTrue($ctx['val'][$vid]) !== $invert) {
+                $out[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
+            }
+        }
+        return $out;
+    }
+
+    private static function nameOf(int $vid, array $ctx): string
+    {
+        return (string)($ctx['names'][$vid] ?? ('#' . $vid));
+    }
+
+    // ------------------------------------------------------------------
+    // Wasser-/Rauchmelder-Reaktion
+    // ------------------------------------------------------------------
+
+    /**
+     * Sicherheitsfunktion: Pause und Hausmodus halten sie NICHT auf (nur die ausdrückliche Sperre).
+     * Meldungen gehen auch in der Ruhezeit sofort raus ($res['urgent']). Nach dem Alarm wird nichts
+     * zurückgeschaltet — ein geschlossenes Ventil öffnet nur der Mensch.
+     */
+    private static function alarm(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $res['urgent'] = true;
+        $st += ['ph' => 'ok', 'since' => 0, 'last' => 0, 'who' => []];
+        $name = trim((string)($row['Name'] ?? '')) ?: 'Alarm';
+        if (!empty($ctx['locked'])) {
+            $res['st'] = $st;
+            $res['status'] = '⏸ Gesperrt — reagiert nicht auf Alarm';
+            return $res;
+        }
+        $who = self::activeOf(AUTOMATKatalog::vars($row, 'al_mel'), $ctx, !empty($row['al_invert']));
+        $wdh = max(0, (int)($row['al_wdh'] ?? 10)) * 60;
+        if (count($who) > 0 && $st['ph'] === 'ok') {
+            $st['ph'] = 'alarm';
+            $st['since'] = $now;
+            $st['last'] = $now;
+            $did = [];
+            foreach (AUTOMATKatalog::vars($row, 'al_licht') as $vid) {
+                $res['cmd'][] = [$vid, self::onValue($vid, 100, $ctx)];
+                $did['Licht an'][] = self::nameOf($vid, $ctx);
+            }
+            foreach (AUTOMATKatalog::vars($row, 'al_hoch') as $vid) {
+                $res['cmd'][] = [$vid, (float)($row['al_hochwert'] ?? 0)];
+                $did['Rollladen auf'][] = self::nameOf($vid, $ctx);
+            }
+            foreach (AUTOMATKatalog::vars($row, 'al_aus') as $vid) {
+                $res['cmd'][] = [$vid, self::offValue($vid, $ctx)];
+                $did['aus'][] = self::nameOf($vid, $ctx);
+            }
+            $what = [];
+            foreach ($did as $k => $l) {
+                $what[] = $k . ': ' . implode(', ', $l);
+            }
+            $res['log'] = '🚨 Alarm von ' . implode(', ', $who) . ($what ? ' — ' . implode('; ', $what) : '') . '.';
+            if (!empty($row['al_push'])) {
+                $res['msg'][] = ['🚨 ' . $name, 'ALARM: ' . implode(', ', $who) . ' (' . date('H:i', $now) . ' Uhr)' . ($what ? '. ' . implode('; ', $what) : '') . '.'];
+            }
+        } elseif (count($who) > 0) {
+            if ($wdh > 0 && $now >= (int)$st['last'] + $wdh) {
+                $st['last'] = $now;
+                if (!empty($row['al_push'])) {
+                    $res['msg'][] = ['🚨 ' . $name . ' (Erinnerung)', 'Alarm besteht weiter seit ' . date('H:i', (int)$st['since']) . ' Uhr: ' . implode(', ', $who) . '.'];
+                }
+            }
+            if ($wdh > 0) {
+                $res['due'] = (int)$st['last'] + $wdh;
+            }
+        } elseif ($st['ph'] === 'alarm') {
+            $st['ph'] = 'ok';
+            $res['log'] = '✅ Entwarnung — kein Melder meldet mehr Alarm. Geschaltetes bleibt so (bitte selbst zurückstellen).';
+            if (!empty($row['al_ende']) && !empty($row['al_push'])) {
+                $res['msg'][] = ['✅ ' . $name, 'Entwarnung: kein Melder meldet mehr Alarm (' . date('H:i', $now) . ' Uhr). Ventile und Geräte bitte selbst wieder einschalten.'];
+            }
+        }
+        $st['who'] = $who;
+        $res['st'] = $st;
+        $res['status'] = $st['ph'] === 'alarm'
+            ? '🚨 Alarm seit ' . date('H:i', (int)$st['since']) . ' Uhr — ' . implode(', ', $who)
+            : '✅ Kein Alarm';
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Rollladen nach Zeit/Sonne
+    // ------------------------------------------------------------------
+
+    private static function rollladen(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $today = date('Y-m-d', $now);
+        $outs = AUTOMATKatalog::vars($row, 'rl_out');
+        $we = (int)date('N', $now) >= 6;
+        $sun = $ctx['sun'][$today] ?? ['sr' => null, 'ss' => null];
+        $noon = self::timeOn(AUTOMATKatalog::time(12, 0), $today);
+        $mode = (int)($ctx['mode'] ?? 0);
+        $first = !isset($st['up']);
+        $st += ['up' => '', 'down' => '', 'wait' => false];
+
+        // Öffnen
+        $upRef = (int)($row['rl_upref'] ?? 1);
+        $earliest = self::timeOn((string)($row[$we ? 'rl_fruehwe' : 'rl_frueh'] ?? AUTOMATKatalog::time(7, 0)), $today);
+        $upTs = $upRef === 1 && $sun['sr'] !== null ? (int)$sun['sr'] + (int)($row['rl_upoff'] ?? 0) * 60 : self::timeOn((string)($row['rl_upzeit'] ?? AUTOMATKatalog::time(7, 0)), $today);
+        $upAt = max($upTs, $earliest);
+        $upReady = $upRef === 2 ? ($mode === 0 && $now >= $earliest) : $now >= $upAt;
+
+        // Schließen
+        $downRef = (int)($row['rl_downref'] ?? 1);
+        $latest = self::timeOn((string)($row['rl_spaet'] ?? AUTOMATKatalog::time(22, 30)), $today);
+        $downTs = $downRef === 1 && $sun['ss'] !== null ? (int)$sun['ss'] + (int)($row['rl_downoff'] ?? 0) * 60 : self::timeOn((string)($row['rl_downzeit'] ?? AUTOMATKatalog::time(21, 0)), $today);
+        if ($downRef === 2) {
+            $luxVid = (int)($row['rl_lux'] ?? 0);
+            $lux = array_key_exists($luxVid, $ctx['val'] ?? []) ? (float)$ctx['val'][$luxVid] : null;
+            // Nur nachmittags — morgens ist es auch dunkel.
+            $downReady = ($now >= $noon + 7200 && $lux !== null && $lux < (float)($row['rl_luxschwelle'] ?? 20)) || $now >= $latest;
+        } elseif ($downRef === 3) {
+            $downReady = ($now >= $noon && $mode === AUTOMATKatalog::MODE_NIGHT) || $now >= $latest;
+        } else {
+            $downReady = $now >= min($downTs, $latest);
+        }
+
+        if ($first) {
+            // Beim ersten Lauf nichts nachholen (sonst führe ein mittags eingerichteter Rollladen sofort hoch).
+            $st['up'] = $upReady ? $today : '';
+            $st['down'] = $downReady ? $today : '';
+        }
+        $hard = self::hardBlock($ctx);
+        $soft = self::softBlock($row, $ctx);
+        $open = self::activeOf(AUTOMATKatalog::vars($row, 'rl_tuer'), $ctx, !empty($row['rl_tuerinvert']));
+        $set = function (float $v) use ($outs, $ctx, &$res) {
+            foreach ($outs as $vid) {
+                $cur = $ctx['val'][$vid] ?? null;
+                if ($cur === null || abs((float)$cur - $v) > 0.5) {
+                    $res['cmd'][] = [$vid, $v];
+                }
+            }
+        };
+        if ($hard === '' && $soft === '') {
+            if ($downReady && $st['down'] !== $today) {
+                if (count($open) > 0) {
+                    if (!$st['wait']) {
+                        $res['log'] = 'Schließen aufgehalten — offen: ' . implode(', ', $open) . ' (Aussperrschutz). Schließt, sobald zu.';
+                        if (!empty($row['rl_push'])) {
+                            $res['msg'][] = ['🪟 ' . (trim((string)($row['Name'] ?? '')) ?: 'Rollladen'), 'Bleibt oben, weil offen: ' . implode(', ', $open) . '. Schließt, sobald zu.'];
+                        }
+                    }
+                    $st['wait'] = true;
+                } else {
+                    $set((float)($row['rl_zu'] ?? 100));
+                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . 'Rollläden geschlossen.';
+                    $st['down'] = $today;
+                    $st['wait'] = false;
+                    $st['up'] = $today; // heute nicht mehr öffnen
+                }
+            } elseif ($upReady && $st['up'] !== $today && !$downReady) {
+                $set((float)($row['rl_auf'] ?? 0));
+                $res['log'] = 'Rollläden geöffnet.';
+                $st['up'] = $today;
+            }
+        }
+        $res['st'] = $st;
+        if ($hard !== '') {
+            $res['status'] = self::hardStatus($hard);
+        } elseif ($st['wait']) {
+            $res['status'] = '⏳ Bleibt oben — offen: ' . implode(', ', $open);
+            $res['due'] = $now + 60;
+        } elseif ($soft !== '') {
+            $res['status'] = '🌙 Pausiert: ' . $soft;
+        } elseif ($st['down'] === $today) {
+            $res['status'] = '⬇️ Zu seit heute Abend — öffnet morgen früh';
+        } elseif ($st['up'] === $today) {
+            $res['status'] = '⬆️ Offen' . (in_array($downRef, [0, 1], true) ? ' — schließt um ' . self::fmtClock(min($downTs, $latest), $now) : ' — schließt bei ' . ($downRef === 2 ? 'Dunkelheit' : '„Nacht“') . ', spätestens ' . date('H:i', $latest) . ' Uhr');
+            $res['due'] = in_array($downRef, [0, 1], true) ? min($downTs, $latest) : $now + 60;
+        } else {
+            $res['status'] = '⬇️ Zu — öffnet ' . ($upRef === 2 ? 'bei „Tag“, frühestens ' . date('H:i', $earliest) . ' Uhr' : 'um ' . self::fmtClock($upAt, $now));
+            $res['due'] = $upRef === 2 ? $now + 60 : $upAt;
+        }
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Standby-Abschaltung
+    // ------------------------------------------------------------------
+
+    private static function standby(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $pv = (int)($row['sb_power'] ?? 0);
+        $ov = (int)($row['sb_out'] ?? 0);
+        $st += ['below' => 0];
+        $p = array_key_exists($pv, $ctx['val'] ?? []) ? (float)$ctx['val'][$pv] : null;
+        $on = self::isTrue($ctx['val'][$ov] ?? false);
+        $schwelle = (float)($row['sb_schwelle'] ?? 5);
+        $dauer = max(1, (int)($row['sb_dauer'] ?? 30)) * 60;
+        $hard = self::hardBlock($ctx);
+        if ($hard !== '') {
+            $st['below'] = 0;
+            $res['st'] = $st;
+            $res['status'] = self::hardStatus($hard);
+            return $res;
+        }
+        if ($p === null) {
+            $res['st'] = $st;
+            $res['status'] = '❔ Leistung unbekannt';
+            return $res;
+        }
+        if (!$on) {
+            $st['below'] = 0;
+            $res['status'] = '⚪ Aus';
+        } elseif ($p >= $schwelle) {
+            $st['below'] = 0;
+            $res['status'] = '▶️ In Betrieb (' . self::fmtNum($p) . ' W)';
+        } else {
+            if ((int)$st['below'] === 0) {
+                $st['below'] = $now;
+            }
+            $at = (int)$st['below'] + $dauer;
+            $soft = self::softBlock($row, $ctx);
+            if ($now >= $at && $soft === '') {
+                $res['cmd'][] = [$ov, self::offValue($ov, $ctx)];
+                $res['log'] = 'Seit ' . self::fmtDuration($now - (int)$st['below']) . ' im Standby (' . self::fmtNum($p) . ' W) — ausgeschaltet.';
+                if (!empty($row['sb_push'])) {
+                    $res['msg'][] = ['🔌 ' . (trim((string)($row['Name'] ?? '')) ?: self::nameOf($ov, $ctx)), 'War ' . self::fmtDuration($now - (int)$st['below']) . ' im Standby — ausgeschaltet.'];
+                }
+                $st['below'] = 0;
+                $res['status'] = '⚪ Ausgeschaltet (Standby)';
+            } else {
+                $res['due'] = $at;
+                $res['end'] = $at;
+                $res['status'] = '💤 Standby (' . self::fmtNum($p) . ' W)' . ($soft !== '' ? ' — schaltet nicht ab: ' . $soft : ' — aus um ' . self::fmtClock($at, $now));
+            }
+        }
+        $res['st'] = $st;
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Lüftungserinnerung
+    // ------------------------------------------------------------------
+
+    private static function lueften(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $vid = (int)($row['lf_var'] ?? 0);
+        $v = array_key_exists($vid, $ctx['val'] ?? []) ? (float)$ctx['val'][$vid] : null;
+        $hoch = (float)($row['lf_hoch'] ?? 65);
+        $ok = (float)($row['lf_ok'] ?? 55);
+        $dauer = max(0, (int)($row['lf_dauer'] ?? 10)) * 60;
+        $wdh = max(0, (int)($row['lf_wdh'] ?? 30)) * 60;
+        $kon = AUTOMATKatalog::vars($row, 'lf_kon');
+        $open = self::activeOf($kon, $ctx, !empty($row['lf_konInvert']));
+        $name = trim((string)($row['Name'] ?? '')) ?: 'Lüften';
+        $st += ['ph' => 'ok', 'since' => 0, 'last' => 0];
+        $hard = self::hardBlock($ctx);
+        if ($hard !== '' || $v === null) {
+            $res['st'] = $st;
+            $res['status'] = $hard !== '' ? self::hardStatus($hard) : '❔ Messwert fehlt';
+            return $res;
+        }
+        $soft = self::softBlock($row, $ctx);
+        $txt = self::fmtNum($v) . ' (' . self::nameOf($vid, $ctx) . ')';
+        if ($st['ph'] === 'ok' && $v >= $hoch) {
+            $st['ph'] = 'steigt';
+            $st['since'] = $now;
+        }
+        if ($st['ph'] === 'steigt') {
+            if ($v < $hoch) {
+                $st['ph'] = 'ok';
+            } elseif ($now >= (int)$st['since'] + $dauer) {
+                $st['ph'] = 'hoch';
+                $st['last'] = $now;
+                if (count($open) === 0 && $soft === '') {
+                    $res['log'] = 'Luft zu schlecht: ' . $txt . ' — Erinnerung zum Lüften.';
+                    $res['msg'][] = ['💨 ' . $name, 'Bitte lüften: ' . $txt . '.'];
+                }
+            }
+        } elseif ($st['ph'] === 'hoch') {
+            if ($v < $ok) {
+                $st['ph'] = 'ok';
+                if (count($kon) === 0 || count($open) > 0) {
+                    $msg = count($open) > 0 ? 'Luft wieder gut (' . self::fmtNum($v) . ') — ' . implode(', ', $open) . ' kann wieder zu.' : 'Luft wieder gut (' . self::fmtNum($v) . ').';
+                    $res['log'] = $msg;
+                    if ($soft === '') {
+                        $res['msg'][] = ['✅ ' . $name, $msg];
+                    }
+                }
+            } elseif (count($open) === 0 && $wdh > 0 && $now >= (int)$st['last'] + $wdh) {
+                $st['last'] = $now;
+                if ($soft === '') {
+                    $res['msg'][] = ['💨 ' . $name . ' (Erinnerung)', 'Immer noch zu hoch: ' . $txt . '.'];
+                }
+            }
+        }
+        $res['st'] = $st;
+        switch ($st['ph']) {
+            case 'steigt':
+                $res['due'] = (int)$st['since'] + $dauer;
+                $res['status'] = '⏳ Zu hoch: ' . self::fmtNum($v) . ' — Erinnerung um ' . self::fmtClock((int)$st['since'] + $dauer, $now);
+                break;
+            case 'hoch':
+                $res['status'] = count($open) > 0 ? '🪟 Wird gelüftet: ' . self::fmtNum($v) . ' (gut unter ' . self::fmtNum($ok) . ')' : '💨 Bitte lüften: ' . self::fmtNum($v);
+                if (count($open) === 0 && $wdh > 0) {
+                    $res['due'] = (int)$st['last'] + $wdh;
+                }
+                break;
+            default:
+                $res['status'] = '✅ Luft gut: ' . self::fmtNum($v);
+        }
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Heizung nach Hausmodus
+    // ------------------------------------------------------------------
+
+    /**
+     * Wie „Fenster offen“: Sollwert merken, absenken, beim Zurückkommen wiederherstellen. Wer während
+     * der Absenkung selbst einen Sollwert ändert, behält ihn — er wird nicht überschrieben und nicht
+     * „zurückgestellt“.
+     */
+    private static function heizung(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $mode = (int)($ctx['mode'] ?? 0);
+        $soll = AUTOMATKatalog::vars($row, 'hz_soll');
+        $st += ['saved' => [], 'set' => [], 'hand' => [], 'mode' => -1];
+        if ((int)$st['mode'] !== $mode) {
+            $st['hand'] = [];
+            $st['mode'] = $mode;
+        }
+        $target = null;
+        foreach ([3 => 'hz_abw', 4 => 'hz_url', 2 => 'hz_nacht'] as $m => $f) {
+            if ($mode === $m && !empty($row['hz_m' . $m])) {
+                $target = (float)($row[$f] ?? 17);
+            }
+        }
+        $hard = self::hardBlock($ctx);
+        if ($hard !== '' || (isset($ctx['condOk']) && !$ctx['condOk'])) {
+            $target = null;
+        }
+        $saved = (array)$st['saved'];
+        $set = (array)$st['set'];
+        $logs = [];
+        foreach ($soll as $vid) {
+            $k = (string)$vid;
+            $cur = array_key_exists($vid, $ctx['val'] ?? []) ? (float)$ctx['val'][$vid] : null;
+            if ($cur === null) {
+                continue;
+            }
+            if ($target !== null) {
+                if (isset($set[$k]) && abs($cur - (float)$set[$k]) > 0.05) {
+                    // Während der Absenkung von Hand geändert: so lassen.
+                    unset($set[$k], $saved[$k]);
+                    $st['hand'][$k] = true;
+                    $logs[] = self::nameOf($vid, $ctx) . ' von Hand auf ' . self::fmtNum($cur) . ' °C gestellt — bleibt so';
+                    continue;
+                }
+                if (!empty($st['hand'][$k])) {
+                    continue;
+                }
+                if (!isset($saved[$k])) {
+                    $saved[$k] = $cur;
+                }
+                if (abs($cur - $target) > 0.05) {
+                    $res['cmd'][] = [$vid, $target];
+                }
+                $set[$k] = $target;
+            } elseif (isset($saved[$k])) {
+                if (isset($set[$k]) && abs($cur - (float)$set[$k]) <= 0.05 && abs($cur - (float)$saved[$k]) > 0.05) {
+                    $res['cmd'][] = [$vid, (float)$saved[$k]];
+                    $logs[] = self::nameOf($vid, $ctx) . ' zurück auf ' . self::fmtNum((float)$saved[$k]) . ' °C';
+                }
+                unset($saved[$k], $set[$k]);
+            }
+        }
+        $lowered = $target !== null && count($res['cmd']) > 0;
+        if ($lowered) {
+            $logs[] = count($res['cmd']) . ' Sollwert(e) auf ' . self::fmtNum($target) . ' °C abgesenkt („' . AUTOMATKatalog::MODES[$mode] . '“)';
+        }
+        if ($logs) {
+            $res['log'] = implode('; ', $logs) . '.';
+        }
+        $st['saved'] = $saved;
+        $st['set'] = $set;
+        $res['st'] = $st;
+        if ($hard !== '') {
+            $res['status'] = self::hardStatus($hard);
+        } elseif ($target !== null && count($set) > 0) {
+            $res['status'] = '🌡 Abgesenkt auf ' . self::fmtNum($target) . ' °C („' . AUTOMATKatalog::MODES[$mode] . '“)';
+        } else {
+            $res['status'] = '✅ Normalbetrieb';
+        }
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Taster-Zuordnung
+    // ------------------------------------------------------------------
+
+    private static function taster(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $in = (int)($row['tg_in'] ?? 0);
+        $st += ['last' => ''];
+        $res['st'] = $st;
+        $res['status'] = $st['last'] !== '' ? '🔘 Zuletzt: ' . $st['last'] : '🔘 Wartet auf einen Tastendruck';
+        if (($ev['k'] ?? '') !== 'trigger' || (int)($ev['vid'] ?? 0) !== $in) {
+            return $res;
+        }
+        $key = mb_strtolower(self::valueKey($ev['v'] ?? ''));
+        if ($key === '' || $key === 'false' || $key === '0') {
+            return $res; // Loslassen bzw. Rücksetzen
+        }
+        $map = ['wahr' => 'true', 'falsch' => 'false', 'an' => 'true', 'aus' => 'false'];
+        foreach (['k' => 'kurz', 'd' => 'doppelt', 'l' => 'lang'] as $p => $label) {
+            $want = array_map(function ($x) use ($map) {
+                $x = mb_strtolower(trim($x));
+                return $map[$x] ?? mb_strtolower(self::valueKey($x));
+            }, explode(',', (string)($row['tg_' . $p . 'wert'] ?? '')));
+            if (!in_array($key, $want, true)) {
+                continue;
+            }
+            $akt = (int)($row['tg_' . $p . 'akt'] ?? 0);
+            $hard = self::hardBlock($ctx);
+            $soft = self::softBlock($row, $ctx);
+            if ($akt === 0) {
+                return $res;
+            }
+            if ($hard !== '' || $soft !== '') {
+                $res['log'] = ucfirst($label) . ' gedrückt — nichts getan: ' . ($hard ?: $soft) . '.';
+                return $res;
+            }
+            $z = (int)($row['tg_' . $p . 'ziel'] ?? 0);
+            $zw = (float)($row['tg_' . $p . 'zwert'] ?? 0);
+            switch ($akt) {
+                case 1:
+                    $isOn = self::isTrue($ctx['val'][$z] ?? false);
+                    $res['cmd'][] = [$z, $isOn ? self::offValue($z, $ctx) : self::onValue($z, 100, $ctx)];
+                    $did = self::nameOf($z, $ctx) . ($isOn ? ' aus' : ' an');
+                    break;
+                case 2:
+                    $res['cmd'][] = [$z, self::onValue($z, 100, $ctx)];
+                    $did = self::nameOf($z, $ctx) . ' an';
+                    break;
+                case 3:
+                    $res['cmd'][] = [$z, self::offValue($z, $ctx)];
+                    $did = self::nameOf($z, $ctx) . ' aus';
+                    break;
+                case 4:
+                    $res['cmd'][] = [$z, $zw];
+                    $did = self::nameOf($z, $ctx) . ' auf ' . self::fmtNum($zw);
+                    break;
+                default:
+                    $m = max(0, min(4, (int)round($zw)));
+                    $res['mode'] = $m;
+                    $did = 'Hausmodus „' . AUTOMATKatalog::MODES[$m] . '“';
+            }
+            $st['last'] = $label . ' → ' . $did . ' (' . date('H:i', $now) . ')';
+            $res['st'] = $st;
+            $res['log'] = ucfirst($label) . ' gedrückt — ' . $did . '.';
+            $res['status'] = '🔘 Zuletzt: ' . $st['last'];
+            return $res;
+        }
+        $res['log'] = 'Unbekannter Tasterwert „' . (string)($ev['v'] ?? '') . '“ — im Dialog bei kurz/doppelt/lang eintragen.';
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Aufwach-/Einschlaflicht
+    // ------------------------------------------------------------------
+
+    /** Weckzeit heute aus Variable (Zeitstempel → Uhrzeit, „HH:MM“) oder null. */
+    public static function wakeTime($v, string $ymd): ?int
+    {
+        [$y, $mo, $d] = array_map('intval', explode('-', $ymd));
+        if ((is_int($v) || is_float($v) || (is_string($v) && ctype_digit($v))) && (int)$v > 86400) {
+            return mktime((int)date('G', (int)$v), (int)date('i', (int)$v), 0, $mo, $d, $y);
+        }
+        if (is_string($v) && preg_match('/^(\d{1,2}):(\d{2})/', trim($v), $m)) {
+            return mktime((int)$m[1], (int)$m[2], 0, $mo, $d, $y);
+        }
+        return null;
+    }
+
+    private static function wecklicht(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $today = date('Y-m-d', $now);
+        $outs = AUTOMATKatalog::vars($row, 'wl_out');
+        $up = (int)($row['wl_richtung'] ?? 0) === 0;
+        $start = (int)($row['wl_start'] ?? 0);
+        $dauer = max(1, (int)($row['wl_dauer'] ?? 20)) * 60;
+        $ziel = max(1, min(100, (int)($row['wl_ziel'] ?? 80)));
+        $st += ['ph' => 'idle', 't0' => 0, 't1' => 0, 'from' => 0, 'day' => ''];
+        $hard = self::hardBlock($ctx);
+        if ($hard !== '') {
+            if ($st['ph'] === 'ramp') {
+                $res['log'] = 'Rampe abgebrochen: ' . $hard . '.';
+            }
+            $st['ph'] = 'idle';
+            $res['st'] = $st;
+            $res['status'] = self::hardStatus($hard);
+            return $res;
+        }
+        if ($st['ph'] === 'ramp' && ($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $outs, true)) {
+            $st['ph'] = 'idle';
+            $res['log'] = 'Licht von Hand verstellt — Rampe beendet.';
+        }
+        // Wann heute?
+        $at = null;
+        if ($start === 1) {
+            $wv = (int)($row['wl_wecker'] ?? 0);
+            $at = self::wakeTime($ctx['val'][$wv] ?? null, $today);
+        } elseif ($start === 0) {
+            $at = self::timeOn((string)($row['wl_zeit'] ?? AUTOMATKatalog::time(6, 30)), $today);
+        }
+        $dayOk = !empty($row['wl_we']) || (int)date('N', $now) < 6;
+        // Aufwachen: zur Zeit hell → Beginn = Zeit − Dauer. Einschlafen: Beginn = Zeit.
+        $begin = $at !== null ? ($up ? $at - $dauer : $at) : null;
+        $soft = self::softBlock($row, $ctx);
+        $go = false;
+        if ($st['ph'] === 'idle' && $st['day'] !== $today && $soft === '') {
+            if ($start === 2 && ($ev['k'] ?? '') === 'mode' && (int)($ev['to'] ?? -1) === AUTOMATKatalog::MODE_NIGHT) {
+                $go = true;
+            } elseif ($begin !== null && $dayOk && $now >= $begin && $now < $begin + $dauer) {
+                $go = true;
+            }
+        }
+        $levelOf = function (int $vid) use ($ctx): int {
+            $max = (float)($ctx['dim'][$vid] ?? 0);
+            $cur = $ctx['val'][$vid] ?? null;
+            if ($max <= 0) {
+                return self::isTrue($cur) ? 100 : 0;
+            }
+            return (int)round((float)$cur / $max * 100);
+        };
+        if ($go) {
+            $st['ph'] = 'ramp';
+            $st['day'] = $today;
+            $st['t0'] = $now;
+            $st['t1'] = $begin !== null && $start !== 2 ? $begin + $dauer : $now + $dauer;
+            $from = 0;
+            foreach ($outs as $vid) {
+                $from = max($from, $levelOf($vid));
+            }
+            $st['from'] = $up ? 1 : max(1, $from);
+            $res['log'] = ($up ? 'Aufwachlicht' : 'Einschlaflicht') . ' startet — bis ' . date('H:i', (int)$st['t1']) . ' Uhr.';
+            if (!$up && $from === 0) {
+                $st['ph'] = 'idle';
+                $res['log'] = 'Einschlaflicht: Licht ist schon aus — nichts zu tun.';
+            }
+        }
+        if ($st['ph'] === 'ramp') {
+            $t0 = (int)$st['t0'];
+            $t1 = max($t0 + 1, (int)$st['t1']);
+            $f = min(1.0, max(0.0, ($now - $t0) / ($t1 - $t0)));
+            $to = $up ? $ziel : 0;
+            $pct = (int)round((int)$st['from'] + ($to - (int)$st['from']) * $f);
+            foreach ($outs as $vid) {
+                $max = (float)($ctx['dim'][$vid] ?? 0);
+                if ($max <= 0) {
+                    // Schalter: Aufwachen am Anfang an, Einschlafen am Ende aus
+                    if ($up && !self::isTrue($ctx['val'][$vid] ?? false)) {
+                        $res['cmd'][] = [$vid, true];
+                    } elseif (!$up && $f >= 1.0) {
+                        $res['cmd'][] = [$vid, false];
+                    }
+                    continue;
+                }
+                $res['cmd'][] = [$vid, $pct <= 0 ? self::offValue($vid, $ctx) : self::onValue($vid, $pct, $ctx)];
+            }
+            if ($f >= 1.0) {
+                $st['ph'] = 'idle';
+                $res['log'] = ($up ? 'Aufwachlicht fertig — ' . $ziel . ' %.' : 'Einschlaflicht fertig — aus.');
+                $res['status'] = $up ? '🌅 Fertig — ' . $ziel . ' %' : '🌙 Fertig — aus';
+            } else {
+                $res['due'] = min($t1, $now + 30);
+                $res['end'] = $t1;
+                $res['status'] = ($up ? '🌅 Wird heller: ' : '🌙 Wird dunkler: ') . $pct . ' % (bis ' . date('H:i', $t1) . ' Uhr)';
+            }
+        } else {
+            if ($start === 2) {
+                $res['status'] = '💤 Startet beim Wechsel auf „Nacht“';
+            } elseif ($begin === null) {
+                $res['status'] = '❔ Keine Weckzeit';
+            } else {
+                $next = $begin > $now ? $begin : null;
+                $res['status'] = $next !== null && $dayOk ? '💤 Startet um ' . date('H:i', $next) . ' Uhr' : '💤 Heute erledigt oder kein Tag dafür';
+                if ($next !== null && $dayOk) {
+                    $res['due'] = $next;
+                }
+            }
+        }
+        $res['st'] = $st;
+        return $res;
     }
 
     // ------------------------------------------------------------------

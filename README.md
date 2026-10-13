@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.30:** neu gebaut und am Prüfstand (417 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.31:** neu gebaut und am Prüfstand (486 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -30,6 +30,13 @@ Geräten vor, was sich lohnt.
 | 🧺 | Gerät fertig | meldet das Ende eines Laufs an der Leistung | Mindestlaufzeit gegen Spitzen, Pausen/Schleudern überbrückt |
 | 🏠 | Anwesenheit zusammenfassen | bis 8 Anwesenheitssignale → „Jemand zu Hause“ | sofort „da“, „niemand da“ erst nach Wartezeit; nennt, wer da ist; speist den Hausmodus „Abwesend“ |
 | 🌙 | Zentral-Aus / Szene nach Hausmodus | beim Wechsel auf Nacht/Abwesend/… Geräte aus, ein oder auf Wert | bis 16 Geräte, Verzögerung, nur was anders steht; andere Automatismen sehen es als „zentral“, nicht als Handbedienung |
+| 🚨 | Wasser-/Rauchmelder-Reaktion | Alarm: Licht an, Rollläden auf, Ventil/Geräte aus, melden | wirkt auch bei Pause und in der Ruhezeit; Erinnerung bis Entwarnung; schaltet danach nichts zurück |
+| 🪟 | Rollladen nach Zeit/Sonne | morgens auf, abends zu | Uhrzeit, Sonnenauf-/-untergang ± Versatz, Helligkeit oder Hausmodus; frühestens (werktags/Wochenende), spätestens; Aussperrschutz bei offener Tür |
+| 🔌 | Standby-Abschaltung | Steckdose aus, wenn das Gerät lange im Standby ist | Schwelle in W, Dauer; zwischendurch Betrieb setzt die Zeit zurück |
+| 💨 | Lüftungserinnerung | „Bitte lüften“ bei zu viel Feuchte/CO₂, „kann wieder zu“ | Wartezeit gegen kurze Spitzen (Dusche), Erinnerung, Fensterkontakt optional |
+| 🌡 | Heizung nach Hausmodus | bei Abwesend/Urlaub (Nacht wahlweise) absenken, danach zurück | merkt den alten Sollwert; Handänderungen bleiben |
+| 🔘 | Taster-Zuordnung | kurz/doppelt/lang drücken → Aktion | für Taster, die den Druck als Wert melden („single“, „double“, „hold“, 1/2/3); umschalten, an, aus, Wert, Hausmodus |
+| 🌅 | Aufwach-/Einschlaflicht | Licht langsam hoch bis zur Weckzeit bzw. runter bis aus | Uhrzeit, Weckzeit-Variable oder Hausmodus „Nacht“; Handeingriff beendet die Rampe |
 
 ## Für alle Automatismen gleich
 

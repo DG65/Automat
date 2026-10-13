@@ -22,3 +22,5 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
 - Branch: nur `beta`; `main` erst nach Live-Bewährung (Dietmar entscheidet).
 - Nicht live geprüft (Stand 0.1.0): alles. Insbesondere: Dialog mit Typwechsel per `UpdateFormField`, `$Automations`
   im onClick, Echo-Laufzeiten echter Aktoren (Z-Wave), Push-Zustellung, Kachel in der echten Visualisierung.
+- Ab 0.1.31: Alarm, Rollladen, Standby, Lüften, Heizung nach Hausmodus, Taster, Aufwachlicht sind nur am Prüfstand
+  getestet — Dietmar hat diese Geräte nicht. Rückmeldungen anderer Nutzer ernst nehmen und zuerst am Prüfstand nachbauen.

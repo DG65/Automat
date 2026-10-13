@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.31 (Build 32) — 13.10.2026
+
+Sieben neue Automatismen (Wunsch Dietmar: „alles zusammen einbauen“). **Nur am Prüfstand getestet — an echter Hardware ungeprüft** (Dietmar hat die Geräte nicht):
+- 🚨 **Wasser-/Rauchmelder-Reaktion**: Licht voll an, Rollläden auf, Wasserventil/Geräte aus, dringende Meldung (auch in der Ruhezeit und bei Pause), Erinnerung bis Entwarnung; schaltet danach bewusst nichts zurück.
+- 🪟 **Rollladen nach Zeit/Sonne**: öffnen zur Uhrzeit, bei Sonnenaufgang ± Versatz oder bei „Tag“; werktags/Wochenende frühestens; schließen zur Uhrzeit, bei Sonnenuntergang, bei Dunkelheit (nur nachmittags) oder bei „Nacht“, spätestens; Aussperrschutz (Tür offen → bleibt oben, schließt, sobald zu); fährt beim Einrichten nicht sofort.
+- 🔌 **Standby-Abschaltung**: unter X W für Y min → Steckdose aus.
+- 💨 **Lüftungserinnerung**: Feuchte oder CO₂ zu hoch (mit Wartezeit) → „Bitte lüften“, Erinnerung; Fenster offen und Luft gut → „kann wieder zu“.
+- 🌡 **Heizung nach Hausmodus**: bei Abwesend/Urlaub/(Nacht) absenken, alten Sollwert merken und zurückstellen; von Hand geänderte Sollwerte bleiben.
+- 🔘 **Taster-Zuordnung**: kurz/doppelt/lang (Werte wie „single“/„double“/„hold“ oder 1/2/3) → umschalten, an, aus, Wert oder Hausmodus.
+- 🌅 **Aufwach-/Einschlaflicht**: Rampe bis zur Weckzeit (Uhrzeit oder Weckzeit-Variable) bzw. herunter bis aus (auch bei „Nacht“); Handeingriff beendet sie.
+- Entdecken erkennt dafür Wasser-/Rauchmelder, Rollläden, Raumluft (Feuchte/CO₂, ohne Boden-/Außen-/Prognosewerte) und Taster und schlägt Alarm, Rollläden, Heizung, Lüften je Raum und Taster vor.
+- Alarm, Heizung und Szene zeigen im Dialog keine allgemeinen Modus-Häkchen (Sicherheit bzw. der Modus ist der Auslöser). Kachel: Alarm/„Bitte lüften“ gelten als auffällig, Rampe/Absenkung/Standby als laufend.
+
 ## 0.1.30 (Build 31) — 13.10.2026
 
 - **Kachel neu gestaltet** (Rückmeldung Dietmar: zu viel Platz, keine Sortierung, Filter oder Suche):

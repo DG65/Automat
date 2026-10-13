@@ -48,6 +48,10 @@ class AUTOMATKatalog
         'lux'      => 'Helligkeitssensor',
         'power'    => 'Leistungsmessung eines Haushaltsgeräts',
         'presence' => 'Anwesenheit einer Person (z. B. Geofency, Handy im WLAN)',
+        'alarm'    => 'Wasser- oder Rauchmelder',
+        'shutter'  => 'Rollladen/Jalousie (Position)',
+        'air'      => 'Raumluft (Feuchte oder CO₂)',
+        'button'   => 'Taster/Szenen-Schalter',
     ];
 
     public const TYPES = [
@@ -86,6 +90,41 @@ class AUTOMATKatalog
             'desc'  => 'Fasst mehrere Anwesenheitssignale (z. B. je Person Geofency oder Handy im WLAN) zu „Jemand zu Hause“ zusammen — sofort „da“, „niemand da“ erst nach einer Wartezeit gegen kurze Aussetzer. Der Hausmodus nutzt das Ergebnis automatisch.',
             'needs' => ['presence'],
         ],
+        'alarm' => [
+            'label' => 'Wasser-/Rauchmelder-Reaktion', 'icon' => '🚨', 'cat' => 'ueberwachung', 'light' => false,
+            'desc'  => 'Löst ein Wasser- oder Rauchmelder aus: Licht an, Rollläden auf, Wasserventil oder Geräte aus und melden — auch in der Ruhezeit und auch bei Pause. Erinnert, bis Entwarnung ist. Schaltet danach nichts zurück (Sicherheit).',
+            'needs' => ['alarm'],
+        ],
+        'rollladen' => [
+            'label' => 'Rollladen nach Zeit/Sonne', 'icon' => '🪟', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Morgens auf, abends zu — zur Uhrzeit, nach Sonnenauf-/-untergang, Helligkeit oder Hausmodus, mit frühestens/spätestens und eigener Zeit fürs Wochenende. Aussperrschutz: Ist die Tür offen, bleibt der Rollladen oben, bis sie zu ist.',
+            'needs' => ['shutter'],
+        ],
+        'standby' => [
+            'label' => 'Standby-Abschaltung', 'icon' => '🔌', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Bleibt die Leistung eine Weile unter einer Schwelle (Gerät nur noch im Standby), wird die Steckdose ausgeschaltet — z. B. Fernseher, Drucker, PC-Zubehör.',
+            'needs' => ['power'],
+        ],
+        'lueften' => [
+            'label' => 'Lüftungserinnerung', 'icon' => '💨', 'cat' => 'klima', 'light' => false,
+            'desc'  => 'Ist die Luftfeuchte oder der CO₂-Wert eine Weile zu hoch: „Bitte lüften“. Ist ein Fenster offen und die Luft wieder gut: „Kann wieder zu“.',
+            'needs' => ['air'],
+        ],
+        'heizung' => [
+            'label' => 'Heizung nach Hausmodus', 'icon' => '🌡', 'cat' => 'klima', 'light' => false,
+            'desc'  => 'Bei „Abwesend“, „Urlaub“ (und wahlweise „Nacht“) die Heizungs-Sollwerte absenken, beim Zurückkommen den gemerkten Wert wiederherstellen. Von Hand geänderte Sollwerte werden nicht überschrieben.',
+            'needs' => ['setpoint'],
+        ],
+        'taster' => [
+            'label' => 'Taster-Zuordnung', 'icon' => '🔘', 'cat' => 'licht', 'light' => false,
+            'desc'  => 'Ordnet einem Taster je eine Aktion für kurz, doppelt und lang drücken zu — Licht umschalten, Wert setzen oder Hausmodus wechseln. Für Taster, die ihren Druck als Wert melden (z. B. „single“, „double“, „hold“ oder 1/2/3).',
+            'needs' => ['button'],
+        ],
+        'wecklicht' => [
+            'label' => 'Aufwach-/Einschlaflicht', 'icon' => '🌅', 'cat' => 'licht', 'light' => false,
+            'desc'  => 'Dimmt Licht über eine einstellbare Zeit langsam hoch (zur Weckzeit hell) oder herunter bis aus. Greift jemand von Hand ein, endet die Rampe.',
+            'needs' => ['light'],
+        ],
         'szene' => [
             'label' => 'Zentral-Aus / Szene nach Hausmodus', 'icon' => '🌙', 'cat' => 'haus', 'light' => false,
             'desc'  => 'Wechselt der Hausmodus (z. B. auf „Nacht“ oder „Abwesend“), schaltet eine Gruppe von Geräten aus, ein oder auf einen Wert — z. B. beim Gehen alles aus, abends die Stimmungsbeleuchtung an. Nur beim Wechsel, danach darf wieder jeder schalten.',
@@ -93,6 +132,13 @@ class AUTOMATKatalog
         ],
     ];
     public const SZ_ACTIONS = [0 => 'ausschalten', 1 => 'einschalten', 2 => 'auf einen Wert setzen'];
+    public const TG_ACTIONS = [0 => 'nichts', 1 => 'umschalten (an ↔ aus)', 2 => 'einschalten', 3 => 'ausschalten', 4 => 'auf einen Wert setzen', 5 => 'Hausmodus setzen (Wert 0 Tag … 4 Urlaub)'];
+    public const RL_UP = [0 => 'zur Uhrzeit', 1 => 'bei Sonnenaufgang (± Versatz)', 2 => 'wenn der Hausmodus auf „Tag“ wechselt'];
+    public const RL_DOWN = [0 => 'zur Uhrzeit', 1 => 'bei Sonnenuntergang (± Versatz)', 2 => 'wenn es dunkel wird (Helligkeitssensor)', 3 => 'wenn der Hausmodus auf „Nacht“ wechselt'];
+    public const WL_DIR = [0 => 'Aufwachen: langsam heller bis zur Weckzeit', 1 => 'Einschlafen: langsam dunkler bis aus'];
+    public const WL_START = [0 => 'zur Uhrzeit', 1 => 'Weckzeit aus einer Variable (Zeitstempel oder „HH:MM“)', 2 => 'wenn der Hausmodus auf „Nacht“ wechselt (Einschlafen)'];
+    /** Typen, bei denen der Hausmodus selbst Auslöser ist oder die immer gelten müssen — ohne die allgemeinen Modus-Häkchen. */
+    public const NO_MODE_FILTER = ['szene', 'alarm', 'heizung'];
 
     // Auswahllisten
     public const WA_OPS = [0 => 'ist gleich', 1 => 'ist ungleich', 2 => 'ist größer als', 3 => 'ist kleiner als', 4 => 'ist an / wahr', 5 => 'ist aus / falsch'];
@@ -236,6 +282,110 @@ class AUTOMATKatalog
                     ['n' => 'an_weg', 'k' => 'int', 'c' => '„Niemand da“ erst, wenn alle so lange weg sind', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                     ['n' => 'an_push', 'k' => 'bool', 'c' => '„Alle weg“ und „Jemand ist heimgekommen“ melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
+            case 'alarm':
+                return [
+                    ['k' => 'info', 'c' => 'Melder'],
+                    ['n' => 'al_mel', 'k' => 'vars', 'max' => 8, 'c' => 'Wasser-/Rauchmelder', 'req' => true],
+                    ['n' => 'al_invert', 'k' => 'bool', 'c' => 'Melder sind umgekehrt (wahr = alles in Ordnung)', 'd' => false],
+                    ['k' => 'info', 'c' => 'Was passiert bei Alarm?'],
+                    ['n' => 'al_licht', 'k' => 'vars', 'max' => 8, 'c' => 'Licht einschalten (voll)'],
+                    ['n' => 'al_hoch', 'k' => 'vars', 'max' => 8, 'c' => 'Rollladen öffnen'],
+                    ['n' => 'al_hochwert', 'k' => 'float', 'c' => 'Wert für „Rollladen offen“ (meist 0 %)', 'd' => 0.0, 'min' => 0, 'max' => 255],
+                    ['n' => 'al_aus', 'k' => 'vars', 'max' => 8, 'c' => 'Ausschalten (z. B. Wasserventil zu, Heizlüfter, Lüftung)'],
+                    ['k' => 'info', 'c' => 'Meldung (geht auch in der Ruhezeit sofort raus)'],
+                    ['n' => 'al_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                    ['n' => 'al_wdh', 'k' => 'int', 'c' => 'Erinnern, solange der Alarm anliegt, alle (0 = nicht)', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
+                    ['n' => 'al_ende', 'k' => 'bool', 'c' => 'Entwarnung melden', 'd' => true],
+                ];
+            case 'rollladen':
+                return [
+                    ['k' => 'info', 'c' => 'Rollläden'],
+                    ['n' => 'rl_out', 'k' => 'vars', 'max' => 16, 'c' => 'Rollladen (Position)', 'req' => true],
+                    ['n' => 'rl_auf', 'k' => 'float', 'c' => 'Wert für „offen“', 'd' => 0.0, 'min' => 0, 'max' => 255],
+                    ['n' => 'rl_zu', 'k' => 'float', 'c' => 'Wert für „zu“', 'd' => 100.0, 'min' => 0, 'max' => 255],
+                    ['k' => 'info', 'c' => 'Morgens öffnen'],
+                    ['n' => 'rl_upref', 'k' => 'select', 'c' => 'Öffnen', 'd' => 1, 'options' => self::RL_UP],
+                    ['n' => 'rl_upzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(7, 0)],
+                    ['n' => 'rl_upoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
+                    ['n' => 'rl_frueh', 'k' => 'time', 'c' => 'Werktags frühestens', 'd' => self::time(6, 30)],
+                    ['n' => 'rl_fruehwe', 'k' => 'time', 'c' => 'Am Wochenende frühestens', 'd' => self::time(8, 0)],
+                    ['k' => 'info', 'c' => 'Abends schließen'],
+                    ['n' => 'rl_downref', 'k' => 'select', 'c' => 'Schließen', 'd' => 1, 'options' => self::RL_DOWN],
+                    ['n' => 'rl_downzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(21, 0)],
+                    ['n' => 'rl_downoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
+                    ['n' => 'rl_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (bei „wenn es dunkel wird“)'],
+                    ['n' => 'rl_luxschwelle', 'k' => 'float', 'c' => 'Dunkel unter', 'd' => 20.0, 'min' => 0, 'max' => 100000],
+                    ['n' => 'rl_spaet', 'k' => 'time', 'c' => 'Spätestens', 'd' => self::time(22, 30)],
+                    ['k' => 'info', 'c' => 'Aussperrschutz'],
+                    ['n' => 'rl_tuer', 'k' => 'vars', 'c' => 'Tür-/Fensterkontakt (offen = Rollladen bleibt oben, schließt, sobald zu)'],
+                    ['n' => 'rl_tuerinvert', 'k' => 'bool', 'c' => 'Kontakt ist umgekehrt (wahr = zu)', 'd' => false],
+                    ['n' => 'rl_push', 'k' => 'bool', 'c' => 'Melden, wenn der Aussperrschutz das Schließen aufhält', 'd' => false],
+                ];
+            case 'standby':
+                return [
+                    ['k' => 'info', 'c' => 'Gerät'],
+                    ['n' => 'sb_power', 'k' => 'var', 'c' => 'Leistung (W)', 'req' => true],
+                    ['n' => 'sb_out', 'k' => 'var', 'c' => 'Steckdose / Schalter', 'req' => true],
+                    ['n' => 'sb_schwelle', 'k' => 'float', 'c' => 'Standby unter', 'd' => 5.0, 'suffix' => ' W', 'min' => 0, 'max' => 10000],
+                    ['n' => 'sb_dauer', 'k' => 'int', 'c' => 'Ausschalten, wenn so lange im Standby', 'd' => 30, 'suffix' => ' min', 'min' => 1, 'max' => 1440],
+                    ['n' => 'sb_push', 'k' => 'bool', 'c' => 'Melden, wenn abgeschaltet wurde', 'd' => false],
+                ];
+            case 'lueften':
+                return [
+                    ['k' => 'info', 'c' => 'Messwert'],
+                    ['n' => 'lf_var', 'k' => 'var', 'c' => 'Luftfeuchte (%) oder CO₂ (ppm)', 'req' => true],
+                    ['n' => 'lf_hoch', 'k' => 'float', 'c' => 'Erinnern ab (z. B. 65 % oder 1200 ppm)', 'd' => 65.0, 'min' => 0, 'max' => 10000],
+                    ['n' => 'lf_ok', 'k' => 'float', 'c' => 'Wieder gut unter (z. B. 55 % oder 800 ppm)', 'd' => 55.0, 'min' => 0, 'max' => 10000],
+                    ['n' => 'lf_dauer', 'k' => 'int', 'c' => 'Erst melden, wenn so lange zu hoch', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 240],
+                    ['n' => 'lf_kon', 'k' => 'vars', 'c' => 'Fensterkontakt (optional: dann „Kann wieder zu“, wenn offen und Luft gut)'],
+                    ['n' => 'lf_konInvert', 'k' => 'bool', 'c' => 'Kontakt ist umgekehrt (wahr = zu)', 'd' => false],
+                    ['n' => 'lf_wdh', 'k' => 'int', 'c' => 'Erinnern, solange zu hoch und Fenster zu, alle (0 = nicht)', 'd' => 30, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
+                    ['n' => 'lf_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                ];
+            case 'heizung':
+                return [
+                    ['k' => 'info', 'c' => 'Heizungs-Sollwerte'],
+                    ['n' => 'hz_soll', 'k' => 'vars', 'max' => 8, 'c' => 'Sollwert', 'req' => true],
+                    ['k' => 'info', 'c' => 'Absenken bei …'],
+                    ['n' => 'hz_m3', 'k' => 'bool', 'c' => 'Abwesend', 'd' => true],
+                    ['n' => 'hz_abw', 'k' => 'float', 'c' => 'Sollwert bei „Abwesend“', 'd' => 17.0, 'suffix' => ' °C', 'min' => 5, 'max' => 30],
+                    ['n' => 'hz_m4', 'k' => 'bool', 'c' => 'Urlaub', 'd' => true],
+                    ['n' => 'hz_url', 'k' => 'float', 'c' => 'Sollwert bei „Urlaub“', 'd' => 15.0, 'suffix' => ' °C', 'min' => 5, 'max' => 30],
+                    ['n' => 'hz_m2', 'k' => 'bool', 'c' => 'Nacht', 'd' => false],
+                    ['n' => 'hz_nacht', 'k' => 'float', 'c' => 'Sollwert bei „Nacht“', 'd' => 18.0, 'suffix' => ' °C', 'min' => 5, 'max' => 30],
+                ];
+            case 'taster':
+                $o = [
+                    ['k' => 'info', 'c' => 'Taster'],
+                    ['n' => 'tg_in', 'k' => 'var', 'c' => 'Taster-Variable (meldet den Druck als Wert)', 'req' => true,
+                        'help' => ['Welche Werte meldet mein Taster?', [
+                            'Viele Zigbee-/Z-Wave-Taster melden je Druck einen Wert: z. B. „single“, „double“, „hold“ (Zigbee2MQTT „action“) oder Zahlen 1/2/3 (Z-Wave „Central Scene“).',
+                            'Den Wert siehst du im Objektbaum, wenn du einmal drückst. Bei einem einfachen Schalter (wahr/falsch) trägst du bei „kurz“ „wahr“ ein.',
+                            'Groß-/Kleinschreibung spielt keine Rolle; mehrere Werte mit Komma, z. B. „1, single“.',
+                        ]]],
+                ];
+                foreach (['k' => ['kurz', 'single, 1, wahr'], 'd' => ['doppelt', 'double, 2'], 'l' => ['lang', 'hold, long, 3']] as $p => [$label, $def]) {
+                    $o[] = ['k' => 'info', 'c' => ucfirst($label) . ' drücken'];
+                    $o[] = ['n' => 'tg_' . $p . 'wert', 'k' => 'text', 'c' => 'Wert der Taster-Variable bei „' . $label . '“', 'd' => $def];
+                    $o[] = ['n' => 'tg_' . $p . 'akt', 'k' => 'select', 'c' => 'Aktion', 'd' => $p === 'k' ? 1 : 0, 'options' => self::TG_ACTIONS];
+                    $o[] = ['n' => 'tg_' . $p . 'ziel', 'k' => 'var', 'c' => 'Ziel (Licht, Gerät …; bei „Hausmodus setzen“ leer)'];
+                    $o[] = ['n' => 'tg_' . $p . 'zwert', 'k' => 'float', 'c' => 'Wert (bei „auf Wert setzen“ bzw. Hausmodus 0–4)', 'd' => 0.0, 'min' => -1000, 'max' => 100000];
+                }
+                return $o;
+            case 'wecklicht':
+                return [
+                    ['k' => 'info', 'c' => 'Licht'],
+                    ['n' => 'wl_out', 'k' => 'vars', 'c' => 'Dimmer', 'req' => true],
+                    ['n' => 'wl_richtung', 'k' => 'select', 'c' => 'Art', 'd' => 0, 'options' => self::WL_DIR],
+                    ['k' => 'info', 'c' => 'Wann?'],
+                    ['n' => 'wl_start', 'k' => 'select', 'c' => 'Start', 'd' => 0, 'options' => self::WL_START],
+                    ['n' => 'wl_zeit', 'k' => 'time', 'c' => 'Uhrzeit (Aufwachen: wann es hell sein soll; Einschlafen: Beginn)', 'd' => self::time(6, 30)],
+                    ['n' => 'wl_wecker', 'k' => 'var', 'c' => 'Weckzeit-Variable (bei „Weckzeit aus einer Variable“)'],
+                    ['n' => 'wl_we', 'k' => 'bool', 'c' => 'Auch am Wochenende', 'd' => false],
+                    ['k' => 'info', 'c' => 'Verlauf'],
+                    ['n' => 'wl_dauer', 'k' => 'int', 'c' => 'Dauer der Rampe', 'd' => 20, 'suffix' => ' min', 'min' => 1, 'max' => 120],
+                    ['n' => 'wl_ziel', 'k' => 'int', 'c' => 'Helligkeit am Ende des Aufwachens', 'd' => 80, 'suffix' => ' %', 'min' => 1, 'max' => 100],
+                ];
             case 'szene':
                 return [
                     ['k' => 'info', 'c' => 'Wann? Beim Wechsel des Hausmodus auf …'],
@@ -346,6 +496,12 @@ class AUTOMATKatalog
         return $out;
     }
 
+    /** Zahl ohne überflüssige Nachkommastellen, deutsches Komma („17“, „17,5“). */
+    public static function num(float $v): string
+    {
+        return str_replace('.', ',', rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.'));
+    }
+
     /** Anzahl der Plätze eines Mehrfach-Felds (Standard SLOTS, je Feld über 'max' erweiterbar). */
     public static function slots(string $name): int
     {
@@ -417,6 +573,50 @@ class AUTOMATKatalog
             case 'szene':
                 $out = self::vars($row, 'sz_out');
                 break;
+            case 'alarm':
+                $in = self::vars($row, 'al_mel');
+                $out = array_values(array_unique(array_merge(self::vars($row, 'al_licht'), self::vars($row, 'al_hoch'), self::vars($row, 'al_aus'))));
+                break;
+            case 'rollladen':
+                $out = self::vars($row, 'rl_out');
+                $in = self::vars($row, 'rl_tuer');
+                if ((int)($row['rl_lux'] ?? 0) >= self::$minId) {
+                    $read[] = (int)$row['rl_lux'];
+                }
+                break;
+            case 'standby':
+                foreach (['sb_power' => 'in', 'sb_out' => 'out'] as $f => $k) {
+                    if ((int)($row[$f] ?? 0) >= self::$minId) {
+                        ${$k}[] = (int)$row[$f];
+                    }
+                }
+                break;
+            case 'lueften':
+                if ((int)($row['lf_var'] ?? 0) >= self::$minId) {
+                    $in[] = (int)$row['lf_var'];
+                }
+                $in = array_merge($in, self::vars($row, 'lf_kon'));
+                break;
+            case 'heizung':
+                $out = self::vars($row, 'hz_soll');
+                break;
+            case 'taster':
+                if ((int)($row['tg_in'] ?? 0) >= self::$minId) {
+                    $in[] = (int)$row['tg_in'];
+                }
+                foreach (['k', 'd', 'l'] as $p) {
+                    $z = (int)($row['tg_' . $p . 'ziel'] ?? 0);
+                    if ($z >= self::$minId && !in_array($z, $out, true)) {
+                        $out[] = $z;
+                    }
+                }
+                break;
+            case 'wecklicht':
+                $out = self::vars($row, 'wl_out');
+                if ((int)($row['wl_wecker'] ?? 0) >= self::$minId) {
+                    $read[] = (int)$row['wl_wecker'];
+                }
+                break;
             case 'fertig':
                 if ((int)($row['gf_var'] ?? 0) >= self::$minId) {
                     $in[] = (int)$row['gf_var'];
@@ -452,6 +652,25 @@ class AUTOMATKatalog
                     $p[] = 'Variable #' . $vid . ' existiert nicht mehr.';
                 }
             }
+        }
+        if ($t === 'taster') {
+            $any = false;
+            foreach (['k', 'd', 'l'] as $q) {
+                $akt = (int)($row['tg_' . $q . 'akt'] ?? 0);
+                $any = $any || $akt > 0;
+                if (in_array($akt, [1, 2, 3, 4], true) && (int)($row['tg_' . $q . 'ziel'] ?? 0) < self::$minId) {
+                    $p[] = 'Aktion „' . self::TG_ACTIONS[$akt] . '“ braucht ein Ziel.';
+                }
+            }
+            if (!$any) {
+                $p[] = 'Keine Aktion für kurz, doppelt oder lang gewählt.';
+            }
+        }
+        if ($t === 'wecklicht' && (int)($row['wl_start'] ?? 0) === 1 && (int)($row['wl_wecker'] ?? 0) < self::$minId) {
+            $p[] = 'Weckzeit-Variable ist nicht gewählt.';
+        }
+        if ($t === 'rollladen' && (int)($row['rl_downref'] ?? 1) === 2 && (int)($row['rl_lux'] ?? 0) < self::$minId) {
+            $p[] = 'Helligkeitssensor ist nicht gewählt (Schließen „wenn es dunkel wird“).';
         }
         if ($t === 'szene') {
             $any = false;
@@ -567,6 +786,45 @@ class AUTOMATKatalog
                 if ((int)($row['wa_wdh'] ?? 0) > 0) {
                     $p[] = 'Erinnerung alle ' . (int)$row['wa_wdh'] . ' min';
                 }
+                break;
+            case 'alarm':
+                $p[] = count(self::vars($row, 'al_mel')) . ' Melder';
+                $n = count(self::vars($row, 'al_licht')) + count(self::vars($row, 'al_hoch')) + count(self::vars($row, 'al_aus'));
+                $p[] = $n . ' Gerät(e) bei Alarm';
+                break;
+            case 'rollladen':
+                $p[] = count(self::vars($row, 'rl_out')) . ' Rollladen';
+                $p[] = 'auf ' . (self::RL_UP[(int)($row['rl_upref'] ?? 1)] ?? '');
+                $p[] = 'zu ' . (self::RL_DOWN[(int)($row['rl_downref'] ?? 1)] ?? '');
+                break;
+            case 'standby':
+                $p[] = 'unter ' . (float)($row['sb_schwelle'] ?? 5) . ' W für ' . (int)($row['sb_dauer'] ?? 30) . ' min → aus';
+                break;
+            case 'lueften':
+                $p[] = 'ab ' . self::num((float)($row['lf_hoch'] ?? 65)) . ', gut unter ' . self::num((float)($row['lf_ok'] ?? 55));
+                break;
+            case 'heizung':
+                $p[] = count(self::vars($row, 'hz_soll')) . ' Sollwert(e)';
+                $low = [];
+                foreach ([3 => 'hz_abw', 4 => 'hz_url', 2 => 'hz_nacht'] as $m => $f) {
+                    if (!empty($row['hz_m' . $m])) {
+                        $low[] = self::MODES[$m] . ' ' . self::num((float)($row[$f] ?? 0)) . ' °C';
+                    }
+                }
+                $p[] = implode(', ', $low) ?: 'nichts angekreuzt';
+                break;
+            case 'taster':
+                $acts = [];
+                foreach (['k' => 'kurz', 'd' => 'doppelt', 'l' => 'lang'] as $q => $l) {
+                    if ((int)($row['tg_' . $q . 'akt'] ?? 0) > 0) {
+                        $acts[] = $l;
+                    }
+                }
+                $p[] = implode('/', $acts) ?: 'keine Aktion';
+                break;
+            case 'wecklicht':
+                $p[] = (int)($row['wl_richtung'] ?? 0) === 0 ? 'Aufwachen' : 'Einschlafen';
+                $p[] = (int)($row['wl_dauer'] ?? 20) . ' min';
                 break;
             case 'szene':
                 $modes = [];

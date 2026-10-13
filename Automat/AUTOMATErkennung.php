@@ -49,8 +49,30 @@ class AUTOMATErkennung
             && preg_match(self::APPLIANCE, $text)) {
             return 'power';
         }
+        // Taster melden ihren Druck oft als Szene/Aktion — vor dem Rausch-Filter („szene“ steht dort)
+        if (!$action && preg_match('/taster|button|tastendruck|\baction\b|click|klick|central ?scene|zentralszene/i', $text)
+            && !preg_match('/batter|signal|rssi|firmware/i', $text)) {
+            return 'button';
+        }
         if (preg_match(self::NOISE, $text)) {
             return '';
+        }
+        // Wasser-/Rauchmelder (Alarmzustand, keine Messwerte wie Wassertemperatur)
+        if ($type === 0 && !$action && (preg_match('/smoke|water|leak|flood|moisture/', $profile)
+            || preg_match('/wassermelder|wasserleck|leck|leak|water ?leak|flood|überschwemm|rauch|smoke|feuer|fire|kohlenmonoxid|\bco[- ]?melder/iu', $text))
+            && !preg_match('/temperatur|wasserstand|füllstand|pegel|druck|warmwasser|brauchwasser/iu', $text)) {
+            return 'alarm';
+        }
+        // Rollläden/Jalousien (Position mit Aktion)
+        if (($type === 1 || $type === 2) && $action && (preg_match('/shutter|blind|jalousie|rollladen|rolladen/', $profile)
+            || preg_match('/rollladen|rolladen|rollo\b|jalousie|raffstore|shutter|blind|markise/iu', $text))) {
+            return 'shutter';
+        }
+        // Raumluft: Feuchte oder CO₂ (keine Bodenfeuchte, kein Außen-/Wetterwert)
+        if (($type === 1 || $type === 2) && !$action
+            && (preg_match('/humidity|co2/', $profile) || preg_match('/luftfeuchte|luftfeuchtigkeit|relative ?humidity|humidity|\bco2\b|co₂|kohlendioxid/iu', $text) || $suffix === 'ppm')
+            && !preg_match('/boden|soil|außen|aussen|outdoor|wetter|prognose|forecast|vpd|taupunkt/iu', $text)) {
+            return 'air';
         }
         // Anwesenheit einer Person im Haus (nicht: Präsenzmelder im Raum, Fahrzeuge, Kalender)
         if ($type === 0 && !$action
@@ -368,6 +390,75 @@ class AUTOMATErkennung
             $row['Room'] = '';
             $fill($row, 'sz_out', array_column($lights, 'vid'));
             $add('szene', '', 'Zentral-Aus nach Hausmodus', $row, count($lights) . ' Licht(er) gefunden' . (count($lights) > $max ? ' (die ersten ' . $max . ' übernommen)' : '') . ' — bei „Nacht“, „Abwesend“ und „Urlaub“ aus; bitte im Dialog prüfen, was davon wirklich aus soll', array_column(array_slice($lights, 0, $max), 'vid'));
+        }
+
+        $byR = function (string $role) use ($items): array {
+            $l = array_values(array_filter($items, function ($it) use ($role) {
+                return ($it['role'] ?? '') === $role;
+            }));
+            usort($l, function ($a, $b) {
+                return strcmp((string)($a['room'] ?? '') . $a['inst'] . $a['name'], (string)($b['room'] ?? '') . $b['inst'] . $b['name']);
+            });
+            return $l;
+        };
+        $labels = function (array $l, int $n): string {
+            return implode(', ', array_map(function ($it) {
+                return trim((string)$it['inst']) ?: (string)$it['name'];
+            }, array_slice($l, 0, $n)));
+        };
+        // Wasser-/Rauchmelder: ein Vorschlag fürs ganze Haus (Reaktionen trägt der Nutzer ein)
+        $al = $byR('alarm');
+        if (count($al) > 0) {
+            $row = AUTOMATKatalog::defaults('alarm');
+            $row['Name'] = 'Wasser-/Rauchalarm';
+            $row['Room'] = '';
+            $fill($row, 'al_mel', array_column($al, 'vid'));
+            $add('alarm', '', 'Wasser-/Rauchmelder-Reaktion', $row, count($al) . ' Melder gefunden (' . $labels($al, 4) . ') — im Dialog eintragen, was bei Alarm passieren soll (Licht, Rollläden, Ventil)', array_column(array_slice($al, 0, AUTOMATKatalog::slots('al_mel')), 'vid'));
+        }
+        // Rollläden: ein Vorschlag mit allen
+        $rl = $byR('shutter');
+        if (count($rl) > 0) {
+            $row = AUTOMATKatalog::defaults('rollladen');
+            $row['Name'] = 'Rollläden morgens auf, abends zu';
+            $row['Room'] = '';
+            $fill($row, 'rl_out', array_column($rl, 'vid'));
+            $add('rollladen', '', 'Rollladen nach Zeit/Sonne', $row, count($rl) . ' Rollladen gefunden (' . $labels($rl, 4) . ') — Sonnenauf-/-untergang, werktags frühestens 6:30, am Wochenende 8:00', array_column(array_slice($rl, 0, AUTOMATKatalog::slots('rl_out')), 'vid'));
+        }
+        // Heizung nach Hausmodus: alle Sollwerte
+        $hz = $byR('setpoint');
+        if (count($hz) > 0) {
+            $row = AUTOMATKatalog::defaults('heizung');
+            $row['Name'] = 'Heizung absenken bei Abwesenheit';
+            $row['Room'] = '';
+            $fill($row, 'hz_soll', array_column($hz, 'vid'));
+            $add('heizung', '', 'Heizung nach Hausmodus', $row, count($hz) . ' Heizungs-Sollwert(e) gefunden (' . $labels($hz, 4) . ') — bei „Abwesend“ 17 °C, bei „Urlaub“ 15 °C', array_column(array_slice($hz, 0, AUTOMATKatalog::slots('hz_soll')), 'vid'));
+        }
+        // Lüften: je Raum der erste Feuchte-/CO₂-Messwert
+        $seenAir = [];
+        foreach ($byR('air') as $it) {
+            $room = (string)($it['room'] ?? '');
+            if ($room === '' || isset($seenAir[$room])) {
+                continue;
+            }
+            $seenAir[$room] = true;
+            $co2 = (bool)preg_match('/co2|co₂|kohlendioxid|ppm/iu', $it['name'] . ' ' . $it['inst'] . ' ' . ($it['suffix'] ?? ''));
+            $row = AUTOMATKatalog::defaults('lueften');
+            $row['Name'] = 'Lüften ' . $room;
+            $row['Room'] = $room;
+            $row['lf_var'] = $it['vid'];
+            if ($co2) {
+                $row['lf_hoch'] = 1200.0;
+                $row['lf_ok'] = 800.0;
+            }
+            $add('lueften', $room, 'Lüftungserinnerung', $row, ($co2 ? 'CO₂' : 'Luftfeuchte') . ' „' . (trim((string)$it['inst']) ?: $it['name']) . '“ — erinnert ab ' . ($co2 ? '1200 ppm' : '65 %'), [$it['vid']]);
+        }
+        // Taster: je Taster ein Vorschlag (Aktionen trägt der Nutzer ein)
+        foreach (array_slice($byR('button'), 0, 6) as $it) {
+            $row = AUTOMATKatalog::defaults('taster');
+            $row['Name'] = 'Taster ' . (trim((string)$it['inst']) ?: $it['name']);
+            $row['Room'] = (string)($it['room'] ?? '');
+            $row['tg_in'] = $it['vid'];
+            $add('taster', (string)($it['room'] ?? ''), 'Taster-Zuordnung', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — im Dialog eintragen, was kurz/doppelt/lang drücken tun soll', [$it['vid']]);
         }
 
         // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen
