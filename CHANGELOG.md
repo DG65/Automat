@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.19 (Build 20) — 13.10.2026
+
+- Hausmodus/Anwesenheit: Gibt es einen Automatismus „Anwesenheit zusammenfassen“, wird das Feld für eine eigene Anwesenheits-Variable ausgeblendet — dessen Ergebnis nutzt der Hausmodus ohnehin. Ist dort die Ergebnisvariable selbst eingetragen, gilt sie als automatische Quelle (mit Hinweis, dass der Eintrag nicht nötig ist). Steht dort eine fremde Variable, bleibt das Feld sichtbar und hat Vorrang. Rückmeldung Dietmar.
+
 ## 0.1.18 (Build 19) — 13.10.2026
 
 - „Anwesenheit zusammenfassen“ nimmt jetzt bis zu 8 Signale auf (vorher 4) — genug für größere Haushalte oder mehrere Signale je Person (z. B. Geofency und WLAN). Entdecken übernimmt entsprechend bis zu 8. Die Platzzahl ist jetzt je Feld festgelegt; alle anderen Mehrfachfelder bleiben bei 4. Wunsch Dietmar.

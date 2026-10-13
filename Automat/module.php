@@ -181,8 +181,8 @@ class Automat extends IPSModule
                 }
             }
         }
-        $presence = $this->ReadPropertyInteger('cfg_PresenceVar');
-        if ($presence > 0 && IPS_VariableExists($presence)) {
+        $presence = $this->externalPresenceVar();
+        if ($presence > 0) {
             $this->RegisterMessage($presence, VM_UPDATE);
         }
         $isDay = $this->locationVariable('IsDay');
@@ -229,7 +229,7 @@ class Automat extends IPSModule
         }
         $vid = (int)$SenderID;
         $value = $Data[0] ?? null;
-        if ($vid === $this->ReadPropertyInteger('cfg_PresenceVar')) {
+        if ($vid > 0 && $vid === $this->externalPresenceVar()) {
             $this->evaluateMode(true);
         }
         if ($vid === $this->locationVariable('IsDay')) {
@@ -383,7 +383,7 @@ class Automat extends IPSModule
             $pid = @IPS_GetObjectIDByIdent('p_' . $uid, $this->InstanceID);
             if ($pid && (bool)GetValue($pid) !== (bool)$res['self']) {
                 $this->SetValue('p_' . $uid, (bool)$res['self']);
-                if ($this->ReadPropertyInteger('cfg_PresenceVar') < AUTOMATKatalog::$minId) {
+                if ($this->externalPresenceVar() === 0) {
                     $this->evaluateMode(true);
                 }
             }
@@ -790,8 +790,8 @@ class Automat extends IPSModule
      */
     private function presenceSource(): array
     {
-        $presVid = $this->ReadPropertyInteger('cfg_PresenceVar');
-        if ($presVid >= AUTOMATKatalog::$minId && IPS_VariableExists($presVid)) {
+        $presVid = $this->externalPresenceVar();
+        if ($presVid > 0) {
             $p = AUTOMATLogik::isTrue(GetValue($presVid));
             if ($this->ReadPropertyBoolean('cfg_PresenceInvert')) {
                 $p = !$p;
@@ -808,6 +808,35 @@ class Automat extends IPSModule
             }
         }
         return [null, 'ℹ️ Keine Anwesenheit verknüpft — „Abwesend“ wird nur von Hand gesetzt. Tipp: Automatismus „🏠 Anwesenheit zusammenfassen“ anlegen (Entdecken schlägt ihn vor), dann nutzt der Hausmodus ihn automatisch.'];
+    }
+
+    /**
+     * Fremde Anwesenheits-Variable aus dem Feld (0 = keine). Die eigene Ergebnisvariable eines
+     * „Anwesenheit zusammenfassen“ zählt nicht als fremd — sie wird ohnehin automatisch genutzt.
+     */
+    private function externalPresenceVar(): int
+    {
+        $vid = $this->ReadPropertyInteger('cfg_PresenceVar');
+        if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid) || $this->isOwnPresenceVar($vid)) {
+            return 0;
+        }
+        return $vid;
+    }
+
+    private function isOwnPresenceVar(int $vid): bool
+    {
+        return IPS_GetParent($vid) === $this->InstanceID && preg_match('/^p_[a-z0-9]+$/', (string)(IPS_GetObject($vid)['ObjectIdent'] ?? '')) === 1;
+    }
+
+    /** Gibt es einen aktiven Automatismus „Anwesenheit zusammenfassen“? */
+    private function hasPresenceRow(): bool
+    {
+        foreach ($this->rows() as $r) {
+            if ($r['Type'] === 'anwesenheit' && !empty($r['Enabled'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // =====================================================================
@@ -2187,6 +2216,14 @@ class Automat extends IPSModule
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
         $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
         [, $presText] = $this->presenceSource();
+        // Mit „Anwesenheit zusammenfassen“ ist das Feld überflüssig — nur zeigen, wenn dort eine fremde Quelle steht.
+        $presField = $this->hasPresenceRow();
+        $presShow = !$presField || $this->externalPresenceVar() > 0;
+        $own = $this->ReadPropertyInteger('cfg_PresenceVar');
+        if ($own >= AUTOMATKatalog::$minId && IPS_VariableExists($own) && $this->isOwnPresenceVar($own)) {
+            $presText .= ' Im Feld „Anwesenheits-Variable“ steht noch die Ergebnisvariable selbst — das ist nicht nötig, sie wird ohnehin genutzt.';
+            $presShow = true;
+        }
         $loc = $this->locationVariable('Sunset') > 0
             ? '✅ 🔗 Sonnenaufgang, Sonnenuntergang und „Ist es Tag“ aus Symcons Location Control.'
             : 'ℹ️ Keine Location-Control-Instanz — Sonnenaufgang/-untergang und „Ist es Tag“ fallen auf die Uhrzeiten zurück (Einstellungen → Standort).';
@@ -2214,8 +2251,8 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => $loc, 'color' => strpos($loc, '🔗') !== false ? 0x2E8B3D : -1],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => 'Eigene Anwesenheits-Variable (optional, hat Vorrang; Bool: wahr = jemand zu Hause)', 'width' => '520px'],
-                ['type' => 'CheckBox', 'name' => 'cfg_PresenceInvert', 'caption' => 'Variable ist umgekehrt (wahr = niemand da, z. B. „Abwesend“)'],
+                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => $presField ? 'Andere Anwesenheits-Quelle (hat Vorrang vor dem Automatismus; Bool: wahr = jemand zu Hause)' : 'Anwesenheits-Variable (nur nötig ohne Automatismus „Anwesenheit zusammenfassen“; Bool: wahr = jemand zu Hause)', 'width' => '520px', 'visible' => $presShow],
+                ['type' => 'CheckBox', 'name' => 'cfg_PresenceInvert', 'caption' => 'Variable ist umgekehrt (wahr = niemand da, z. B. „Abwesend“)', 'visible' => $presShow],
                 ['type' => 'Label', 'caption' => 'ℹ️ Bei „niemand da“ wird automatisch „Abwesend“ gesetzt, beim Heimkommen wieder der Tageszeit-Modus. „Urlaub“ setzt und beendet nur der Nutzer.'],
             ],
         ];
