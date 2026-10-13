@@ -1313,6 +1313,11 @@ class Automat extends IPSModule
     /** AUTOMAT_UIVarChanged($id, $field, $vid) — roten Hinweis unter einem Variablenfeld im offenen Dialog nachführen. */
     public function UIVarChanged(string $field, int $vid): void
     {
+        if ($vid !== 0 && $vid < AUTOMATKatalog::$minId) {
+            // Feld wurde geleert, Symcon liefert dafür teils 1 statt 0 — sauber auf 0 setzen, damit 0 gespeichert wird.
+            $this->UpdateFormField($field, 'value', 0);
+            $vid = 0;
+        }
         $bad = $vid >= AUTOMATKatalog::$minId && !IPS_VariableExists($vid);
         $this->UpdateFormField('chk_' . $field, 'caption', $bad ? '⛔ Variable #' . $vid . ' existiert nicht — bitte neu wählen oder leeren.' : '');
         $this->UpdateFormField('chk_' . $field, 'visible', $bad);

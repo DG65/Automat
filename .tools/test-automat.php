@@ -896,6 +896,14 @@ check('Dialog: Variablenfelder führen den Hinweis per onChange nach', strpos(js
 $m->fieldUpdates = [];
 $m->UIVarChanged('bl_out2', 1001);
 check('Gültige Variable gewählt → Hinweis verschwindet', in_array(['chk_bl_out2', 'visible', false], $m->fieldUpdates, true));
+AUTOMATKatalog::$minId = 10000;
+$m->fieldUpdates = [];
+$m->UIVarChanged('bl_mel2', 1);
+check('Feld geleert (Symcon liefert 1) → Dialogfeld wird auf 0 gesetzt, kein Hinweis', in_array(['bl_mel2', 'value', 0], $m->fieldUpdates, true) && in_array(['chk_bl_mel2', 'visible', false], $m->fieldUpdates, true), json_encode($m->fieldUpdates));
+$m->fieldUpdates = [];
+$m->UIVarChanged('bl_mel2', 0);
+check('Feld mit 0 bleibt unangetastet', !in_array(['bl_mel2', 'value', 0], $m->fieldUpdates, true));
+AUTOMATKatalog::$minId = 1;
 foreach ($rowsBad as &$rb) { if ($rb['Uid'] === 'aflur1') { $rb['bl_out2'] = 0; } }
 unset($rb);
 $m->props['Automations'] = json_encode($rowsBad);

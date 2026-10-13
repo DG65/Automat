@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.10 (Build 11) — 13.10.2026
+
+- Wird im Bearbeiten-Dialog ein Variablenfeld geleert, setzt Automat es sofort auf 0 (Symcon lieferte dafür teils 1) — gespeichert wird so eine saubere 0. Wunsch Dietmar.
+
 ## 0.1.9 (Build 10) — 13.10.2026
 
 - Leere Variablenfelder: Symcons Auswahlfeld speichert beim Leeren teils den Wert 1 statt 0 — Werte unter 10000 (echte Objekt-IDs sind fünfstellig) gelten jetzt als „nicht gewählt“. Die falsche Meldung „Variable #1 existiert nicht mehr“ verschwindet.
