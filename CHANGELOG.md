@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.16 (Build 17) — 13.10.2026
+
+- Hausmodus-Schalter neu formuliert: „automatisch nach Tageszeit umschalten … (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)“ — er schaltet nicht zwingend zu festen Zeiten. Rückmeldung Dietmar.
+
 ## 0.1.15 (Build 16) — 13.10.2026
 
 - Hausmodus-Automatik ist für neue Instanzen standardmäßig an (bestimmt nur, welcher Modus gilt; schaltet selbst nichts). Bestehende Instanzen behalten ihre Einstellung.

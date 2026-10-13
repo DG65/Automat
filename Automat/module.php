@@ -2117,7 +2117,7 @@ class Automat extends IPSModule
     private function modeAutoLine(bool $auto): string
     {
         return $auto
-            ? '✅ Automatik an — der Hausmodus wechselt zu den Zeiten unten; eine Änderung von Hand gilt bis zum nächsten Wechsel.'
+            ? '✅ Automatik an — der Hausmodus wechselt nach den Einstellungen unten; eine Änderung von Hand gilt bis zum nächsten Wechsel.'
             : 'ℹ️ Automatik aus — der Hausmodus ändert sich nur von Hand, per Kachel oder Skript (Nachtwerte beim Licht greifen dann nur, wenn „Nacht“ von Hand gesetzt ist).';
     }
 
@@ -2138,7 +2138,7 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
             'items' => [
                 ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
-                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch umschalten: morgens auf „Tag“, abends auf „Abend“, nachts auf „Nacht“ (Zeiten darunter)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
+                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
                 ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag ab'],
                 ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend ab', 'options' => [['caption' => 'Sonnenuntergang', 'value' => 0], ['caption' => 'Uhrzeit (unten)', 'value' => 1]]],

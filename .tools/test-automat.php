@@ -1068,7 +1068,7 @@ mkinst(12399, 'Automat 2');
 $m2->Create();
 check('Hausmodus-Automatik ist für neue Instanzen standardmäßig an', $m2->props['cfg_ModeAuto'] === true);
 $ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
-check('Schalter beschreibt, was passiert (morgens Tag, abends Abend, nachts Nacht)', strpos($ft, 'Hausmodus automatisch umschalten: morgens auf „Tag“') !== false);
+check('Schalter beschreibt, was passiert, ohne feste Zeiten zu versprechen', strpos($ft, 'Hausmodus automatisch nach Tageszeit umschalten') !== false && strpos($ft, 'z. B. Abend ab Sonnenuntergang') !== false && strpos($ft, 'zu den Zeiten unten') === false);
 check('Zustand der Automatik im Panel und in der Zusammenfassung sichtbar', strpos($ft, '✅ Automatik an') !== false && strpos($ft, 'wechselt automatisch') !== false && strpos($ft, '(automatisch)') !== false);
 $m->fieldUpdates = [];
 $m->UIModeAutoChanged(false);
