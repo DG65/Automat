@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.21:** neu gebaut und am Prüfstand (331 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.22:** neu gebaut und am Prüfstand (347 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -37,7 +37,7 @@ Geräten vor, was sich lohnt.
   (Putzen, Party, Handwerker). Gesperrt heißt: tut gar nichts.
 - **Pause** für alle auf einmal (Variable „Alle Automatismen pausieren").
 - **Hausmodus** Tag/Abend/Nacht/Abwesend/Urlaub als Variable dieser Instanz — von Hand, per Skript oder
-  automatisch nach Uhrzeit, Sonnenaufgang/-untergang oder „Ist es Tag“ (Location Control) und Anwesenheit. Jeder Automatismus lässt sich auf Modi
+  automatisch nach Uhrzeit, Sonnenstand/Dämmerung oder „Ist es Tag“ (Location Control), Helligkeitssensor (z. B. Wetterstation) und Anwesenheit. Jeder Automatismus lässt sich auf Modi
   beschränken, Licht nutzt bei „Nacht" einen eigenen Helligkeitswert.
 - **Bedingungen** über Symcons eigene Bedingungs-Auswahl (z. B. nur werktags, nur wenn ein Schalter an ist).
 - **Handbedienung hat Vorrang** — Automat erkennt das Echo eigener Befehle und unterscheidet es von

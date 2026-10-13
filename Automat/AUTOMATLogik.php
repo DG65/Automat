@@ -1129,7 +1129,10 @@ class AUTOMATLogik
      * Welcher Hausmodus gälte jetzt nach Tageszeit und Anwesenheit?
      * $c: dayRef (0 Uhrzeit, 1 Sonnenaufgang, 2 „Ist es Tag“), dayFrom (SelectTime-JSON), dayOff (min),
      *     eveRef (0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“ wird falsch), eveFrom, eveOff (min),
-     *     night (SelectTime-JSON), sunrise/sunset (Zeitstempel heute oder null), isDay (bool|null).
+     *     night (SelectTime-JSON), sunrise/sunset (Zeitstempel heute oder null), isDay (bool|null),
+     *     nightAt (Zeitstempel heute statt „night“, z. B. Ende der Dämmerung, oder null), nightOff (min).
+     *     „sunrise“/„sunset“ stehen für den gewählten Zeitpunkt der Location Control (auch Dämmerungsbeginn/-ende).
+     *     dayRef/eveRef 6 = Helligkeitssensor: wie „Ist es Tag“, aber mit lightDay (bool|null, siehe lightDay()).
      * $presence: true = jemand da, false = niemand da, null = unbekannt.
      * Urlaub wird nie automatisch gesetzt und nie automatisch verlassen.
      */
@@ -1143,29 +1146,36 @@ class AUTOMATLogik
         }
         $today = date('Y-m-d', $now);
         $noon = self::timeOn(AUTOMATKatalog::time(12, 0), $today);
-        $isDay = $c['isDay'] ?? null;
         $dayRef = (int)($c['dayRef'] ?? 0);
         $eveRef = (int)($c['eveRef'] ?? 0);
-        // Fehlt die Sonnen-/Tag-Angabe (keine Location-Control-Instanz), gilt die eingetragene Uhrzeit.
-        if ($dayRef === 1 && ($c['sunrise'] ?? null) === null || $dayRef === 2 && $isDay === null) {
+        // „Ist es Tag“ (2) und Helligkeitssensor (6) wirken gleich: ein Ja/Nein statt eines Zeitpunkts.
+        $flag = function (int $ref) use ($c) {
+            return $ref === 6 ? ($c['lightDay'] ?? null) : ($c['isDay'] ?? null);
+        };
+        $dayFlag = $flag($dayRef);
+        $eveFlag = $flag($eveRef);
+        // Fehlt die Angabe (keine Location Control, Sensor fehlt), gilt die eingetragene Uhrzeit.
+        if ($dayRef === 1 && ($c['sunrise'] ?? null) === null || ($dayRef === 2 || $dayRef === 6) && $dayFlag === null) {
             $dayRef = 0;
         }
-        if ($eveRef === 0 && ($c['sunset'] ?? null) === null || $eveRef === 2 && $isDay === null) {
+        if ($eveRef === 0 && ($c['sunset'] ?? null) === null || ($eveRef === 2 || $eveRef === 6) && $eveFlag === null) {
             $eveRef = 1;
         }
-        if ($dayRef === 2) {
-            $beforeDay = !$isDay && $now < $noon;
+        if ($dayRef === 2 || $dayRef === 6) {
+            $beforeDay = !$dayFlag && $now < $noon;
         } else {
             $dayStart = $dayRef === 1 ? (int)$c['sunrise'] + (int)($c['dayOff'] ?? 0) * 60 : self::timeOn((string)($c['dayFrom'] ?? AUTOMATKatalog::time(6, 30)), $today);
             $beforeDay = $now < $dayStart;
         }
-        if ($eveRef === 2) {
-            $evening = !$isDay && $now >= $noon;
+        if ($eveRef === 2 || $eveRef === 6) {
+            $evening = !$eveFlag && $now >= $noon;
         } else {
             $eveStart = $eveRef === 0 ? (int)$c['sunset'] + (int)($c['eveOff'] ?? 0) * 60 : self::timeOn((string)($c['eveFrom'] ?? AUTOMATKatalog::time(18, 0)), $today);
             $evening = $now >= $eveStart;
         }
-        $night = self::timeOn((string)($c['night'] ?? AUTOMATKatalog::time(22, 30)), $today);
+        $night = ($c['nightAt'] ?? null) !== null
+            ? (int)$c['nightAt'] + (int)($c['nightOff'] ?? 0) * 60
+            : self::timeOn((string)($c['night'] ?? AUTOMATKatalog::time(22, 30)), $today);
         if ($night < $noon) {
             // „Nacht ab 00:30“: nach Mitternacht bis dahin noch Abend, danach Nacht bis zum Tag.
             if ($now < $noon) {
@@ -1177,6 +1187,28 @@ class AUTOMATLogik
             return AUTOMATKatalog::MODE_NIGHT;
         }
         return $evening ? 1 : 0;
+    }
+
+    /**
+     * Hell oder dunkel nach einem Helligkeits-/Einstrahlungssensor, mit zwei Schwellen und Haltezeit,
+     * damit eine Wolke oder ein Schatten nicht umschaltet. $st: ['day' => bool, 'cand' => Zeitstempel|0].
+     * Hell wird es erst, wenn der Wert $hold Sekunden lang mindestens $up ist; dunkel, wenn er $hold Sekunden
+     * lang unter $down liegt. Dazwischen bleibt es, wie es ist.
+     */
+    public static function lightDay(array $st, float $v, int $now, float $up, float $down, int $hold): array
+    {
+        if (!isset($st['day'])) {
+            return ['day' => $v >= ($up + $down) / 2, 'cand' => 0];
+        }
+        $crossing = $st['day'] ? $v < $down : $v >= $up;
+        if (!$crossing) {
+            return ['day' => (bool)$st['day'], 'cand' => 0];
+        }
+        $cand = (int)($st['cand'] ?? 0) ?: $now;
+        if ($now - $cand >= $hold) {
+            return ['day' => !$st['day'], 'cand' => 0];
+        }
+        return ['day' => (bool)$st['day'], 'cand' => $cand];
     }
 
     // ------------------------------------------------------------------

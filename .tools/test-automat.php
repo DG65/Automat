@@ -148,6 +148,8 @@ class IPSModule
     public function ApplyChanges() {}
     public function RegisterPropertyString(string $n, string $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
     public function RegisterPropertyInteger(string $n, int $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
+    public function RegisterPropertyFloat(string $n, float $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
+    public function ReadPropertyFloat(string $n): float { return (float)$this->props[$n]; }
     public function RegisterPropertyBoolean(string $n, bool $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
     public function ReadPropertyString(string $n): string { return $this->props[$n]; }
     public function ReadPropertyInteger(string $n): int { return $this->props[$n]; }
@@ -699,6 +701,20 @@ check('Ohne Location Control: Uhrzeiten als Rückfall', $am('07:00', ['dayRef' =
 check('Nacht ab 00:30: 23:30 noch Abend, 01:00 Nacht, 07:00 Tag', $am('23:30', ['night' => AUTOMATKatalog::time(0, 30)]) === 1 && $am('01:00', ['night' => AUTOMATKatalog::time(0, 30)]) === 2 && $am('07:00', ['night' => AUTOMATKatalog::time(0, 30)]) === 0);
 check('Niemand da = Abwesend', $am('12:00', [], false) === 3);
 check('Urlaub bleibt Urlaub', $am('23:00', [], false, 4) === 4);
+check('Nacht ab Ende nautische Dämmerung 19:40 (+10 min): 19:45 Abend, 19:55 Nacht', $am('19:45', ['nightAt' => ts('2026-10-13 19:40'), 'nightOff' => 10]) === 1 && $am('19:55', ['nightAt' => ts('2026-10-13 19:40'), 'nightOff' => 10]) === 2);
+check('Helligkeitssensor: dunkel am Nachmittag = Abend, hell = Tag; ohne Sensor Uhrzeit', $am('16:00', ['eveRef' => 6, 'lightDay' => false]) === 1 && $am('16:00', ['eveRef' => 6, 'lightDay' => true]) === 0 && $am('16:00', ['eveRef' => 6]) === 0);
+check('Helligkeitssensor morgens: dunkel = Nacht, hell = Tag', $am('07:30', ['dayRef' => 6, 'lightDay' => false]) === 2 && $am('07:30', ['dayRef' => 6, 'lightDay' => true]) === 0);
+$ls = AUTOMATLogik::lightDay([], 80.0, 1000, 50, 20, 600);
+check('lightDay: Startwert nach Messwert (80 → hell)', $ls === ['day' => true, 'cand' => 0]);
+$ls = AUTOMATLogik::lightDay($ls, 10.0, 1000, 50, 20, 600);
+check('Wolke: unter „dunkel“, aber Haltezeit läuft noch → bleibt hell', $ls['day'] === true && $ls['cand'] === 1000);
+$ls = AUTOMATLogik::lightDay($ls, 35.0, 1300, 50, 20, 600);
+check('Zwischen den Schwellen: Haltezeit verworfen', $ls === ['day' => true, 'cand' => 0]);
+$ls = AUTOMATLogik::lightDay($ls, 10.0, 2000, 50, 20, 600);
+$ls = AUTOMATLogik::lightDay($ls, 12.0, 2600, 50, 20, 600);
+check('10 min dauerhaft unter „dunkel“ → dunkel', $ls === ['day' => false, 'cand' => 0]);
+$ls = AUTOMATLogik::lightDay($ls, 40.0, 3000, 50, 20, 600);
+check('Dunkel bleibt bis „hell ab“ erreicht ist (Hysterese)', $ls['day'] === false && $ls['cand'] === 0);
 
 heading('A8b. Anwesenheit zusammenfassen');
 $an = AUTOMATKatalog::defaults('anwesenheit');
@@ -1362,13 +1378,38 @@ check('Sonnenaufgang/Uhrzeit gewählt: nur Versatz bzw. nur Uhrzeit sichtbar', !
 $lt = json_encode($fv, JSON_UNESCAPED_UNICODE);
 check('Infozeile nennt nur, was die Auswahl nutzt (Sonnenaufgang heute 07:45), kein „verbunden“', strpos($lt, 'Aus der Location Control: Sonnenaufgang heute 07:45 Uhr.') !== false && strpos($lt, 'Sonnenuntergang heute') === false && strpos($lt, '🔗 Sonnenaufgang') === false);
 $m->fieldUpdates = [];
-$m->UIRefChanged(0, 0);
+$m->UIRefChanged(0, 0, 0);
 check('Umstellen im offenen Formular blendet sofort passend ein/aus', in_array(['cfg_DayFrom', 'visible', true], $m->fieldUpdates, true) && in_array(['cfg_DayOffset', 'visible', false], $m->fieldUpdates, true) && in_array(['cfg_EveningOffset', 'visible', true], $m->fieldUpdates, true) && in_array(['cfg_EveningFrom', 'visible', false], $m->fieldUpdates, true), json_encode($m->fieldUpdates));
 check('… und die Infozeile folgt (jetzt Sonnenuntergang 18:30)', in_array(['LocationInfo', 'caption', 'ℹ️ Aus der Location Control: Sonnenuntergang heute 18:30 Uhr.'], $m->fieldUpdates, true), json_encode($m->fieldUpdates, JSON_UNESCAPED_UNICODE));
 $m->fieldUpdates = [];
-$m->UIRefChanged(0, 1);
+$m->UIRefChanged(0, 1, 0);
 check('Alles „zur Uhrzeit“: Infozeile ausgeblendet', in_array(['LocationInfo', 'visible', false], $m->fieldUpdates, true));
 $m->props['cfg_DayRef'] = 0;
+$m->props['cfg_EveningRef'] = 1;
+$fv = json_decode($m->GetConfigurationForm(), true);
+$opt = array_column($find($fv['elements'], 'cfg_EveningRef')['options'], 'caption');
+check('Abend-Auswahl bietet alle Zeitpunkte der Location Control mit heutiger Uhrzeit', in_array('Sonnenuntergang (heute 18:30 Uhr)', $opt, true) && in_array('Ende nautische Dämmerung', array_map(fn($o) => preg_replace('/ \(heute.*$/', '', $o), $opt), true) && count(array_filter($opt, fn($o) => strpos($o, 'Dämmerung') !== false)) === 3, json_encode($opt, JSON_UNESCAPED_UNICODE));
+check('Sensorfelder nur bei Auswahl „Helligkeitssensor“', ($find($fv['elements'], 'cfg_LightVar')['visible'] ?? true) === false);
+mkinst(1600, 'Wetterstation');
+mkvar(1601, VARIABLETYPE_FLOAT, 120.0, 'Globalstrahlung', 1600, false, '', ['SUFFIX' => ' W/m²']);
+$m->props['cfg_EveningRef'] = 6;
+$m->props['cfg_LightVar'] = 0;
+$fv = json_decode($m->GetConfigurationForm(), true);
+check('Sensor gewählt aber leer: Formular schlägt die Wetterstation vor', strpos($find($fv['elements'], 'LightHint')['caption'] ?? '', '💡 Gefunden: Wetterstation / Globalstrahlung (#1601)') !== false && ($find($fv['elements'], 'cfg_LightVar')['visible'] ?? true) === true);
+$m->props['cfg_LightVar'] = 1601;
+$m->props['cfg_LightHold'] = 10;
+$m->WriteAttributeString('LightState', '{}');
+at('16:00:00');
+$m->ApplyChanges();
+check('Sensor wird überwacht, hell → Tag', isset($m->messages[1601]) && GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 0);
+fire($m, 1601, 8.0);
+check('Wolke (8 W/m²): Haltezeit läuft, noch Tag', GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 0);
+at('16:11:00');
+$m->Tick();
+check('Nach 10 min dunkel → Abend', GetValue(IPS_GetObjectIDByIdent('Hausmodus', 12345)) === 1);
+$fv = json_decode($m->GetConfigurationForm(), true);
+check('Infozeile zeigt Sensorwert mit Einheit und Zustand', strpos($find($fv['elements'], 'LocationInfo')['caption'] ?? '', 'Sensor „Wetterstation / Globalstrahlung“ gerade 8 W/m² (dunkel)') !== false, $find($fv['elements'], 'LocationInfo')['caption'] ?? '');
+check('Schwellen zeigen die Einheit des Sensors', ($find($fv['elements'], 'cfg_LightDay')['suffix'] ?? '') === ' W/m²');
 $m->props['cfg_EveningRef'] = 0;
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();

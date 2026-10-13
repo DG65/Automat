@@ -40,6 +40,16 @@ class Automat extends IPSModule
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
+    // Zeitpunkte der Location Control je Auswahlwert (Idents live geprüft). Die Werte 0–2 bleiben aus 0.1.17 gültig.
+    private const DAY_EVENTS = [1 => 'Sunrise', 3 => 'CivilTwilightStart', 4 => 'NauticTwilightStart', 5 => 'AstronomicTwilightStart'];
+    private const EVE_EVENTS = [0 => 'Sunset', 3 => 'CivilTwilightEnd', 4 => 'NauticTwilightEnd', 5 => 'AstronomicTwilightEnd'];
+    private const NIGHT_EVENTS = [3 => 'CivilTwilightEnd', 4 => 'NauticTwilightEnd', 5 => 'AstronomicTwilightEnd'];
+    private const EVENT_LABELS = [
+        'Sunrise' => 'Sonnenaufgang', 'Sunset' => 'Sonnenuntergang',
+        'CivilTwilightStart' => 'Beginn bürgerliche Dämmerung', 'CivilTwilightEnd' => 'Ende bürgerliche Dämmerung',
+        'NauticTwilightStart' => 'Beginn nautische Dämmerung', 'NauticTwilightEnd' => 'Ende nautische Dämmerung',
+        'AstronomicTwilightStart' => 'Beginn astronomische Dämmerung', 'AstronomicTwilightEnd' => 'Ende astronomische Dämmerung',
+    ];
     // DG65-Toolkit Raumstruktur (vormals Raumstruktur; Räume/Etagen), Vertrag RAUM_/STRUKT_GetStructure 1.x — optional.
     private const RAUM_GUID = '{CA700334-0982-F356-0617-6952868137E9}';
     // Push-Ziele (SUITE.md Stolperstein 22): klassisches WebFront und Kachel-Visualisierung.
@@ -83,6 +93,12 @@ class Automat extends IPSModule
         $this->RegisterPropertyInteger('cfg_EveningRef', 0);
         $this->RegisterPropertyString('cfg_EveningFrom', AUTOMATKatalog::time(18, 0));
         $this->RegisterPropertyString('cfg_NightFrom', AUTOMATKatalog::time(22, 30));
+        $this->RegisterPropertyInteger('cfg_NightRef', 0);
+        $this->RegisterPropertyInteger('cfg_NightOffset', 0);
+        $this->RegisterPropertyInteger('cfg_LightVar', 0);
+        $this->RegisterPropertyFloat('cfg_LightDay', 50);
+        $this->RegisterPropertyFloat('cfg_LightNight', 20);
+        $this->RegisterPropertyInteger('cfg_LightHold', 10);
         $this->RegisterPropertyInteger('cfg_PresenceVar', 0);
         $this->RegisterPropertyBoolean('cfg_PresenceInvert', false);
         $this->RegisterPropertyBoolean('cfg_TileLight', false);
@@ -102,6 +118,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('RoomSource', '');
         $this->RegisterAttributeInteger('LastDiscoveryTs', 0);
         $this->RegisterAttributeInteger('LastAutoMode', -1);
+        $this->RegisterAttributeString('LightState', '{}');
         $this->RegisterAttributeBoolean('PurposeIntroGone', false);
         $this->RegisterAttributeString('SeenNews', '');
         $this->RegisterAttributeBoolean('ForumHintGone', false);
@@ -189,6 +206,9 @@ class Automat extends IPSModule
         if ($isDay > 0 && ($this->ReadPropertyInteger('cfg_DayRef') === 2 || $this->ReadPropertyInteger('cfg_EveningRef') === 2)) {
             $this->RegisterMessage($isDay, VM_UPDATE);
         }
+        if ($this->lightVar() > 0) {
+            $this->RegisterMessage($this->lightVar(), VM_UPDATE);
+        }
 
         // Variablen entfernter Automatismen aufräumen (nur eigene Idents).
         foreach (IPS_GetChildrenIDs($this->InstanceID) as $cid) {
@@ -232,7 +252,7 @@ class Automat extends IPSModule
         if ($vid > 0 && $vid === $this->externalPresenceVar()) {
             $this->evaluateMode(true);
         }
-        if ($vid === $this->locationVariable('IsDay')) {
+        if ($vid === $this->locationVariable('IsDay') || ($vid > 0 && $vid === $this->lightVar())) {
             $this->evaluateMode(false);
         }
         $own = $this->consumeEcho($vid, $value);
@@ -761,12 +781,20 @@ class Automat extends IPSModule
         if ($this->ReadPropertyBoolean('cfg_ModeAuto')) {
             $today = date('Y-m-d', $now);
             $isDayVid = $this->locationVariable('IsDay');
+            // Gewählter Zeitpunkt der Location Control → für die Logik „sunrise“/„sunset“ (Ref 1 bzw. 0).
+            $dayRef = $this->ReadPropertyInteger('cfg_DayRef');
+            $eveRef = $this->ReadPropertyInteger('cfg_EveningRef');
+            $nightRef = $this->ReadPropertyInteger('cfg_NightRef');
             $target = AUTOMATLogik::autoMode($now, [
-                'dayRef' => $this->ReadPropertyInteger('cfg_DayRef'), 'dayFrom' => $this->ReadPropertyString('cfg_DayFrom'), 'dayOff' => $this->ReadPropertyInteger('cfg_DayOffset'),
-                'eveRef' => $this->ReadPropertyInteger('cfg_EveningRef'), 'eveFrom' => $this->ReadPropertyString('cfg_EveningFrom'), 'eveOff' => $this->ReadPropertyInteger('cfg_EveningOffset'),
+                'dayRef' => isset(self::DAY_EVENTS[$dayRef]) ? 1 : $dayRef, 'dayFrom' => $this->ReadPropertyString('cfg_DayFrom'), 'dayOff' => $this->ReadPropertyInteger('cfg_DayOffset'),
+                'eveRef' => isset(self::EVE_EVENTS[$eveRef]) ? 0 : $eveRef, 'eveFrom' => $this->ReadPropertyString('cfg_EveningFrom'), 'eveOff' => $this->ReadPropertyInteger('cfg_EveningOffset'),
                 'night' => $this->ReadPropertyString('cfg_NightFrom'),
-                'sunrise' => $this->sunOn('Sunrise', $today), 'sunset' => $this->sunOn('Sunset', $today),
+                'nightAt' => isset(self::NIGHT_EVENTS[$nightRef]) ? $this->sunOn(self::NIGHT_EVENTS[$nightRef], $today) : null,
+                'nightOff' => $this->ReadPropertyInteger('cfg_NightOffset'),
+                'sunrise' => isset(self::DAY_EVENTS[$dayRef]) ? $this->sunOn(self::DAY_EVENTS[$dayRef], $today) : null,
+                'sunset' => isset(self::EVE_EVENTS[$eveRef]) ? $this->sunOn(self::EVE_EVENTS[$eveRef], $today) : null,
                 'isDay' => $isDayVid > 0 ? (bool)GetValue($isDayVid) : null,
+                'lightDay' => $this->lightDayNow($now),
             ], $presence, $current);
         } else {
             // Nur Anwesenheit: Abwesend setzen bzw. beim Heimkommen auf Tag zurück.
@@ -2212,57 +2240,171 @@ class Automat extends IPSModule
     }
 
     /**
-     * AUTOMAT_UIRefChanged($id, $day, $eve) — nur die zur Auswahl passenden Felder zeigen (Uhrzeit bzw. Versatz)
-     * und die Infozeile zur Location Control nachführen. Tag: 0 Uhrzeit, 1 Sonnenaufgang, 2 „Ist es Tag“;
-     * Abend: 0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“.
+     * AUTOMAT_UIRefChanged($id, $day, $eve, $night) — nur die zur Auswahl passenden Felder zeigen (Uhrzeit bzw.
+     * Versatz) und die Infozeile zur Location Control nachführen.
      */
-    public function UIRefChanged(int $day, int $eve): void
+    public function UIRefChanged(int $day, int $eve, int $night): void
     {
         $this->UpdateFormField('cfg_DayFrom', 'visible', $day === 0);
-        $this->UpdateFormField('cfg_DayOffset', 'visible', $day === 1);
+        $this->UpdateFormField('cfg_DayOffset', 'visible', isset(self::DAY_EVENTS[$day]));
         $this->UpdateFormField('cfg_EveningFrom', 'visible', $eve === 1);
-        $this->UpdateFormField('cfg_EveningOffset', 'visible', $eve === 0);
-        $line = $this->locationLine($day, $eve);
+        $this->UpdateFormField('cfg_EveningOffset', 'visible', isset(self::EVE_EVENTS[$eve]));
+        $this->UpdateFormField('cfg_NightFrom', 'visible', !isset(self::NIGHT_EVENTS[$night]));
+        $this->UpdateFormField('cfg_NightOffset', 'visible', isset(self::NIGHT_EVENTS[$night]));
+        foreach (['LightHead', 'cfg_LightVar', 'cfg_LightDay', 'cfg_LightNight', 'cfg_LightHold', 'LightHint'] as $f) {
+            $this->UpdateFormField($f, 'visible', $day === 6 || $eve === 6);
+        }
+        $line = $this->locationLine($day, $eve, $night);
         $this->UpdateFormField('LocationInfo', 'caption', $line);
         $this->UpdateFormField('LocationInfo', 'visible', $line !== '');
+    }
+
+    /** Helligkeitssensor, wenn er gewählt und für Tag oder Abend genutzt wird (sonst 0). */
+    private function lightVar(): int
+    {
+        if ($this->ReadPropertyInteger('cfg_DayRef') !== 6 && $this->ReadPropertyInteger('cfg_EveningRef') !== 6) {
+            return 0;
+        }
+        $vid = $this->ReadPropertyInteger('cfg_LightVar');
+        return $vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid) ? $vid : 0;
+    }
+
+    /** Hell (true) / dunkel (false) nach dem Sensor, mit Haltezeit; null ohne Sensor. */
+    private function lightDayNow(int $now): ?bool
+    {
+        $vid = $this->lightVar();
+        if ($vid === 0) {
+            return null;
+        }
+        $st = AUTOMATLogik::lightDay(json_decode($this->ReadAttributeString('LightState'), true) ?: [], (float)GetValue($vid), $now,
+            $this->ReadPropertyFloat('cfg_LightDay'), $this->ReadPropertyFloat('cfg_LightNight'), max(0, $this->ReadPropertyInteger('cfg_LightHold')) * 60);
+        $this->WriteAttributeString('LightState', json_encode($st));
+        return (bool)$st['day'];
+    }
+
+    /** Einheit einer Variable (Darstellung oder Profil), z. B. „W/m²“ oder „lx“. */
+    private function unitOf(int $vid): string
+    {
+        $v = IPS_GetVariable($vid);
+        $pres = $v['VariableCustomPresentation'] ?? [];
+        if (!is_array($pres) || count($pres) === 0) {
+            $pres = $v['VariablePresentation'] ?? [];
+        }
+        $suffix = is_array($pres) ? (string)($pres['SUFFIX'] ?? '') : '';
+        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: ($v['VariableProfile'] ?? ''));
+        if ($suffix === '' && $profile !== '' && IPS_VariableProfileExists($profile)) {
+            $suffix = (string)(IPS_GetVariableProfile($profile)['Suffix'] ?? '');
+        }
+        return trim($suffix);
+    }
+
+    /** Mögliche Helligkeits-/Einstrahlungssensoren (für den Hinweis im Formular), höchstens 3. */
+    private function lightCandidates(): array
+    {
+        $out = [];
+        foreach (IPS_GetVariableList() as $vid) {
+            $v = IPS_GetVariable($vid);
+            if (!in_array((int)$v['VariableType'], [VARIABLETYPE_INTEGER, VARIABLETYPE_FLOAT], true)) {
+                continue;
+            }
+            $unit = mb_strtolower($this->unitOf($vid));
+            $profile = mb_strtolower((string)(($v['VariableCustomProfile'] ?? '') ?: ($v['VariableProfile'] ?? '')));
+            $name = mb_strtolower(IPS_GetName($vid));
+            if (preg_match('#w/m|lx|lux#', $unit) || preg_match('/illumin|radiation|strahlung/', $profile)
+                || preg_match('/einstrahlung|globalstrahlung|strahlung|solar ?radiation|helligkeit|illuminance/', $name) && $unit !== '%') {
+                $out[] = $this->varLabel($vid) . ' (#' . $vid . ')';
+                if (count($out) >= 3) {
+                    break;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Auswahl-Eintrag für einen Zeitpunkt der Location Control, mit der heutigen Uhrzeit. */
+    private function eventOption(int $value, string $ident): array
+    {
+        $t = $this->sunOn($ident, date('Y-m-d', $this->now()));
+        return ['caption' => self::EVENT_LABELS[$ident] . ($t !== null ? ' (heute ' . date('H:i', $t) . ' Uhr)' : ''), 'value' => $value];
     }
 
     /**
      * Was die gewählten Einstellungen aus der Location Control lesen — mit den heutigen Werten.
      * Leer, wenn nichts davon gebraucht wird (alles „zur Uhrzeit“).
      */
-    private function locationLine(int $day, int $eve): string
+    private function locationLine(int $day, int $eve, int $night): string
     {
-        $needSunrise = $day === 1;
-        $needSunset = $eve === 0;
+        $idents = array_values(array_filter([self::DAY_EVENTS[$day] ?? null, self::EVE_EVENTS[$eve] ?? null, self::NIGHT_EVENTS[$night] ?? null]));
         $needIsDay = $day === 2 || $eve === 2;
-        if (!$needSunrise && !$needSunset && !$needIsDay) {
+        $needLight = $day === 6 || $eve === 6;
+        if (count($idents) === 0 && !$needIsDay && !$needLight) {
             return '';
         }
+        $p = [];
+        if ($needLight) {
+            $vid = $this->ReadPropertyInteger('cfg_LightVar');
+            if ($vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid)) {
+                $st = json_decode($this->ReadAttributeString('LightState'), true) ?: [];
+                $p[] = 'Sensor „' . $this->varLabel($vid) . '“ gerade ' . round((float)GetValue($vid), 1) . ' ' . $this->unitOf($vid)
+                    . (isset($st['day']) ? ' (' . ($st['day'] ? 'hell' : 'dunkel') . ')' : '');
+            } else {
+                $p[] = '⚠️ Helligkeitssensor noch nicht gewählt — bis dahin gelten die Uhrzeiten';
+            }
+        }
+        if (count($idents) === 0 && !$needIsDay) {
+            return 'ℹ️ ' . implode(' · ', $p) . '.';
+        }
         if ($this->locationVariable('Sunset') === 0) {
-            return '⚠️ Keine Location-Control-Instanz gefunden — bis eine angelegt ist, gelten die Uhrzeiten (Tag 06:30 bzw. Abend 18:00 aus den Einstellungen).';
+            return '⚠️ Keine Location-Control-Instanz gefunden — bis eine angelegt ist, gelten die Uhrzeiten aus den Einstellungen.' . (count($p) > 0 ? ' ' . implode(' · ', $p) . '.' : '');
         }
         $today = date('Y-m-d', $this->now());
-        $p = [];
-        if ($needSunrise) {
-            $t = $this->sunOn('Sunrise', $today);
-            $p[] = 'Sonnenaufgang heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'unbekannt');
-        }
-        if ($needSunset) {
-            $t = $this->sunOn('Sunset', $today);
-            $p[] = 'Sonnenuntergang heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'unbekannt');
+        foreach (array_unique($idents) as $ident) {
+            $t = $this->sunOn($ident, $today);
+            $p[] = self::EVENT_LABELS[$ident] . ' heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'nicht vorhanden (dann gilt die Uhrzeit)');
         }
         if ($needIsDay) {
             $vid = $this->locationVariable('IsDay');
             $p[] = '„Ist es Tag“ gerade: ' . ($vid > 0 ? ((bool)GetValue($vid) ? 'ja' : 'nein') : 'nicht vorhanden');
         }
-        return 'ℹ️ Aus der Location Control: ' . implode(' · ', $p) . '.';
+        $sensor = $needLight ? array_shift($p) : null;
+        return 'ℹ️ Aus der Location Control: ' . implode(' · ', $p) . '.' . ($sensor !== null ? ' ' . $sensor . '.' : '');
     }
 
     private function ModePanel(): array
     {
         $dayRef = $this->ReadPropertyInteger('cfg_DayRef');
         $eveRef = $this->ReadPropertyInteger('cfg_EveningRef');
+        $nightRef = $this->ReadPropertyInteger('cfg_NightRef');
+        $onRef = 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef, $cfg_NightRef);';
+        $dayOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
+        foreach (self::DAY_EVENTS as $v => $ident) {
+            $dayOpts[] = $this->eventOption($v, $ident);
+        }
+        $dayOpts[] = ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2];
+        $dayOpts[] = ['caption' => 'wenn es hell wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
+        $eveOpts = [];
+        foreach (self::EVE_EVENTS as $v => $ident) {
+            $eveOpts[] = $this->eventOption($v, $ident);
+        }
+        $eveOpts[] = ['caption' => 'zur Uhrzeit', 'value' => 1];
+        $eveOpts[] = ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2];
+        $eveOpts[] = ['caption' => 'wenn es dunkel wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
+        $useLight = $dayRef === 6 || $eveRef === 6;
+        $lightUnit = '';
+        $lightHint = 'Richtwerte: Einstrahlung (W/m²) hell ab 50, dunkel unter 20 · Helligkeit (lx) hell ab 1000, dunkel unter 300. Die Haltezeit verhindert, dass eine Wolke umschaltet.';
+        $lv = $this->ReadPropertyInteger('cfg_LightVar');
+        if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
+            $lightUnit = $this->unitOf($lv);
+        } elseif ($useLight) {
+            $cand = $this->lightCandidates();
+            if (count($cand) > 0) {
+                $lightHint = '💡 Gefunden: ' . implode(', ', $cand) . '. ' . $lightHint;
+            }
+        }
+        $nightOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
+        foreach (self::NIGHT_EVENTS as $v => $ident) {
+            $nightOpts[] = $this->eventOption($v, $ident);
+        }
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
         $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
         [, $presText] = $this->presenceSource();
@@ -2274,28 +2416,28 @@ class Automat extends IPSModule
             $presText .= ' Im Feld „Anwesenheits-Variable“ steht noch die Ergebnisvariable selbst — das ist nicht nötig, sie wird ohnehin genutzt.';
             $presShow = true;
         }
-        $loc = $this->locationLine($dayRef, $eveRef);
+        $loc = $this->locationLine($dayRef, $eveRef, $nightRef);
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
             'items' => [
                 ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
                 ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
-                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef);', 'options' => [
-                    ['caption' => 'zur Uhrzeit', 'value' => 0],
-                    ['caption' => 'bei Sonnenaufgang (± Versatz)', 'value' => 1],
-                    ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2],
-                ]],
+                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $dayOpts],
                 ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag beginnt um', 'visible' => $dayRef === 0],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz zum Sonnenaufgang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $dayRef === 1],
-                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef);', 'options' => [
-                    ['caption' => 'bei Sonnenuntergang (± Versatz)', 'value' => 0],
-                    ['caption' => 'zur Uhrzeit', 'value' => 1],
-                    ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2],
-                ]],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::DAY_EVENTS[$dayRef])],
+                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $eveOpts],
                 ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend beginnt um', 'visible' => $eveRef === 1],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz zum Sonnenuntergang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $eveRef === 0],
-                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um'],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::EVE_EVENTS[$eveRef])],
+                ['type' => 'Label', 'name' => 'LightHead', 'caption' => '— Helligkeitssensor —', 'bold' => true, 'visible' => $useLight],
+                ['type' => 'SelectVariable', 'name' => 'cfg_LightVar', 'caption' => 'Helligkeits- oder Einstrahlungssensor (z. B. Wetterstation, Globalstrahlung)', 'width' => '520px', 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightDay', 'caption' => 'Hell ab', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightNight', 'caption' => 'Dunkel unter', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightHold', 'caption' => 'Haltezeit (so lange muss der Wert jenseits der Schwelle bleiben)', 'suffix' => ' min', 'minimum' => 0, 'maximum' => 120, 'visible' => $useLight],
+                ['type' => 'Label', 'name' => 'LightHint', 'caption' => $lightHint, 'visible' => $useLight],
+                ['type' => 'Select', 'name' => 'cfg_NightRef', 'caption' => 'Nacht beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $nightOpts],
+                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um', 'visible' => !isset(self::NIGHT_EVENTS[$nightRef])],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_NightOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::NIGHT_EVENTS[$nightRef])],
                 ['type' => 'Label', 'name' => 'LocationInfo', 'caption' => $loc, 'visible' => $loc !== ''],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],

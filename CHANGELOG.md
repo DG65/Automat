@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.22 (Build 23) — 13.10.2026
+
+- Hausmodus: Alle Zeitpunkte der Location Control stehen zur Auswahl, jeweils mit der heutigen Uhrzeit — Tag ab Sonnenaufgang oder Beginn der bürgerlichen/nautischen/astronomischen Dämmerung, Abend ab Sonnenuntergang oder Ende einer Dämmerung, „Ist es Tag“. Neu auch „Nacht beginnt“ wahlweise zur Uhrzeit oder am Ende einer Dämmerung. Jeweils mit Versatz. Wunsch Dietmar.
+- Hausmodus nach **Helligkeitssensor** (z. B. Einstrahlung einer Wetterstation in W/m² oder Helligkeit in lx): „Tag beginnt, wenn es hell wird“ / „Abend beginnt, wenn es dunkel wird“ — mit zwei Schwellen (hell ab / dunkel unter) und Haltezeit (Standard 10 min), damit eine Wolke nicht umschaltet. Das Formular schlägt passende Sensoren vor, zeigt die Einheit an den Schwellen und den aktuellen Wert mit Zustand. Fehlt der Sensor, gelten die Uhrzeiten. Wunsch Dietmar.
+
 ## 0.1.21 (Build 22) — 13.10.2026
 
 - Hausmodus: Die grüne Zeile „🔗 … aus Symcons Location Control“ klang, als sei schon alles verbunden. Ersetzt durch eine Infozeile, die nur nennt, was die Auswahl wirklich nutzt, mit den heutigen Werten (z. B. „Sonnenaufgang heute 07:45 Uhr · „Ist es Tag“ gerade: ja“); bei „zur Uhrzeit“ ausgeblendet, ohne Location Control ⚠️ mit Rückfall auf die Uhrzeiten. Folgt dem Umstellen sofort. Rückmeldung Dietmar.
