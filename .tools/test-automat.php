@@ -1061,6 +1061,19 @@ $m->UIDialogType('fenster');
 $vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] === true);
 check('Typwechsel im Dialog zeigt den passenden Abschnitt', count($vis) === 1 && array_values($vis)[0][0] === 'sec_fenster');
 
+// Hausmodus-Automatik: Standard an, verständlicher Schalter, Zustand sichtbar
+$m2 = new AutomatTest();
+$m2->InstanceID = 12399;
+mkinst(12399, 'Automat 2');
+$m2->Create();
+check('Hausmodus-Automatik ist für neue Instanzen standardmäßig an', $m2->props['cfg_ModeAuto'] === true);
+$ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Schalter beschreibt, was passiert (morgens Tag, abends Abend, nachts Nacht)', strpos($ft, 'Hausmodus automatisch umschalten: morgens auf „Tag“') !== false);
+check('Zustand der Automatik im Panel und in der Zusammenfassung sichtbar', strpos($ft, '✅ Automatik an') !== false && strpos($ft, 'wechselt automatisch') !== false && strpos($ft, '(automatisch)') !== false);
+$m->fieldUpdates = [];
+$m->UIModeAutoChanged(false);
+check('Schalter umgelegt → Zustandszeile folgt sofort (mit Hinweis „noch nicht übernommen“)', strpos(json_encode($m->fieldUpdates, JSON_UNESCAPED_UNICODE), 'Automatik aus') !== false && strpos(json_encode($m->fieldUpdates, JSON_UNESCAPED_UNICODE), 'noch nicht übernommen') !== false);
+
 heading('C4. Entdecken, Übernehmen, Ausblenden');
 $GLOBALS['EVENTS'][77000] = ['EventType' => 0, 'EventActive' => true, 'TriggerVariableID' => 1011, 'TriggerType' => 4, 'TriggerValue' => true, 'EventScript' => '', 'EventActionParameters' => ['TARGET' => 1001, 'VALUE' => true], 'EventConditions' => []];
 $GLOBALS['OBJ'][77000] = ['kind' => 4, 'name' => 'Flurlicht alt', 'parent' => 0, 'ident' => '', 'hidden' => false];
@@ -1179,7 +1192,11 @@ check('Nachricht auf entferntem Kontakt abgemeldet', !isset($m->messages[1031]))
 check('Zustände entfernter Automatismen vergessen', array_keys(testStates()) === ['aflur1']);
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
-check('Ohne Automatismen: Status 104, Timer aus', $m->status === 104 && $m->timers['Tick'] === 0);
+check('Ohne Automatismen: Status 104, Takt läuft nur für die Hausmodus-Automatik weiter', $m->status === 104 && $m->timers['Tick'] > 0);
+$m->props['cfg_ModeAuto'] = false;
+$m->ApplyChanges();
+check('Ohne Automatismen und ohne Hausmodus-Automatik: Timer aus', $m->timers['Tick'] === 0);
+$m->props['cfg_ModeAuto'] = true;
 heading('C7. Melderverhalten: Impuls-Melder erkennen, verlorene Meldungen zählen');
 mkinst(1200, 'Sensor Gang');
 mkvar(1201, VARIABLETYPE_BOOLEAN, false, 'Bewegung', 1200, false, '~Motion');

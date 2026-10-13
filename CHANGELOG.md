@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.15 (Build 16) — 13.10.2026
+
+- Hausmodus-Automatik ist für neue Instanzen standardmäßig an (bestimmt nur, welcher Modus gilt; schaltet selbst nichts). Bestehende Instanzen behalten ihre Einstellung.
+- Verständlicher Schalter: „Hausmodus automatisch umschalten: morgens auf „Tag“, abends auf „Abend“, nachts auf „Nacht“ (Zeiten darunter)“, darunter eine Zustandszeile (folgt dem Schalter sofort); Panel-Überschrift und Zusammenfassung über der Liste zeigen „automatisch“ bzw. „Automatik aus — nur von Hand“. Rückmeldung Dietmar.
+
 ## 0.1.14 (Build 15) — 13.10.2026
 
 - Gedächtnis der Automatismen (gemerkte Heizungs-Sollwerte, gelernter Nachlauf, Melderzustände) liegt jetzt in einer versteckten Variable „Gedächtnis (intern)“ statt in einem Attribut — es übersteht damit ein Neueinbinden des Moduls in der Modulverwaltung. Der bisherige Stand wird beim ersten „Übernehmen“ übernommen.

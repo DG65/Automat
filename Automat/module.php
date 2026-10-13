@@ -74,7 +74,8 @@ class Automat extends IPSModule
         parent::Create();
 
         $this->RegisterPropertyString('Automations', '[]');
-        $this->RegisterPropertyBoolean('cfg_ModeAuto', false);
+        // Standard an (Dietmar 13.10.2026): bestimmt nur, welcher Hausmodus gilt — schaltet selbst nichts.
+        $this->RegisterPropertyBoolean('cfg_ModeAuto', true);
         $this->RegisterPropertyString('cfg_DayFrom', AUTOMATKatalog::time(6, 30));
         $this->RegisterPropertyInteger('cfg_EveningRef', 0);
         $this->RegisterPropertyString('cfg_EveningFrom', AUTOMATKatalog::time(18, 0));
@@ -1990,7 +1991,7 @@ class Automat extends IPSModule
             ? 'ℹ️ Noch kein Automatismus — unten „Entdecken“ nutzen, im „Katalog“ einen Typ wählen oder „+“ an der Liste klicken.'
             : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' eingeschaltet'
                 . ($problems > 0 ? ', ' . $problems . ' unvollständig (rot)' : '') . ($locked > 0 ? ', ' . $locked . ' gesperrt' : '')
-                . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
+                . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->ReadPropertyBoolean('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '⚙️  Automatismen',
             'items' => [
@@ -2113,17 +2114,32 @@ class Automat extends IPSModule
         return ['type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📚  Katalog', 'items' => $items];
     }
 
+    private function modeAutoLine(bool $auto): string
+    {
+        return $auto
+            ? '✅ Automatik an — der Hausmodus wechselt zu den Zeiten unten; eine Änderung von Hand gilt bis zum nächsten Wechsel.'
+            : 'ℹ️ Automatik aus — der Hausmodus ändert sich nur von Hand, per Kachel oder Skript (Nachtwerte beim Licht greifen dann nur, wenn „Nacht“ von Hand gesetzt ist).';
+    }
+
+    /** AUTOMAT_UIModeAutoChanged($id, $auto) — Zustandszeile im offenen Formular nachführen (gespeichert wird mit „Übernehmen“). */
+    public function UIModeAutoChanged(bool $auto): void
+    {
+        $this->UpdateFormField('ModeAutoState', 'caption', $this->modeAutoLine($auto) . ' (noch nicht übernommen)');
+    }
+
     private function ModePanel(): array
     {
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
+        $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
         $loc = $this->locationVariable('Sunset') > 0
             ? '✅ 🔗 Sonnenuntergang aus Symcons Location Control.'
             : 'ℹ️ Keine Location-Control-Instanz — „bei Sonnenuntergang“ fällt auf die Uhrzeit zurück (Einstellungen → Standort).';
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ')',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
             'items' => [
-                ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
-                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Tag/Abend/Nacht automatisch nach Uhrzeit setzen'],
+                ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
+                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch umschalten: morgens auf „Tag“, abends auf „Abend“, nachts auf „Nacht“ (Zeiten darunter)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
+                ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
                 ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag ab'],
                 ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend ab', 'options' => [['caption' => 'Sonnenuntergang', 'value' => 0], ['caption' => 'Uhrzeit (unten)', 'value' => 1]]],
                 ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend ab (Uhrzeit)'],
