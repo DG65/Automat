@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (Build 2) — 13.10.2026
+
+- Räume kommen aus dem umbenannten Toolkit-Modul **Raumstruktur** (vormals Katasteramt): Automat ruft `RAUM_GetStructure` auf, `STRUKT_GetStructure` bleibt als Rückfall, bis alle umgestellt haben.
+- Texte nennen die neuen Toolkit-Namen (Raumstruktur, Anwesenheitssimulation, Messwertrechner).
+
 ## 0.1.0 (Build 1) — 13.10.2026
 
 Erste Version, nur Prüfstand (noch nicht an einer echten Symcon-Installation geprüft).

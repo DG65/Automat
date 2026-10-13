@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.0-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.1-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.0:** neu gebaut und am Prüfstand (200 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.1:** neu gebaut und am Prüfstand (202 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -50,7 +50,7 @@ Geräten vor, was sich lohnt.
 „Jetzt Vorschläge suchen" durchsucht den Objektbaum nach Bewegungsmeldern, Lichtern (Schalter/Dimmer),
 Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von
 Haushaltsgeräten — über Profile, Darstellungen (Symcon 8+) und Namen. Die Geräte werden nach Raum
-gruppiert: aus dem **DG65-Toolkit Katasteramt**, falls installiert, sonst aus den Gerätenamen
+gruppiert: aus dem **DG65-Toolkit Raumstruktur**, falls installiert, sonst aus den Gerätenamen
 („Licht Flur" + „Flur Bewegungsmelder" = Flur). Daraus entstehen Vorschläge wie „Bewegungslicht Flur",
 „Fenster offen → Heizung runter Bad" oder „Waschmaschine fertig melden".
 
@@ -80,8 +80,8 @@ Sperre und Dauerlicht einzelner Automatismen sind Variablen unter der Instanz (`
 ## Abgrenzung
 
 Bewusst **nicht** in Automat: Beschattung nach Sonnenstand (dafür gibt es spezialisierte Module),
-Alarmanlage mit Zonen, Anwesenheitssimulation (→ **DG65-Toolkit Schein**), Batterieüberwachung
-(→ **DG65-Toolkit Batteriewächter**), Mittelwerte/Trends (→ **DG65-Toolkit Destille**).
+Alarmanlage mit Zonen, Anwesenheitssimulation (→ **DG65-Toolkit Anwesenheitssimulation**), Batterieüberwachung
+(→ **DG65-Toolkit Batteriewächter**), Mittelwerte/Trends (→ **DG65-Toolkit Messwertrechner**).
 
 ## Lizenz
 

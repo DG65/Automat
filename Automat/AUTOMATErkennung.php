@@ -124,7 +124,7 @@ class AUTOMATErkennung
 
     /**
      * Gruppiert Steckbriefe nach Raum. Hat der Steckbrief ein 'room' (aus
-     * Katasteramt), gilt das. Sonst Namensgleichheit: Geräte, deren
+     * Raumstruktur), gilt das. Sonst Namensgleichheit: Geräte, deren
      * Instanznamen ein Raumwort teilen („Licht Flur“, „Flur Bewegungsmelder“).
      * Rückgabe: [Raumname => [Steckbrief, …]]
      */

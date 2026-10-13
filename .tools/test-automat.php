@@ -645,7 +645,7 @@ $withRoom[1]['room'] = 'Diele';
 $withRoom[0]['inst'] = 'Sensor 17';
 $withRoom[1]['inst'] = 'Aktor 3';
 $s3 = AUTOMATErkennung::suggest($withRoom, [], []);
-check('Raum aus Katasteramt hat Vorrang vor Namen', in_array('Diele', array_column($s3, 'room'), true));
+check('Raum aus Raumstruktur hat Vorrang vor Namen', in_array('Diele', array_column($s3, 'room'), true));
 
 // ===========================================================================
 // TEIL C — Modul gegen nachgebildetes IPS
@@ -841,7 +841,7 @@ check('Bewegungslicht Garage vorgeschlagen', count($garage) === 1);
 check('… mit Warnung: alte Instanz nutzt das Licht schon', count($garage) === 1 && strpos(implode(' ', $garage[0]['conflicts']), 'Alte Lichtsteuerung') !== false, json_encode($garage[0]['conflicts'] ?? [], JSON_UNESCAPED_UNICODE));
 check('Bereits eingerichtetes Flurlicht nicht erneut vorgeschlagen', count(array_filter($sugg, fn($x) => $x['type'] === 'bewegung' && $x['room'] === 'Flur')) === 0);
 check('Kopfzeile und Auswahl im offenen Formular aufgefrischt', count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'DiscoverHead')) === 1 && count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'cfg_Suggestion' && $u[1] === 'options')) === 1);
-check('Raumquelle ehrlich: ohne Katasteramt aus Namen', strpos($m->attrs['RoomSource'], 'nicht installiert') !== false);
+check('Raumquelle ehrlich: ohne Raumstruktur aus Namen', strpos($m->attrs['RoomSource'], 'nicht installiert') !== false);
 $m->fieldUpdates = [];
 $current = json_encode($list['values']);
 $res = $m->UIAdopt($garage[0]['key'], $current);
@@ -857,6 +857,19 @@ $res = $m->DismissSuggestion($garage[0]['key']);
 check('Ausblenden entfernt den Vorschlag', count(array_filter(json_decode($m->attrs['Suggestions'], true), fn($x) => $x['key'] === $garage[0]['key'])) === 0 && strpos($res, 'ausgeblendet') !== false);
 $m->Discover();
 check('… auch bei der nächsten Suche', count(array_filter(json_decode($m->attrs['Suggestions'], true), fn($x) => $x['key'] === $garage[0]['key'])) === 0);
+// Räume aus Raumstruktur (neuer Präfix RAUM_, Rückfall STRUKT_)
+if (true) {
+    function RAUM_GetStructure(int $id): string
+    {
+        return json_encode(['contractVersion' => '1.1', 'rooms' => [['key' => 'werkstatt', 'label' => 'Werkstatt', 'deviceInstanceIDs' => [1050, 1060]]]]);
+    }
+}
+mkinst(14000, 'Raumstruktur');
+$GLOBALS['MODULES']['{CA700334-0982-F356-0617-6952868137E9}'] = [14000];
+$m->RestoreSuggestions();
+$sugg = json_decode($m->attrs['Suggestions'], true);
+check('Raumstruktur verbunden: Statuszeile grün mit 🔗', strpos($m->attrs['RoomSource'], '🔗 Räume von Raumstruktur #14000') !== false, $m->attrs['RoomSource']);
+check('Raum aus Raumstruktur: Bewegungslicht „Werkstatt“', count(array_filter($sugg, fn($x) => $x['type'] === 'bewegung' && $x['room'] === 'Werkstatt')) === 1, implode(',', array_column($sugg, 'room')));
 // Ereignis-Hinweis im Dialog
 $dlg = json_decode($m->UIEditForm('aflur1', 'bewegung'), true);
 check('Dialog warnt vor Ereignis auf demselben Melder', strpos(json_encode($dlg, JSON_UNESCAPED_UNICODE), 'Flurlicht alt') !== false);

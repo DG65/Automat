@@ -13,7 +13,7 @@ declare(strict_types=1);
 //                Kachel, ein Protokoll „warum ging das Licht an?“.
 //   Entdecken  — sucht im Objektbaum nach Meldern, Lichtern, Kontakten,
 //                Thermostaten und Leistungsmessungen, gruppiert sie nach Raum
-//                (Katasteramt, falls installiert, sonst nach Gerätenamen) und
+//                (Raumstruktur, falls installiert, sonst nach Gerätenamen) und
 //                schlägt passende Automatismen vor. Angelegt wird nur, was der
 //                Nutzer bestätigt.
 //   Querschnitt — für alle Typen gleich: Sperre (sichtbar als Variable),
@@ -24,7 +24,7 @@ declare(strict_types=1);
 // Symcon testbar), die Typen stehen in AUTOMATKatalog, die Erkennung in
 // AUTOMATErkennung. Dieses Modul sammelt Werte, schaltet, meldet und zeigt an.
 //
-// Eigenständig: setzt kein anderes Modul voraus. Katasteramt (Räume) und die
+// Eigenständig: setzt kein anderes Modul voraus. Raumstruktur (Räume) und die
 // Location-Control-Instanz (Sonnenauf-/-untergang) werden genutzt, wenn
 // vorhanden.
 // ===========================================================================
@@ -38,10 +38,10 @@ class Automat extends IPSModule
     private const LIBRARY_GUID = '{D7A3CB8F-E43B-4307-AB64-BAD160C1823A}';
     private const MODULE_GUID  = '{A92CA7FD-B746-45C4-902B-3CBAE1F3FA27}';
 
-    // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch Schein).
+    // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
-    // DG65-Toolkit Katasteramt (Räume/Etagen), Vertrag STRUKT_GetStructure 1.x — optional.
-    private const KATASTER_GUID = '{CA700334-0982-F356-0617-6952868137E9}';
+    // DG65-Toolkit Raumstruktur (vormals Raumstruktur; Räume/Etagen), Vertrag RAUM_/STRUKT_GetStructure 1.x — optional.
+    private const RAUM_GUID = '{CA700334-0982-F356-0617-6952868137E9}';
     // Push-Ziele (SUITE.md Stolperstein 22): klassisches WebFront und Kachel-Visualisierung.
     private const WEBFRONT_GUID = '{3565B1F2-8F7B-4311-A4B6-1BF1D868F39E}';
     private const VISU_GUID     = '{B5B875BB-9B76-45FD-4E67-2607E45B3AC4}';
@@ -679,7 +679,7 @@ class Automat extends IPSModule
     /** Steckbriefe aller Variablen, die eine Rolle spielen könnten. */
     private function collectItems(): array
     {
-        $roomByInstance = $this->katasterRooms();
+        $roomByInstance = $this->raumRooms();
         $items = [];
         foreach (IPS_GetVariableList() as $vid) {
             $obj = IPS_GetObject($vid);
@@ -716,22 +716,29 @@ class Automat extends IPSModule
         return $items;
     }
 
-    /** Raumzuordnung aus Katasteramt (optional): [InstanzID => Raumname]. */
-    private function katasterRooms(): array
+    /** Raumzuordnung aus Raumstruktur (optional): [InstanzID => Raumname]. */
+    private function raumRooms(): array
     {
         $map = [];
-        $ids = @IPS_GetInstanceListByModuleID(self::KATASTER_GUID) ?: [];
-        if (count($ids) === 0 || !function_exists('STRUKT_GetStructure')) {
-            $this->WriteAttributeString('RoomSource', 'ℹ️ Katasteramt nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).');
+        $ids = @IPS_GetInstanceListByModuleID(self::RAUM_GUID) ?: [];
+        // Präfix-Umbenennung 13.10.2026 (TOOLKIT.md): RAUM_ zuerst, STRUKT_ (Raumstruktur) als Rückfall.
+        $data = null;
+        $available = function_exists('RAUM_GetStructure') || function_exists('STRUKT_GetStructure');
+        if (count($ids) === 0 || !$available) {
+            $this->WriteAttributeString('RoomSource', 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).');
             return $map;
         }
         try {
-            $data = json_decode((string)STRUKT_GetStructure((int)$ids[0]), true);
+            if (function_exists('RAUM_GetStructure')) {
+                $data = json_decode((string)RAUM_GetStructure((int)$ids[0]), true);
+            } elseif (function_exists('STRUKT_GetStructure')) {
+                $data = json_decode((string)STRUKT_GetStructure((int)$ids[0]), true);
+            }
         } catch (Throwable $e) {
             $data = null;
         }
         if (!is_array($data) || !isset($data['rooms']) || version_compare((string)($data['contractVersion'] ?? '1.0'), '2.0', '>=')) {
-            $this->WriteAttributeString('RoomSource', '⚠️ Katasteramt #' . $ids[0] . ' gefunden, liefert aber keine verwertbaren Räume — Räume werden aus den Gerätenamen abgeleitet.');
+            $this->WriteAttributeString('RoomSource', '⚠️ Raumstruktur #' . $ids[0] . ' gefunden, liefert aber keine verwertbaren Räume — Räume werden aus den Gerätenamen abgeleitet.');
             return $map;
         }
         $n = 0;
@@ -741,7 +748,7 @@ class Automat extends IPSModule
                 $n++;
             }
         }
-        $this->WriteAttributeString('RoomSource', '✅ 🔗 Räume von Katasteramt #' . $ids[0] . ' übernommen: ' . count($data['rooms']) . ' Räume, ' . $n . ' Geräte zugeordnet (Vertrag ' . ($data['contractVersion'] ?? '1.0') . '). Geräte ohne Raum werden nach Namen gruppiert.');
+        $this->WriteAttributeString('RoomSource', '✅ 🔗 Räume von Raumstruktur #' . $ids[0] . ' übernommen: ' . count($data['rooms']) . ' Räume, ' . $n . ' Geräte zugeordnet (Vertrag ' . ($data['contractVersion'] ?? '1.0') . '). Geräte ohne Raum werden nach Namen gruppiert.');
         return $map;
     }
 
@@ -1354,7 +1361,7 @@ class Automat extends IPSModule
             'items' => [
                 ['type' => 'Label', 'caption' => 'Automat bündelt die kleinen Standard-Automatismen eines Hauses in einer Instanz: Treppenlicht, Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür zu lange offen“-Wächter und „Waschmaschine fertig“.'],
                 ['type' => 'Label', 'caption' => 'Der Nutzen: eine Liste statt dutzender Einzel-Instanzen und Ereignisse, je Automatismus ein sichtbarer Zustand mit Grund, ein Protokoll, eine Kachel — und „Entdecken“ schlägt aus den vorhandenen Geräten vor, was sich lohnt.'],
-                ['type' => 'Label', 'caption' => 'Für alle gleich: Sperre je Automatismus, globale Pause, Hausmodus (Tag/Abend/Nacht/Abwesend/Urlaub) und Respekt vor Handbedienung. Räume kommen aus Katasteramt, falls installiert; Anwesenheitssimulation macht Schein, Batterien überwacht der Batteriewächter.'],
+                ['type' => 'Label', 'caption' => 'Für alle gleich: Sperre je Automatismus, globale Pause, Hausmodus (Tag/Abend/Nacht/Abwesend/Urlaub) und Respekt vor Handbedienung. Räume kommen aus dem Toolkit-Modul Raumstruktur, falls installiert. Für Urlaub und Abwesenheit gibt es die Anwesenheitssimulation, für Batterien den Batteriewächter (beide ebenfalls DG65-Toolkit).'],
                 ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'AUTOMAT_AckPurposeIntro($id);'],
             ],
         ];
@@ -1467,9 +1474,9 @@ class Automat extends IPSModule
     {
         $src = $this->ReadAttributeString('RoomSource');
         if ($src === '') {
-            $src = count(@IPS_GetInstanceListByModuleID(self::KATASTER_GUID) ?: []) > 0
-                ? 'ℹ️ Katasteramt gefunden — die Räume werden bei der Suche übernommen.'
-                : 'ℹ️ Katasteramt nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
+            $src = count(@IPS_GetInstanceListByModuleID(self::RAUM_GUID) ?: []) > 0
+                ? 'ℹ️ Raumstruktur gefunden — die Räume werden bei der Suche übernommen.'
+                : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
         }
         $sugg = $this->suggestions();
         return [

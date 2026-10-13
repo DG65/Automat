@@ -26,7 +26,7 @@
 // AUTOMAT ist der EIGENE Präfix dieses Repos und gehört daher NICHT in die
 // Liste — sonst meldet das Skript die eigenen Funktionen als ungeschützte
 // Fremdaufrufe.
-const FOREIGN_PREFIXES = ['IHUB', 'IHUBD', 'IHUBNRG', 'IHUBMON', 'IHUBTILE', 'MHUB', 'MHUBV', 'CHUB', 'MIGHUB', 'PVF', 'LFC', 'HEISHA', 'WPHUB', 'SGW', 'SBH', 'TIBBERGR', 'TESSIE', 'EMS', 'NRGDASH', 'MODBUS', 'GWET', 'STRUKT', 'RAVG', 'OHUB', 'WARN', 'PFOE'];
+const FOREIGN_PREFIXES = ['IHUB', 'IHUBD', 'IHUBNRG', 'IHUBMON', 'IHUBTILE', 'MHUB', 'MHUBV', 'CHUB', 'MIGHUB', 'PVF', 'LFC', 'HEISHA', 'WPHUB', 'SGW', 'SBH', 'TIBBERGR', 'TESSIE', 'EMS', 'NRGDASH', 'MODBUS', 'GWET', 'STRUKT', 'RAVG', 'OHUB', 'WARN', 'PFOE', 'RAUM', 'FSCHUTZ', 'MWR', 'GTAUSCH', 'ANWSIM', 'BWACH'];
 
 $root = dirname(__DIR__);
 $rx   = '/\b((' . implode('|', FOREIGN_PREFIXES) . ')_[A-Za-z_][A-Za-z0-9_]*)\s*\(/';
