@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.29:** neu gebaut und am Prüfstand (414 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.30:** neu gebaut und am Prüfstand (417 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -85,8 +85,9 @@ Häufen sich verlorene Meldungen bei einem Melder, lohnt ein Blick auf Empfang, 
 2. Instanz „DG65-Toolkit Automat" anlegen (eine Instanz für das ganze Haus genügt; mehrere sind möglich).
 3. „Entdecken" → Vorschläge prüfen → übernehmen, oder im „Katalog" bzw. mit „+" an der Liste selbst anlegen.
 4. Unten „Übernehmen".
-5. Optional: Kachel „Automat" in der Kachel-Visualisierung platzieren (Übersicht je Raum, Sperren,
-   Dauerlicht, Hausmodus, Pause, Restzeiten).
+5. Optional: Kachel „Automat" in der Kachel-Visualisierung platzieren (kompakte Übersicht mit Suche,
+   Filter Läuft/Auffällig/Gesperrt, Gruppen nach Raum oder Funktion, Sortierung; Sperren, Dauerlicht,
+   Hausmodus, Pause, Restzeiten).
 
 ## Skripte
 

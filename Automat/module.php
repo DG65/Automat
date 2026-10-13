@@ -2014,22 +2014,22 @@ class Automat extends IPSModule
     {
         $status = $this->attrMap('Status');
         $due = $this->attrMap('End');
-        $groups = [];
+        $items = [];
         foreach ($this->rows() as $row) {
             $uid = $row['Uid'];
-            $room = trim((string)($row['Room'] ?? '')) ?: 'Ohne Raum';
-            $light = !empty(AUTOMATKatalog::TYPES[$row['Type']]['light']) && $row['Type'] !== 'daemmerung';
-            $groups[$room][] = [
-                'uid' => $uid, 'name' => $this->rowName($row), 'icon' => AUTOMATKatalog::TYPES[$row['Type']]['icon'] ?? '❔',
-                'type' => AUTOMATKatalog::TYPES[$row['Type']]['label'] ?? '', 'status' => (string)($status[$uid] ?? ''),
+            $type = (string)$row['Type'];
+            $def = AUTOMATKatalog::TYPES[$type] ?? [];
+            $light = !empty($def['light']) && $type !== 'daemmerung';
+            $st = (string)($status[$uid] ?? '');
+            $locked = (bool)$this->getOwn('l_' . $uid, false);
+            $items[] = [
+                'uid' => $uid, 'name' => $this->rowName($row), 'icon' => $def['icon'] ?? '❔',
+                'type' => $def['label'] ?? '', 'cat' => AUTOMATKatalog::CATEGORIES[$def['cat'] ?? ''] ?? 'Sonstiges',
+                'room' => trim((string)($row['Room'] ?? '')), 'status' => $st,
                 'due' => isset($due[$uid]) ? (int)$due[$uid] : null, 'enabled' => !empty($row['Enabled']),
-                'locked' => (bool)$this->getOwn('l_' . $uid, false), 'permanent' => $light ? (bool)$this->getOwn('d_' . $uid, false) : null,
+                'locked' => $locked, 'permanent' => $light ? (bool)$this->getOwn('d_' . $uid, false) : null,
+                'state' => $this->tileState($row, $st, $locked, isset($due[$uid])),
             ];
-        }
-        ksort($groups, SORT_NATURAL | SORT_FLAG_CASE);
-        $out = [];
-        foreach ($groups as $room => $items) {
-            $out[] = ['room' => $room, 'items' => $items];
         }
         return [
             'light' => $this->ReadPropertyBoolean('cfg_TileLight'),
@@ -2037,9 +2037,37 @@ class Automat extends IPSModule
             'mode' => (int)$this->getOwn('Hausmodus', 0),
             'modes' => array_values(AUTOMATKatalog::MODES),
             'paused' => (bool)$this->getOwn('Pause', false),
-            'groups' => $out,
+            'items' => $items,
             'log' => $this->protocolLines(8),
         ];
+    }
+
+    /**
+     * Zustand für Filter und Sortierung der Kachel: warn (auffällig: gemeldet, unvollständig, Vorwarnung),
+     * run (läuft gerade: an, Countdown, abgesenkt), idle (bereit), locked (gesperrt), off (nicht aktiv).
+     */
+    private function tileState(array $row, string $status, bool $locked, bool $hasEnd): string
+    {
+        if (empty($row['Enabled'])) {
+            return 'off';
+        }
+        if ($locked) {
+            return 'locked';
+        }
+        $problems = AUTOMATKatalog::problems($row, function (int $vid) {
+            return IPS_VariableExists($vid);
+        });
+        foreach (['🔔', '⚠️', '❔', '⛔'] as $p) {
+            if (count($problems) > 0 || strpos($status, $p) === 0) {
+                return 'warn';
+            }
+        }
+        foreach (['💡', '🔆', '▶️', '⏳', '🪟', '🚪 Alle weg'] as $p) {
+            if (strpos($status, $p) === 0) {
+                return 'run';
+            }
+        }
+        return $hasEnd ? 'run' : 'idle';
     }
 
     /** Rückkanal aus der Kachel: {"a":"lock|perm|pause|mode","uid":…,"v":…}. */

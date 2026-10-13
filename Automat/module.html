@@ -4,62 +4,114 @@
     .au-wrap {
         --au-bg: #2b2d31;
         --au-text: #e8eaed;
-        --au-el1: rgba(255, 255, 255, .07);
+        --au-el1: rgba(255, 255, 255, .06);
         --au-el2: rgba(255, 255, 255, .12);
+        --au-line: rgba(255, 255, 255, .14);
         --au-primary: #4fc3f7;
         --au-warn: #ffb74d;
         --au-off: rgba(255, 255, 255, .45);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
         background: var(--au-bg);
         color: var(--au-text);
         border-radius: 12px;
-        padding: 10px 10px 8px;
+        padding: 8px;
         box-sizing: border-box;
         min-height: 100%;
     }
     .au-wrap.au-light {
         --au-bg: #f4f5f7;
         --au-text: #1f2328;
-        --au-el1: rgba(0, 0, 0, .06);
+        --au-el1: rgba(0, 0, 0, .05);
         --au-el2: rgba(0, 0, 0, .1);
+        --au-line: rgba(0, 0, 0, .15);
         --au-primary: #0277bd;
         --au-warn: #b26a00;
         --au-off: rgba(0, 0, 0, .45);
     }
-    .au-wrap button { font: inherit; color: inherit; cursor: pointer; }
-    .au-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .au-wrap *, .au-wrap *::before { box-sizing: border-box; }
+    .au-wrap button, .au-wrap input, .au-wrap select { font: inherit; color: inherit; }
+    .au-wrap button { cursor: pointer; }
+
+    /* Kopf: Hausmodus + Werkzeugleiste */
+    .au-bar { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 6px; }
     .au-chip {
         background: var(--au-el1); border: 1px solid transparent; border-radius: 999px;
-        padding: 4px 11px; font-size: .82em; line-height: 1.25; white-space: nowrap;
+        padding: 3px 10px; font-size: .85em; line-height: 1.3; white-space: nowrap;
     }
     .au-chip:hover { background: var(--au-el2); }
     .au-chip.on { border-color: var(--au-primary); }
     .au-chip.pause.on { border-color: var(--au-warn); color: var(--au-warn); }
-    .au-room { font-size: .75em; text-transform: uppercase; letter-spacing: .06em; opacity: .6; margin: 10px 2px 4px; }
-    .au-item { background: var(--au-el1); border-radius: 8px; padding: 7px 9px; margin-bottom: 5px; }
-    .au-item.off { opacity: .55; }
-    .au-top { display: flex; align-items: center; gap: 8px; }
-    .au-ico { font-size: 1.15em; width: 1.4em; text-align: center; }
-    .au-name { flex: 1; font-weight: 600; font-size: .92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .au-btn {
-        background: var(--au-el2); border: 1px solid transparent; border-radius: 6px;
-        padding: 2px 8px; font-size: .78em; white-space: nowrap;
+    .au-chip .n { opacity: .6; margin-left: 3px; font-variant-numeric: tabular-nums; }
+    .au-sep { width: 1px; align-self: stretch; background: var(--au-line); margin: 2px 3px; }
+    .au-search {
+        flex: 1 1 160px; min-width: 120px; display: flex; align-items: center;
+        background: var(--au-el1); border-radius: 999px; padding: 0 4px 0 10px;
     }
-    .au-btn.on { border-color: var(--au-warn); color: var(--au-warn); }
-    .au-btn.perm.on { border-color: var(--au-primary); color: var(--au-primary); }
-    .au-status { font-size: .8em; opacity: .85; margin: 3px 0 0 calc(1.4em + 8px); }
+    .au-search input { margin-left: 4px; flex: 1; min-width: 0; background: transparent; border: 0; outline: none; padding: 4px 2px; font-size: .88em; }
+    .au-search button { background: transparent; border: 0; opacity: .6; padding: 2px 6px; }
+    .au-sel {
+        background: var(--au-el1); border: 0; border-radius: 999px; padding: 4px 8px; font-size: .85em;
+        appearance: none; -webkit-appearance: none; cursor: pointer;
+    }
+    .au-sel option { color: #1f2328; }
+    .au-flash { font-size: .8em; color: var(--au-primary); min-height: 1.1em; margin: 0 2px 2px; }
+
+    /* Liste: mehrspaltig, kompakt */
+    /* Gruppen als Kästen nebeneinander (ein Raum mit einem Automatismus belegt keine ganze Zeile);
+       ohne Gruppierung stehen die Automatismen direkt im Raster. */
+    .au-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 8px; align-items: start; }
+    .au-box { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .au-group {
+        display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+        font-size: .72em; text-transform: uppercase; letter-spacing: .06em; opacity: .65; margin: 2px 2px 0;
+    }
+    .au-group .n { opacity: .7; }
+    .au-group .tw { display: inline-block; width: .9em; transition: transform .15s; }
+    .au-group.closed .tw { transform: rotate(-90deg); }
+    .au-item {
+        background: var(--au-el1); border-radius: 7px; padding: 5px 6px 5px 8px; min-width: 0;
+        border-left: 3px solid transparent;
+    }
+    .au-item.s-run { border-left-color: var(--au-primary); }
+    .au-item.s-warn { border-left-color: var(--au-warn); }
+    .au-item.s-off { opacity: .5; }
+    .au-item.s-locked { opacity: .75; }
+    .au-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+    .au-ico { width: 1.3em; text-align: center; flex: none; }
+    .au-name { flex: 1; min-width: 0; font-weight: 600; font-size: .9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .au-btn {
+        flex: none; background: transparent; border: 1px solid transparent; border-radius: 6px;
+        padding: 0 4px; font-size: .85em; line-height: 1.5; opacity: .55;
+    }
+    .au-btn:hover { background: var(--au-el2); opacity: 1; }
+    .au-btn.on { opacity: 1; border-color: var(--au-warn); }
+    .au-btn.perm.on { border-color: var(--au-primary); }
+    .au-status {
+        font-size: .78em; opacity: .85; margin: 1px 0 0 calc(1.3em + 6px);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .au-meta { opacity: .6; }
     .au-count { color: var(--au-primary); font-variant-numeric: tabular-nums; }
-    .au-empty { opacity: .7; font-size: .9em; padding: 12px 4px; }
-    .au-log { margin-top: 10px; font-size: .74em; opacity: .7; }
+    .au-empty { grid-column: 1 / -1; opacity: .7; font-size: .9em; padding: 10px 4px; }
+    .au-log { margin-top: 8px; font-size: .74em; opacity: .7; }
     .au-log summary { cursor: pointer; }
     .au-log div { margin: 2px 0; }
-    .au-flash { font-size: .8em; color: var(--au-primary); min-height: 1.1em; margin: -2px 2px 4px; }
 </style>
 <div class="au-wrap" id="au-root"></div>
 <script>
     var AU = null;
     var auMsg = '';
     var auTimer = null;
+    var auBuilt = false;
+    // Ansicht (Suche, Filter, Gruppierung, Sortierung, zugeklappte Gruppen) — im Browser gemerkt, wenn erlaubt
+    var auView = { q: '', f: 'all', g: 'room', s: 'name', closed: {} };
+    var AU_KEY = 'dg65.automat.tile.v1';
+    try { var sv = JSON.parse(localStorage.getItem(AU_KEY) || 'null'); if (sv) { auView = Object.assign(auView, sv, { q: '' }); } } catch (e) {}
+    function auSave() { try { localStorage.setItem(AU_KEY, JSON.stringify({ f: auView.f, g: auView.g, s: auView.s, closed: auView.closed })); } catch (e) {} }
+
+    var AU_FILTERS = [['all', 'Alle'], ['run', 'Läuft'], ['warn', 'Auffällig'], ['quiet', 'Gesperrt/inaktiv']];
+    var AU_RANK = { warn: 0, run: 1, idle: 2, locked: 3, off: 4 };
 
     function auEl(tag, cls, text) {
         var e = document.createElement(tag);
@@ -71,9 +123,10 @@
     function auSend(obj, msg) {
         auMsg = msg || '';
         requestAction('tile', JSON.stringify(obj));
-        auRender();
-        setTimeout(function () { auMsg = ''; auRender(); }, 3000);
+        auFlash();
+        setTimeout(function () { auMsg = ''; auFlash(); }, 3000);
     }
+    function auFlash() { var f = document.getElementById('au-flash'); if (f) { f.textContent = auMsg; } }
 
     function auRest(due) {
         if (!due || !AU) { return ''; }
@@ -85,64 +138,212 @@
         return h > 0 ? (h + ' h ' + (m < 10 ? '0' : '') + m + ' min') : (m + ':' + (sec < 10 ? '0' : '') + sec);
     }
 
+    function auMatch(it) {
+        var f = auView.f;
+        if (f === 'run' && it.state !== 'run') { return false; }
+        if (f === 'warn' && it.state !== 'warn') { return false; }
+        if (f === 'quiet' && it.state !== 'locked' && it.state !== 'off') { return false; }
+        var q = auView.q.trim().toLowerCase();
+        if (q === '') { return true; }
+        return (it.name + ' ' + it.room + ' ' + it.type + ' ' + it.cat + ' ' + it.status).toLowerCase().indexOf(q) >= 0;
+    }
+
+    /** Kopf und Werkzeugleiste einmal bauen — so bleibt der Fokus im Suchfeld beim Aktualisieren erhalten. */
+    function auBuild(root) {
+        root.innerHTML = '';
+        root.appendChild(auEl('div', 'au-bar', null)).id = 'au-modes';
+        var bar = auEl('div', 'au-bar');
+        var sb = auEl('div', 'au-search');
+        sb.appendChild(document.createTextNode('🔍'));
+        var inp = auEl('input');
+        inp.id = 'au-q';
+        inp.placeholder = 'Suchen: Name, Raum, Art, Zustand …';
+        inp.value = auView.q;
+        inp.oninput = function () { auView.q = inp.value; auList(); };
+        sb.appendChild(inp);
+        var clr = auEl('button', '', '✕');
+        clr.title = 'Suche leeren';
+        clr.onclick = function () { inp.value = ''; auView.q = ''; auList(); inp.focus(); };
+        sb.appendChild(clr);
+        bar.appendChild(sb);
+        var fl = auEl('span', 'au-bar');
+        fl.id = 'au-filters';
+        fl.style.margin = '0';
+        bar.appendChild(fl);
+        bar.appendChild(auSelect('au-g', [['room', 'nach Raum'], ['cat', 'nach Funktion'], ['none', 'ohne Gruppen']], auView.g, function (v) { auView.g = v; auSave(); auList(); }, 'Gruppieren'));
+        bar.appendChild(auSelect('au-s', [['name', 'Name'], ['state', 'Zustand'], ['type', 'Art']], auView.s, function (v) { auView.s = v; auSave(); auList(); }, 'Sortieren'));
+        root.appendChild(bar);
+        var fla = auEl('div', 'au-flash');
+        fla.id = 'au-flash';
+        root.appendChild(fla);
+        var grid = auEl('div', 'au-grid');
+        grid.id = 'au-grid';
+        root.appendChild(grid);
+        var log = auEl('details', 'au-log');
+        log.id = 'au-log';
+        root.appendChild(log);
+        auBuilt = true;
+    }
+
+    function auSelect(id, opts, val, onch, title) {
+        var s = auEl('select', 'au-sel');
+        s.id = id;
+        s.title = title;
+        opts.forEach(function (o) { var op = auEl('option', '', (id === 'au-s' ? '↕ ' : '▦ ') + o[1]); op.value = o[0]; s.appendChild(op); });
+        s.value = val;
+        s.onchange = function () { onch(s.value); };
+        return s;
+    }
+
+    function auModes() {
+        var bar = document.getElementById('au-modes');
+        bar.innerHTML = '';
+        AU.modes.forEach(function (label, i) {
+            var c = auEl('button', 'au-chip' + (AU.mode === i ? ' on' : ''), label);
+            c.onclick = function () { if (AU.mode !== i) { auSend({ a: 'mode', v: i }, 'Hausmodus „' + label + '“ …'); } };
+            bar.appendChild(c);
+        });
+        var p = auEl('button', 'au-chip pause' + (AU.paused ? ' on' : ''), AU.paused ? '⏸ pausiert' : '⏸ Pause');
+        p.onclick = function () { auSend({ a: 'pause', v: !AU.paused }, AU.paused ? 'Pause wird beendet …' : 'Alle Automatismen werden pausiert …'); };
+        bar.appendChild(p);
+    }
+
+    function auFilters(items) {
+        var fl = document.getElementById('au-filters');
+        fl.innerHTML = '';
+        var cnt = { all: items.length, run: 0, warn: 0, quiet: 0 };
+        items.forEach(function (it) {
+            if (it.state === 'run') { cnt.run++; }
+            if (it.state === 'warn') { cnt.warn++; }
+            if (it.state === 'locked' || it.state === 'off') { cnt.quiet++; }
+        });
+        AU_FILTERS.forEach(function (f) {
+            var c = auEl('button', 'au-chip' + (auView.f === f[0] ? ' on' : ''), f[1]);
+            c.appendChild(auEl('span', 'n', String(cnt[f[0]])));
+            c.onclick = function () { auView.f = f[0]; auSave(); auList(); };
+            fl.appendChild(c);
+        });
+    }
+
+    function auCard(it) {
+        var box = auEl('div', 'au-item s-' + it.state);
+        var top = auEl('div', 'au-top');
+        top.appendChild(auEl('span', 'au-ico', it.icon));
+        var nm = auEl('span', 'au-name', it.name);
+        nm.title = it.name + ' — ' + it.type + (it.room ? ' · ' + it.room : '');
+        top.appendChild(nm);
+        if (it.permanent !== null) {
+            var b1 = auEl('button', 'au-btn perm' + (it.permanent ? ' on' : ''), '🔆');
+            b1.title = it.permanent ? 'Dauerlicht aus' : 'Dauerlicht an';
+            b1.onclick = function () { auSend({ a: 'perm', uid: it.uid, v: !it.permanent }, it.permanent ? 'Dauerlicht aus …' : 'Dauerlicht an …'); };
+            top.appendChild(b1);
+        }
+        var b2 = auEl('button', 'au-btn' + (it.locked ? ' on' : ''), it.locked ? '🔒' : '🔓');
+        b2.title = it.locked ? 'Sperre aufheben' : 'Sperren (tut dann nichts)';
+        b2.onclick = function () { auSend({ a: 'lock', uid: it.uid, v: !it.locked }, it.locked ? 'Sperre wird aufgehoben …' : 'Wird gesperrt …'); };
+        top.appendChild(b2);
+        box.appendChild(top);
+        var st = auEl('div', 'au-status');
+        st.title = it.status;
+        if (auView.g !== 'room' && it.room) { st.appendChild(auEl('span', 'au-meta', it.room + ' · ')); }
+        st.appendChild(document.createTextNode(it.state === 'off' ? '⚫ Nicht aktiv' : it.status));
+        if (it.due) {
+            var c = auEl('span', 'au-count');
+            c.setAttribute('data-due', String(it.due));
+            st.appendChild(c);
+        }
+        box.appendChild(st);
+        return box;
+    }
+
+    function auList() {
+        if (!AU) { return; }
+        var items = AU.items || [];
+        auFilters(items);
+        var grid = document.getElementById('au-grid');
+        grid.innerHTML = '';
+        if (items.length === 0) {
+            grid.appendChild(auEl('div', 'au-empty', 'Noch kein Automatismus eingerichtet — in der Instanz unter „Entdecken“ oder „Katalog“ anlegen.'));
+            return;
+        }
+        var shown = items.filter(auMatch);
+        var coll = new Intl.Collator('de');
+        shown.sort(function (a, b) {
+            if (auView.s === 'state' && AU_RANK[a.state] !== AU_RANK[b.state]) { return AU_RANK[a.state] - AU_RANK[b.state]; }
+            if (auView.s === 'type' && a.type !== b.type) { return coll.compare(a.type, b.type); }
+            return coll.compare(a.name, b.name);
+        });
+        if (shown.length === 0) {
+            grid.appendChild(auEl('div', 'au-empty', 'Nichts gefunden' + (auView.q ? ' für „' + auView.q + '“' : '') + ' — Filter „Alle“ wählen oder die Suche leeren.'));
+            return;
+        }
+        var groups = {};
+        var order = [];
+        shown.forEach(function (it) {
+            var k = auView.g === 'room' ? (it.room || 'Ohne Raum') : (auView.g === 'cat' ? it.cat : '');
+            if (!groups[k]) { groups[k] = []; order.push(k); }
+            groups[k].push(it);
+        });
+        order.sort(function (a, b) {
+            if (a === 'Ohne Raum') { return 1; }
+            if (b === 'Ohne Raum') { return -1; }
+            return coll.compare(a, b);
+        });
+        order.forEach(function (k) {
+            var closed = k !== '' && !!auView.closed[auView.g + ':' + k];
+            if (k === '') {
+                groups[k].forEach(function (it) { grid.appendChild(auCard(it)); });
+                return;
+            }
+            var box = auEl('div', 'au-box');
+            grid.appendChild(box);
+            if (k !== '') {
+                var h = auEl('div', 'au-group' + (closed ? ' closed' : ''));
+                h.appendChild(auEl('span', 'tw', '▾'));
+                h.appendChild(document.createTextNode(k));
+                h.appendChild(auEl('span', 'n', '(' + groups[k].length + ')'));
+                h.title = closed ? 'Aufklappen' : 'Zuklappen';
+                h.onclick = function () {
+                    var key = auView.g + ':' + k;
+                    if (auView.closed[key]) { delete auView.closed[key]; } else { auView.closed[key] = 1; }
+                    auSave();
+                    auList();
+                };
+                box.appendChild(h);
+            }
+            if (!closed) { groups[k].forEach(function (it) { box.appendChild(auCard(it)); }); }
+        });
+        auTick();
+    }
+
+    function auLog() {
+        var d = document.getElementById('au-log');
+        var open = d.open;
+        d.innerHTML = '';
+        if (!AU.log || !AU.log.length) { d.style.display = 'none'; return; }
+        d.style.display = '';
+        d.appendChild(auEl('summary', '', 'Protokoll'));
+        AU.log.forEach(function (l) { d.appendChild(auEl('div', '', l)); });
+        d.open = open;
+    }
+
+    /** Nur die Restzeiten nachführen — die Liste selbst bleibt stehen. */
+    function auTick() {
+        document.querySelectorAll('#au-grid [data-due]').forEach(function (e) {
+            var r = auRest(parseInt(e.getAttribute('data-due'), 10));
+            e.textContent = r ? ' · noch ' + r : '';
+        });
+    }
+
     function auRender() {
         var root = document.getElementById('au-root');
         if (!root || !AU) { return; }
         root.className = 'au-wrap' + (AU.light ? ' au-light' : '');
-        root.innerHTML = '';
-
-        var chips = auEl('div', 'au-chips');
-        AU.modes.forEach(function (label, i) {
-            var c = auEl('button', 'au-chip' + (AU.mode === i ? ' on' : ''), label);
-            c.onclick = function () { if (AU.mode !== i) { auSend({ a: 'mode', v: i }, 'Hausmodus „' + label + '“ …'); } };
-            chips.appendChild(c);
-        });
-        var p = auEl('button', 'au-chip pause' + (AU.paused ? ' on' : ''), AU.paused ? '⏸ pausiert' : '⏸ Pause');
-        p.onclick = function () { auSend({ a: 'pause', v: !AU.paused }, AU.paused ? 'Pause wird beendet …' : 'Alle Automatismen werden pausiert …'); };
-        chips.appendChild(p);
-        root.appendChild(chips);
-        root.appendChild(auEl('div', 'au-flash', auMsg));
-
-        if (!AU.groups || AU.groups.length === 0) {
-            root.appendChild(auEl('div', 'au-empty', 'Noch kein Automatismus eingerichtet — in der Instanz unter „Entdecken“ oder „Katalog“ anlegen.'));
-        }
-        (AU.groups || []).forEach(function (g) {
-            root.appendChild(auEl('div', 'au-room', g.room));
-            g.items.forEach(function (it) {
-                var box = auEl('div', 'au-item' + (it.enabled ? '' : ' off'));
-                var top = auEl('div', 'au-top');
-                top.appendChild(auEl('span', 'au-ico', it.icon));
-                var nm = auEl('span', 'au-name', it.name);
-                nm.title = it.type;
-                top.appendChild(nm);
-                if (it.permanent !== null) {
-                    var b1 = auEl('button', 'au-btn perm' + (it.permanent ? ' on' : ''), it.permanent ? '🔆 Dauerlicht' : '🔆');
-                    b1.title = 'Dauerlicht';
-                    b1.onclick = function () { auSend({ a: 'perm', uid: it.uid, v: !it.permanent }, it.permanent ? 'Dauerlicht aus …' : 'Dauerlicht an …'); };
-                    top.appendChild(b1);
-                }
-                var b2 = auEl('button', 'au-btn' + (it.locked ? ' on' : ''), it.locked ? '🔒 gesperrt' : '🔓');
-                b2.title = it.locked ? 'Sperre aufheben' : 'Sperren (tut dann nichts)';
-                b2.onclick = function () { auSend({ a: 'lock', uid: it.uid, v: !it.locked }, it.locked ? 'Sperre wird aufgehoben …' : 'Wird gesperrt …'); };
-                top.appendChild(b2);
-                box.appendChild(top);
-                var st = auEl('div', 'au-status', it.status);
-                var rest = auRest(it.due);
-                if (rest) {
-                    st.appendChild(document.createTextNode(' · noch '));
-                    st.appendChild(auEl('span', 'au-count', rest));
-                }
-                box.appendChild(st);
-                root.appendChild(box);
-            });
-        });
-
-        if (AU.log && AU.log.length) {
-            var d = auEl('details', 'au-log');
-            d.appendChild(auEl('summary', '', 'Protokoll'));
-            AU.log.forEach(function (l) { d.appendChild(auEl('div', '', l)); });
-            root.appendChild(d);
-        }
+        if (!auBuilt) { auBuild(root); }
+        auModes();
+        auList();
+        auLog();
+        auFlash();
     }
 
     function handleMessage(payload) {
@@ -151,13 +352,6 @@
         data._recv = Date.now();
         AU = data;
         auRender();
-        if (!auTimer) {
-            // Restzeiten jede Sekunde mitlaufen lassen (offene Protokoll-Ansicht bleibt dabei erhalten)
-            auTimer = setInterval(function () {
-                var open = document.querySelector('.au-log[open]') !== null;
-                auRender();
-                if (open) { var x = document.querySelector('.au-log'); if (x) { x.open = true; } }
-            }, 1000);
-        }
+        if (!auTimer) { auTimer = setInterval(auTick, 1000); }
     }
 </script>

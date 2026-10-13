@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.30 (Build 31) — 13.10.2026
+
+- **Kachel neu gestaltet** (Rückmeldung Dietmar: zu viel Platz, keine Sortierung, Filter oder Suche):
+  - Kompakt und mehrspaltig: Gruppen stehen als Kästen nebeneinander, ein Raum mit einem Automatismus belegt keine ganze Zeile mehr; auf dem Handy einspaltig.
+  - Suche über Name, Raum, Art und Zustand; der Fokus bleibt beim sekündlichen Mitlaufen der Restzeiten erhalten (nur die Restzeiten werden nachgeführt).
+  - Filter mit Anzahl: Alle · Läuft · Auffällig · Gesperrt/inaktiv. Farbiger Rand: blau = läuft, orange = auffällig.
+  - Gruppieren nach Raum, nach Funktion oder ohne Gruppen; sortieren nach Name, Zustand oder Art; Gruppen per Klick zuklappen. Die Wahl merkt sich der Browser.
+  - Kacheldaten: flache Liste mit Raum, Funktion und Zustand je Automatismus.
+
 ## 0.1.29 (Build 30) — 13.10.2026
 
 - Der Schalter je Automatismus heißt jetzt „Aktiv“ statt „Eingeschaltet“ (Dialog und Listenspalte, vorher „An“); Zustand „⚫ Nicht aktiv“, Zusammenfassung „… aktiv“. „Eingeschaltet“ war mit dem Schalten der Geräte zu verwechseln. Rückmeldung Dietmar.
