@@ -806,6 +806,15 @@ $find = function ($els, $name) use (&$find) { foreach ($els as $e) { if (($e['na
 $list = $find($form['elements'], 'Automations');
 check('Liste mit eingespeisten Werten (loadValuesFromConfiguration=false)', $list !== null && $list['loadValuesFromConfiguration'] === false && count($list['values']) === 4);
 check('Schlüsselspalten Type/Uid gespeichert (save:true)', count(array_filter($list['columns'], fn($c) => in_array($c['name'], ['Type', 'Uid'], true) && !empty($c['save']))) === 2);
+$vals = $list['values'];
+$flur = array_values(array_filter($vals, fn($r) => ($r['Uid'] ?? '') === 'aflur1'))[0] ?? [];
+check('Spalte „Einstellungen“ fasst Werte zusammen', strpos($flur['Settings'] ?? '', 'Nachlauf 1:00 min') !== false && strpos($flur['Settings'] ?? '', '100 %') !== false, $flur['Settings'] ?? '');
+check('Sortierschlüssel Raum→Art und Art→Raum', ($flur['SortRoom'] ?? '') === 'flur|bewegung|flurlicht' && ($flur['SortType'] ?? '') === 'bewegung|flur|flurlicht');
+check('Spaltenköpfe Raum/Art sortieren über die Schlüssel', count(array_filter($list['columns'], fn($c) => ($c['sortColumn'] ?? '') !== '')) === 2);
+check('Liste mindestens 12 Zeilen hoch', $list['rowCount'] >= 12);
+$m->fieldUpdates = [];
+$m->UISetListOrder(1);
+check('„Ordnen nach Art“ setzt die Sortierung der offenen Liste', $m->fieldUpdates[0][0] === 'Automations' && $m->fieldUpdates[0][1] === 'sort' && strpos($m->fieldUpdates[0][2], 'TypeLabel') !== false);
 check('Genau eine Spalte mit width auto', count(array_filter($list['columns'], fn($c) => ($c['width'] ?? '') === 'auto')) === 1);
 check('Zustandsspalte zeigt für jede Zeile einen Status', count(array_filter($list['values'], fn($r) => trim((string)($r['State'] ?? '')) === '')) === 0, json_encode(array_column($list['values'], 'State'), JSON_UNESCAPED_UNICODE));
 check('Bearbeiten-Dialog als PHP-Code je Zeile', strpos($list['form'], 'AUTOMAT_UIEditForm($id') !== false);

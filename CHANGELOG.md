@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 (Build 5) — 13.10.2026
+
+- Liste der Automatismen: mindestens 12 Zeilen hoch (wächst bis 25), neue Spalte „Einstellungen“ mit den wichtigsten Werten (z. B. „Nachlauf 2:00 min · unter 30 lx (jetzt 12 lx) · 100 %, Nacht 20 %“).
+- Gruppieren: Spaltenkopf „Raum“ ordnet nach Raum und darin nach Art, „Art“ nach Funktion und darin nach Raum; „Ordnen nach“ merkt sich die Wahl (Wunsch Dietmar).
+
 ## 0.1.3 (Build 4) — 13.10.2026
 
 - Neue Variable „… · Restzeit“ je Automatismus: zeigt, wie lange es noch dauert, bis das Licht ausgeht, die Heizung abgesenkt, eine Meldung gesendet oder die nächste Dämmerungsschaltung fällig ist; wird alle 5 s nachgeführt, solange der Countdown unter einer Stunde liegt, sonst minütlich; leer, wenn nichts ansteht (Wunsch Dietmar).

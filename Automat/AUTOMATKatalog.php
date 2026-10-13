@@ -314,4 +314,111 @@ class AUTOMATKatalog
         }
         return $p;
     }
+
+    /** Dauer kurz: „45 s", „2:00 min", „1 h 30 min". */
+    public static function dur(int $sec): string
+    {
+        if ($sec >= 3600) {
+            $m = intdiv($sec % 3600, 60);
+            return intdiv($sec, 3600) . ' h' . ($m > 0 ? ' ' . $m . ' min' : '');
+        }
+        if ($sec >= 60) {
+            return intdiv($sec, 60) . ':' . sprintf('%02d', $sec % 60) . ' min';
+        }
+        return $sec . ' s';
+    }
+
+    private static function hm(string $timeJson): string
+    {
+        $t = json_decode($timeJson, true);
+        return sprintf('%02d:%02d', (int)($t['hour'] ?? 0), (int)($t['minute'] ?? 0));
+    }
+
+    private static function offset(int $min): string
+    {
+        return $min === 0 ? '' : ' ' . ($min > 0 ? '+' : '−') . abs($min) . ' min';
+    }
+
+    /**
+     * Die wichtigsten Einstellungen einer Zeile in einer Zeile Text (Spalte „Einstellungen").
+     * $live: callable(int $vid): ?string — aktueller Wert einer gelesenen Variable als Text (z. B. „12 lx"), null = unbekannt.
+     */
+    public static function summary(array $row, callable $live): string
+    {
+        $t = (string)($row['Type'] ?? '');
+        $p = [];
+        $light = function (string $pre) use ($row) {
+            $w = (int)($row[$pre . '_wert'] ?? 100);
+            $n = (int)($row[$pre . '_nachtwert'] ?? 0);
+            return $w . ' %' . ($n > 0 ? ', Nacht ' . $n . ' %' : '');
+        };
+        switch ($t) {
+            case 'zeitlicht':
+                $p[] = 'Dauer ' . self::dur((int)($row['zl_dauer'] ?? 0));
+                if ((int)($row['zl_vorwarn'] ?? 0) > 0) {
+                    $p[] = 'Vorwarnung ' . self::dur((int)$row['zl_vorwarn']);
+                }
+                $p[] = $light('zl');
+                $n = count(self::vars($row, 'zl_trg'));
+                $p[] = $n > 0 ? $n . ' Taster' : 'startet bei jedem Einschalten';
+                break;
+            case 'bewegung':
+                $p[] = 'Nachlauf ' . self::dur((int)($row['bl_nachlauf'] ?? 0));
+                if ((int)($row['bl_lux'] ?? 0) > 0) {
+                    $now = $live((int)$row['bl_lux']);
+                    $p[] = 'unter ' . rtrim(rtrim(number_format((float)($row['bl_luxschwelle'] ?? 0), 1, ',', ''), '0'), ',') . ' lx' . ($now !== null ? ' (jetzt ' . $now . ')' : '');
+                }
+                $p[] = $light('bl');
+                if ((int)($row['bl_vorwarn'] ?? 0) > 0) {
+                    $p[] = 'Vorwarnung ' . self::dur((int)$row['bl_vorwarn']);
+                }
+                if ((int)($row['bl_handpause'] ?? 0) > 0) {
+                    $p[] = 'Handpause ' . (int)$row['bl_handpause'] . ' min';
+                }
+                $p[] = count(self::vars($row, 'bl_mel')) . ' Melder';
+                break;
+            case 'daemmerung':
+                $ein = (int)($row['dz_ein'] ?? 0);
+                $aus = (int)($row['dz_aus'] ?? 0);
+                $p[] = 'an: ' . ($ein === 0 ? 'Sonnenuntergang' . self::offset((int)($row['dz_einversatz'] ?? 0)) : ($ein === 1 ? self::hm((string)($row['dz_einzeit'] ?? '')) : 'Dunkelheit'));
+                $p[] = 'aus: ' . ($aus === 0 ? self::hm((string)($row['dz_auszeit'] ?? '')) : ($aus === 1 ? 'Sonnenaufgang' . self::offset((int)($row['dz_ausversatz'] ?? 0)) : ($aus === 2 ? 'Helligkeit' : 'nie')));
+                if ((int)($row['dz_zufall'] ?? 0) > 0) {
+                    $p[] = 'Zufall ±' . (int)$row['dz_zufall'] . ' min';
+                }
+                if ((int)($row['dz_lux'] ?? 0) > 0 && ($ein === 2 || $aus === 2)) {
+                    $now = $live((int)$row['dz_lux']);
+                    $p[] = 'Schwelle ' . rtrim(rtrim(number_format((float)($row['dz_luxschwelle'] ?? 0), 1, ',', ''), '0'), ',') . ' lx' . ($now !== null ? ' (jetzt ' . $now . ')' : '');
+                }
+                break;
+            case 'fenster':
+                $p[] = 'nach ' . self::dur((int)($row['fo_verz'] ?? 0)) . ' auf ' . rtrim(rtrim(number_format((float)($row['fo_absenk'] ?? 0), 1, ',', ''), '0'), ',') . ' °C';
+                $p[] = count(self::vars($row, 'fo_kon')) . ' Kontakt(e), ' . count(self::vars($row, 'fo_soll')) . ' Sollwert(e)';
+                break;
+            case 'waechter':
+                $op = (int)($row['wa_op'] ?? 4);
+                $p[] = (self::WA_OPS[$op] ?? '') . (in_array($op, [4, 5], true) ? '' : ' ' . (string)($row['wa_wert'] ?? ''));
+                $p[] = 'länger als ' . self::dur((int)($row['wa_dauer'] ?? 0) * 60);
+                if ((int)($row['wa_wdh'] ?? 0) > 0) {
+                    $p[] = 'Erinnerung alle ' . (int)$row['wa_wdh'] . ' min';
+                }
+                break;
+            case 'fertig':
+                $p[] = 'läuft ab ' . (float)($row['gf_lauf'] ?? 0) . ' W';
+                $p[] = 'fertig unter ' . (float)($row['gf_fertig'] ?? 0) . ' W nach ' . (int)($row['gf_nach'] ?? 0) . ' min';
+                break;
+        }
+        $off = [];
+        foreach (self::MODES as $m => $label) {
+            if (array_key_exists('m' . $m, $row) && !$row['m' . $m]) {
+                $off[] = $label;
+            }
+        }
+        if (count($off) > 0) {
+            $p[] = 'nicht bei ' . implode('/', $off);
+        }
+        if (trim((string)($row['Cond'] ?? '')) !== '' && trim((string)$row['Cond']) !== '[]') {
+            $p[] = 'mit Bedingung';
+        }
+        return implode(' · ', $p);
+    }
 }

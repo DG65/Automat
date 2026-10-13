@@ -75,6 +75,7 @@ class Automat extends IPSModule
         $this->RegisterPropertyInteger('cfg_PresenceVar', 0);
         $this->RegisterPropertyBoolean('cfg_PresenceInvert', false);
         $this->RegisterPropertyBoolean('cfg_TileLight', false);
+        $this->RegisterPropertyInteger('cfg_ListOrder', 0);
 
         $this->RegisterAttributeString('States', '{}');
         $this->RegisterAttributeString('Status', '{}');
@@ -1348,6 +1349,15 @@ class Automat extends IPSModule
             });
             $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : '❔ Typ wählen (✏️)';
             $r['State'] = empty($r['Enabled']) ? '⚫ Ausgeschaltet' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
+            $r['Settings'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::summary($r, function (int $vid) {
+                return $this->liveText($vid);
+            }) : '';
+            // Sortierschlüssel: Raum → Art → Name bzw. Art → Raum → Name (Spaltenkopf oder „Ordnen nach“).
+            $room = mb_strtolower(trim((string)($r['Room'] ?? '')) ?: '~');
+            $type = (string)($r['Type'] ?? '');
+            $name = mb_strtolower((string)($r['Name'] ?? ''));
+            $r['SortRoom'] = $room . '|' . $type . '|' . $name;
+            $r['SortType'] = $type . '|' . $room . '|' . $name;
             if (count($p) > 0 && !empty($r['Enabled'])) {
                 $r['rowColor'] = '#FFC0C0';
             } elseif (empty($r['Enabled'])) {
@@ -1356,6 +1366,31 @@ class Automat extends IPSModule
             $out[] = $r;
         }
         return $out;
+    }
+
+    /** Aktueller Wert einer Variable kurz als Text mit Einheit („12 lx"), null wenn unbekannt. */
+    private function liveText(int $vid): ?string
+    {
+        if (!IPS_VariableExists($vid)) {
+            return null;
+        }
+        $v = GetValue($vid);
+        if (!is_numeric($v)) {
+            return null;
+        }
+        $num = rtrim(rtrim(number_format((float)$v, 1, ',', '.'), '0'), ',');
+        return $num . ' lx';
+    }
+
+    /** AUTOMAT_UISetListOrder($id, $order) — Liste im offenen Formular nach Raum (0) oder Art (1) ordnen. */
+    public function UISetListOrder(int $order): void
+    {
+        $this->UpdateFormField('Automations', 'sort', json_encode($this->listSort($order)));
+    }
+
+    private function listSort(int $order): array
+    {
+        return ['column' => $order === 1 ? 'TypeLabel' : 'Room', 'direction' => 'ascending'];
     }
 
     public function AckPurposeIntro(): void
@@ -1480,16 +1515,23 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '⚙️  Automatismen',
             'items' => [
                 ['type' => 'Label', 'name' => 'Summary', 'caption' => $summary],
+                ['type' => 'Select', 'name' => 'cfg_ListOrder', 'caption' => 'Ordnen nach', 'width' => '320px', 'onChange' => 'AUTOMAT_UISetListOrder($id, $cfg_ListOrder);', 'options' => [
+                    ['caption' => 'Raum, darin nach Art', 'value' => 0],
+                    ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
+                ]],
                 [
-                    'type' => 'List', 'name' => 'Automations', 'caption' => 'Automatismen', 'rowCount' => max(5, min(15, count($rows) + 1)),
+                    'type' => 'List', 'name' => 'Automations', 'caption' => 'Automatismen', 'rowCount' => max(12, min(25, count($rows) + 3)),
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
-                    'sort' => ['column' => 'Room', 'direction' => 'ascending'],
+                    'sort' => $this->listSort($this->ReadPropertyInteger('cfg_ListOrder')),
                     'columns' => [
                         ['caption' => 'An', 'name' => 'Enabled', 'width' => '50px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Bezeichnung', 'name' => 'Name', 'width' => 'auto', 'add' => '', 'save' => true],
-                        ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '250px', 'add' => '', 'save' => true],
-                        ['caption' => 'Raum', 'name' => 'Room', 'width' => '140px', 'add' => '', 'save' => true],
-                        ['caption' => 'Zustand', 'name' => 'State', 'width' => '360px', 'add' => '', 'save' => false],
+                        ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
+                        ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '210px', 'add' => '', 'save' => true, 'sortColumn' => 'SortType'],
+                        ['caption' => 'Bezeichnung', 'name' => 'Name', 'width' => '200px', 'add' => '', 'save' => true],
+                        ['caption' => 'Einstellungen', 'name' => 'Settings', 'width' => 'auto', 'add' => '', 'save' => false],
+                        ['caption' => 'Zustand', 'name' => 'State', 'width' => '340px', 'add' => '', 'save' => false],
+                        ['caption' => 'Sortierung Raum', 'name' => 'SortRoom', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
+                        ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
                         ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                         ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                     ],
