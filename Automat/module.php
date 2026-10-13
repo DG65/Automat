@@ -691,7 +691,7 @@ class Automat extends IPSModule
             return $out;
         }
         $impulse = [];
-        for ($i = 1; $i <= AUTOMATKatalog::SLOTS; $i++) {
+        for ($i = 1; $i <= AUTOMATKatalog::slots('bl_mel'); $i++) {
             $vid = (int)($row['bl_mel' . $i] ?? 0);
             if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid)) {
                 continue;
@@ -1546,7 +1546,7 @@ class Automat extends IPSModule
         switch ($k) {
             case 'vars':
                 $o = [];
-                for ($i = 1; $i <= AUTOMATKatalog::SLOTS; $i++) {
+                for ($i = 1; $i <= ($f['max'] ?? AUTOMATKatalog::SLOTS); $i++) {
                     $o[] = ['type' => 'SelectVariable', 'name' => $f['n'] . $i, 'caption' => $f['c'] . ' ' . $i . ($i > 1 || empty($f['req']) ? ' (optional)' : ''), 'value' => 0, 'width' => '520px',
                         'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . $i . '\', (int)$' . $f['n'] . $i . ');'];
                 }

@@ -280,7 +280,7 @@ class AUTOMATErkennung
         };
         $fill = function (array &$row, string $field, array $vids) {
             $i = 1;
-            foreach (array_slice($vids, 0, AUTOMATKatalog::SLOTS) as $vid) {
+            foreach (array_slice($vids, 0, AUTOMATKatalog::slots($field)) as $vid) {
                 $row[$field . $i++] = $vid;
             }
         };
@@ -350,8 +350,8 @@ class AUTOMATErkennung
             $fill($row, 'an_p', array_column($pres, 'vid'));
             $names = array_map(function ($it) {
                 return trim((string)$it['inst']) ?: (string)$it['name'];
-            }, array_slice($pres, 0, AUTOMATKatalog::SLOTS));
-            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column(array_slice($pres, 0, AUTOMATKatalog::SLOTS), 'vid'));
+            }, array_slice($pres, 0, AUTOMATKatalog::slots('an_p')));
+            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column(array_slice($pres, 0, AUTOMATKatalog::slots('an_p')), 'vid'));
         }
 
         // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen

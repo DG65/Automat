@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.18 (Build 19) — 13.10.2026
+
+- „Anwesenheit zusammenfassen“ nimmt jetzt bis zu 8 Signale auf (vorher 4) — genug für größere Haushalte oder mehrere Signale je Person (z. B. Geofency und WLAN). Entdecken übernimmt entsprechend bis zu 8. Die Platzzahl ist jetzt je Feld festgelegt; alle anderen Mehrfachfelder bleiben bei 4. Wunsch Dietmar.
+
 ## 0.1.17 (Build 18) — 13.10.2026
 
 - Neuer Automatismus **🏠 Anwesenheit zusammenfassen**: bis zu 4 Anwesenheitssignale (z. B. Geofency je Person, „Anwesenheit“-Variablen) ergeben eine Variable „Jemand zu Hause“. Sobald einer da ist: sofort „jemand da“; sind alle weg, erst nach einer Wartezeit (Standard 10 min) „niemand da“ — kurzes GPS-Springen schaltet nichts um. Status nennt, wer zu Hause ist; Kommen/Gehen im Protokoll. Entdecken schlägt ihn vor; Fahrzeuge („Zu Hause“ eines Autos), Kalender-Planwerte und Präsenzmelder im Raum zählen nicht. Wunsch Dietmar.

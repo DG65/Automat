@@ -218,7 +218,7 @@ foreach (AUTOMATKatalog::TYPES as $t => $def) {
         if (!isset($f['n'])) {
             continue;
         }
-        $names = $f['k'] === 'vars' ? array_map(fn($i) => $f['n'] . $i, range(1, AUTOMATKatalog::SLOTS)) : [$f['n']];
+        $names = $f['k'] === 'vars' ? array_map(fn($i) => $f['n'] . $i, range(1, $f['max'] ?? AUTOMATKatalog::SLOTS)) : [$f['n']];
         foreach ($names as $n) {
             if (isset($seen[$n])) {
                 $dup[] = $n;
@@ -732,6 +732,11 @@ check('Heimkommen: sofort „jemand da“', $r['self'] === true && strpos((strin
 $st2 = [];
 $r = step($an, $st2, ['k' => 'tick'], ['val' => [700 => 'Zu Hause', 701 => 0], 'names' => $names]);
 check('Text „Zu Hause“ zählt als anwesend', $r['self'] === true);
+$an6 = AUTOMATKatalog::defaults('anwesenheit');
+foreach (range(1, 6) as $i) {
+    $an6['an_p' . $i] = 709 + $i;
+}
+check('Anwesenheit: 8 Plätze, 6 Personen werden alle gezählt', AUTOMATKatalog::slots('an_p') === 8 && array_key_exists('an_p8', $an6) && count(AUTOMATKatalog::vars($an6, 'an_p')) === 6 && AUTOMATKatalog::slots('bl_mel') === AUTOMATKatalog::SLOTS);
 check('Katalog: Ein- und Ausgänge des Typs', AUTOMATKatalog::variables($an)['in'] === [700, 701] && AUTOMATKatalog::variables($an)['out'] === []);
 
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
@@ -1323,6 +1328,8 @@ check('Ergebnisvariable „Jemand zu Hause“ angelegt und wahr', $pid !== false
 $ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
 check('Hausmodus-Panel zeigt die automatische Verknüpfung', strpos($ft, '🔗 Anwesenheit automatisch aus dem Automatismus „Anwesenheit“') !== false, '');
 check('Hausmodus-Panel bietet Sonnenaufgang und „Ist es Tag“', strpos($ft, 'bei Sonnenaufgang') !== false && strpos($ft, '„Ist es Tag“ (Location Control) falsch wird') !== false);
+$dlgA = json_encode(json_decode($m->UIEditForm('aanw02', 'anwesenheit'), true), JSON_UNESCAPED_UNICODE);
+check('Dialog: 8 Plätze für Anwesenheitssignale, Bewegungsmelder weiter 4', strpos($dlgA, '"an_p8"') !== false && strpos($dlgA, '"an_p9"') === false && strpos($dlgA, '"bl_mel4"') !== false && strpos($dlgA, '"bl_mel5"') === false);
 fire($m, 1501, false);
 at('12:06:00');
 $m->Tick();

@@ -219,7 +219,7 @@ class AUTOMATKatalog
             case 'anwesenheit':
                 return [
                     ['k' => 'info', 'c' => 'Signale für „zu Hause“ (eines reicht für „jemand da“)'],
-                    ['n' => 'an_p', 'k' => 'vars', 'c' => 'Person / Anwesenheitssignal', 'req' => true,
+                    ['n' => 'an_p', 'k' => 'vars', 'max' => 8, 'c' => 'Person / Anwesenheitssignal', 'req' => true,
                         'help' => ['Welche Signale passen hierher?', [
                             'Je Person ein Signal, das „zu Hause“ meldet — z. B. Geofency/Standort-App, Handy im WLAN, ein Schlüsselschalter, eine Anwesenheitsvariable einer anderen Steuerung.',
                             'Zählt als „da“: an/wahr, Zahlen über 0 und Texte wie „home“, „zuhause“, „anwesend“.',
@@ -256,7 +256,7 @@ class AUTOMATKatalog
                 continue;
             }
             if ($f['k'] === 'vars') {
-                for ($i = 1; $i <= self::SLOTS; $i++) {
+                for ($i = 1; $i <= ($f['max'] ?? self::SLOTS); $i++) {
                     $row[$f['n'] . $i] = 0;
                 }
             } elseif ($f['k'] === 'var') {
@@ -278,7 +278,7 @@ class AUTOMATKatalog
                 }
                 $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
                     return $f['n'] . $i;
-                }, range(1, self::SLOTS)) : [$f['n']];
+                }, range(1, $f['max'] ?? self::SLOTS)) : [$f['n']];
                 foreach ($names as $n) {
                     if (array_key_exists($n, $row) && (int)$row[$n] < self::$minId) {
                         $row[$n] = 0;
@@ -303,7 +303,7 @@ class AUTOMATKatalog
             }
             $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
                 return $f['n'] . $i;
-            }, range(1, self::SLOTS)) : [$f['n']];
+            }, range(1, $f['max'] ?? self::SLOTS)) : [$f['n']];
             $any = false;
             foreach ($names as $n) {
                 $v = (int)($row[$n] ?? 0);
@@ -321,11 +321,28 @@ class AUTOMATKatalog
         return $out;
     }
 
+    /** Anzahl der Plätze eines Mehrfach-Felds (Standard SLOTS, je Feld über 'max' erweiterbar). */
+    public static function slots(string $name): int
+    {
+        static $map = null;
+        if ($map === null) {
+            $map = [];
+            foreach (self::TYPES as $t => $_) {
+                foreach (self::fields($t) as $f) {
+                    if (isset($f['n']) && $f['k'] === 'vars') {
+                        $map[$f['n']] = (int)($f['max'] ?? self::SLOTS);
+                    }
+                }
+            }
+        }
+        return $map[$name] ?? self::SLOTS;
+    }
+
     /** Variablen eines Mehrfach-Felds (0 und doppelte entfernt). */
     public static function vars(array $row, string $name): array
     {
         $out = [];
-        for ($i = 1; $i <= self::SLOTS; $i++) {
+        for ($i = 1; $i <= self::slots($name); $i++) {
             $v = (int)($row[$name . $i] ?? 0);
             if ($v >= self::$minId && !in_array($v, $out, true)) {
                 $out[] = $v;
