@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.23 (Build 24) — 13.10.2026
+
+- Hausmodus/Helligkeitssensor: Die Sensor-Vorschläge („💡 Passende Sensoren gefunden …“) erscheinen jetzt sofort beim Umstellen auf „wenn es hell/dunkel wird“, nicht erst nach dem Übernehmen; Einstrahlung von Wetterstationen steht vor Lux-Sensoren in Räumen. Hinweis, dass manche Wetterstationen W/m² mit „lx“ beschriften. Rückmeldung Dietmar.
+
 ## 0.1.22 (Build 23) — 13.10.2026
 
 - Hausmodus: Alle Zeitpunkte der Location Control stehen zur Auswahl, jeweils mit der heutigen Uhrzeit — Tag ab Sonnenaufgang oder Beginn der bürgerlichen/nautischen/astronomischen Dämmerung, Abend ab Sonnenuntergang oder Ende einer Dämmerung, „Ist es Tag“. Neu auch „Nacht beginnt“ wahlweise zur Uhrzeit oder am Ende einer Dämmerung. Jeweils mit Versatz. Wunsch Dietmar.

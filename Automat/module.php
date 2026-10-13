@@ -2254,6 +2254,9 @@ class Automat extends IPSModule
         foreach (['LightHead', 'cfg_LightVar', 'cfg_LightDay', 'cfg_LightNight', 'cfg_LightHold', 'LightHint'] as $f) {
             $this->UpdateFormField($f, 'visible', $day === 6 || $eve === 6);
         }
+        if ($day === 6 || $eve === 6) {
+            $this->UpdateFormField('LightHint', 'caption', $this->lightHint());
+        }
         $line = $this->locationLine($day, $eve, $night);
         $this->UpdateFormField('LocationInfo', 'caption', $line);
         $this->UpdateFormField('LocationInfo', 'visible', $line !== '');
@@ -2298,10 +2301,14 @@ class Automat extends IPSModule
         return trim($suffix);
     }
 
-    /** Mögliche Helligkeits-/Einstrahlungssensoren (für den Hinweis im Formular), höchstens 3. */
+    /**
+     * Mögliche Helligkeits-/Einstrahlungssensoren (für den Hinweis im Formular), höchstens 3. Einstrahlung
+     * (Name/Einheit W/m²) vor reinen Lux-Sensoren — die hängen oft drinnen an Bewegungsmeldern.
+     */
     private function lightCandidates(): array
     {
         $out = [];
+        $score = [];
         foreach (IPS_GetVariableList() as $vid) {
             $v = IPS_GetVariable($vid);
             if (!in_array((int)$v['VariableType'], [VARIABLETYPE_INTEGER, VARIABLETYPE_FLOAT], true)) {
@@ -2312,13 +2319,27 @@ class Automat extends IPSModule
             $name = mb_strtolower(IPS_GetName($vid));
             if (preg_match('#w/m|lx|lux#', $unit) || preg_match('/illumin|radiation|strahlung/', $profile)
                 || preg_match('/einstrahlung|globalstrahlung|strahlung|solar ?radiation|helligkeit|illuminance/', $name) && $unit !== '%') {
-                $out[] = $this->varLabel($vid) . ' (#' . $vid . ')';
-                if (count($out) >= 3) {
-                    break;
-                }
+                $label = $this->varLabel($vid) . ' (#' . $vid . ')';
+                $out[$label] = (preg_match('/strahlung|radiation|solar/', $name) || strpos($unit, 'w/m') !== false ? 2 : 0)
+                    + (preg_match('/wetter|weather|außen|aussen|outdoor/i', IPS_GetName(IPS_GetParent($vid)) . ' ' . $name) ? 1 : 0);
             }
         }
-        return $out;
+        arsort($out);
+        return array_slice(array_keys($out), 0, 3);
+    }
+
+    /** Hinweis unter den Sensorfeldern: Vorschläge, solange keiner gewählt ist, und Richtwerte. */
+    private function lightHint(): string
+    {
+        $text = 'Richtwerte: Einstrahlung (W/m²) hell ab 50, dunkel unter 20 · Helligkeit (lx) hell ab 1000, dunkel unter 300. '
+            . 'Manche Wetterstationen zeigen die Einstrahlung mit „lx“ an, obwohl sie W/m² liefert — maßgeblich sind die Zahlen. '
+            . 'Die Haltezeit verhindert, dass eine Wolke umschaltet.';
+        $lv = $this->ReadPropertyInteger('cfg_LightVar');
+        if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
+            return $text;
+        }
+        $cand = $this->lightCandidates();
+        return (count($cand) > 0 ? '💡 Passende Sensoren gefunden: ' . implode(', ', $cand) . ' — oben auswählen. ' : '') . $text;
     }
 
     /** Auswahl-Eintrag für einen Zeitpunkt der Location Control, mit der heutigen Uhrzeit. */
@@ -2391,16 +2412,11 @@ class Automat extends IPSModule
         $eveOpts[] = ['caption' => 'wenn es dunkel wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
         $useLight = $dayRef === 6 || $eveRef === 6;
         $lightUnit = '';
-        $lightHint = 'Richtwerte: Einstrahlung (W/m²) hell ab 50, dunkel unter 20 · Helligkeit (lx) hell ab 1000, dunkel unter 300. Die Haltezeit verhindert, dass eine Wolke umschaltet.';
         $lv = $this->ReadPropertyInteger('cfg_LightVar');
         if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
             $lightUnit = $this->unitOf($lv);
-        } elseif ($useLight) {
-            $cand = $this->lightCandidates();
-            if (count($cand) > 0) {
-                $lightHint = '💡 Gefunden: ' . implode(', ', $cand) . '. ' . $lightHint;
-            }
         }
+        $lightHint = $useLight ? $this->lightHint() : '';
         $nightOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
         foreach (self::NIGHT_EVENTS as $v => $ident) {
             $nightOpts[] = $this->eventOption($v, $ident);
