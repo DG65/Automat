@@ -76,6 +76,7 @@ class Automat extends IPSModule
         $this->RegisterPropertyBoolean('cfg_PresenceInvert', false);
         $this->RegisterPropertyBoolean('cfg_TileLight', false);
         $this->RegisterPropertyInteger('cfg_ListOrder', 0);
+        $this->RegisterPropertyInteger('cfg_SuggestOrder', 0);
 
         $this->RegisterAttributeString('States', '{}');
         $this->RegisterAttributeString('Status', '{}');
@@ -686,10 +687,7 @@ class Automat extends IPSModule
         $this->WriteAttributeString('RoleCounts', json_encode(AUTOMATErkennung::roleCounts($items)));
         $this->WriteAttributeInteger('LastDiscoveryTs', $this->now());
 
-        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine());
-        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($this->suggestionOptions()));
-        $this->UpdateFormField('cfg_Suggestion', 'value', $sugg[0]['key'] ?? '');
-        $this->UpdateFormField('SuggestDetails', 'caption', $this->suggestionDetails());
+        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
         $src = $this->ReadAttributeString('RoomSource');
         $this->UpdateFormField('RoomSource', 'caption', $src);
         $this->UpdateFormField('RoomSource', 'color', strpos($src, '🔗') !== false ? 0x2E8B3D : -1);
@@ -812,14 +810,41 @@ class Automat extends IPSModule
         }));
     }
 
-    private function suggestionOptions(): array
+    /** Vorschläge geordnet: 0 = Raum → Art → Titel, 1 = Art → Raum → Titel. */
+    private function sortedSuggestions(int $order): array
+    {
+        $list = $this->suggestions();
+        usort($list, function ($a, $b) use ($order) {
+            $ka = $this->suggestionSortKey($a, $order);
+            $kb = $this->suggestionSortKey($b, $order);
+            return strcmp($ka, $kb);
+        });
+        return $list;
+    }
+
+    private function suggestionSortKey(array $s, int $order): string
+    {
+        $room = mb_strtolower(trim((string)$s['room']) ?: '~');
+        $type = (string)$s['type'];
+        $title = mb_strtolower((string)$s['title']);
+        return $order === 1 ? $type . '|' . $room . '|' . $title : $room . '|' . $type . '|' . $title;
+    }
+
+    private function suggestionWarnings(array $s): int
+    {
+        return count(array_filter($s['conflicts'], function ($c) {
+            return strpos((string)$c, '⚠️') === 0;
+        }));
+    }
+
+    private function suggestionOptions(int $order): array
     {
         $opts = [];
-        foreach ($this->suggestions() as $s) {
-            $warn = count(array_filter($s['conflicts'], function ($c) {
-                return strpos((string)$c, '⚠️') === 0;
-            }));
-            $opts[] = ['caption' => (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . $s['title'] . ($warn > 0 ? '  ⚠️' : ''), 'value' => $s['key']];
+        foreach ($this->sortedSuggestions($order) as $s) {
+            $room = trim((string)$s['room']) ?: 'ohne Raum';
+            $label = (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . (AUTOMATKatalog::TYPES[$s['type']]['label'] ?? '');
+            $head = $order === 1 ? $label . ' · ' . $room : $room . ' · ' . $label;
+            $opts[] = ['caption' => $head . ': ' . $s['title'] . ($this->suggestionWarnings($s) > 0 ? '  ⚠️' : ''), 'value' => $s['key']];
         }
         if (count($opts) === 0) {
             $opts[] = ['caption' => '— keine Vorschläge —', 'value' => ''];
@@ -827,16 +852,48 @@ class Automat extends IPSModule
         return $opts;
     }
 
-    private function suggestionDetails(): string
+    /** Zeilen der Vorschlagsliste (nur Anzeige, nichts davon wird gespeichert). */
+    private function suggestionRows(): array
     {
-        $lines = [];
+        $rows = [];
         foreach ($this->suggestions() as $s) {
-            $lines[] = (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . $s['title'] . ' — ' . $s['why'] . '.';
-            foreach ($s['conflicts'] as $c) {
-                $lines[] = '      ' . $c;
-            }
+            $rows[] = [
+                'Room' => trim((string)$s['room']) ?: 'ohne Raum',
+                'TypeLabel' => AUTOMATKatalog::label((string)$s['type']),
+                'Title' => $s['title'],
+                'Why' => $s['why'],
+                'Hints' => count($s['conflicts']) > 0 ? implode(' | ', $s['conflicts']) : '—',
+                'SortRoom' => $this->suggestionSortKey($s, 0),
+                'SortType' => $this->suggestionSortKey($s, 1),
+                'rowColor' => $this->suggestionWarnings($s) > 0 ? '#FFFFC0' : '',
+            ];
         }
-        return count($lines) > 0 ? implode("\n", $lines) : '';
+        return $rows;
+    }
+
+    private function suggestionSort(int $order): array
+    {
+        return ['column' => $order === 1 ? 'TypeLabel' : 'Room', 'direction' => 'ascending'];
+    }
+
+    /** Kopfzeile, Liste und Auswahl der Vorschläge im offenen Formular gemeinsam auffrischen (SUITE.md: nie einzeln). */
+    private function refreshSuggestionsForm(int $order): void
+    {
+        $opts = $this->suggestionOptions($order);
+        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine());
+        $this->UpdateFormField('SuggestList', 'values', json_encode($this->suggestionRows()));
+        $this->UpdateFormField('SuggestList', 'rowCount', max(5, min(15, count($this->suggestions()))));
+        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($opts));
+        $this->UpdateFormField('cfg_Suggestion', 'value', $opts[0]['value']);
+    }
+
+    /** AUTOMAT_UISetSuggestOrder($id, $order) — Vorschläge nach Raum (0) oder Funktion (1) ordnen. */
+    public function UISetSuggestOrder(int $order): void
+    {
+        $this->UpdateFormField('SuggestList', 'sort', json_encode($this->suggestionSort($order)));
+        $opts = $this->suggestionOptions($order);
+        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($opts));
+        $this->UpdateFormField('cfg_Suggestion', 'value', $opts[0]['value']);
     }
 
     private function discoverHeadLine(): string
@@ -898,7 +955,7 @@ class Automat extends IPSModule
         $row['Enabled'] = true;
         $rows[] = $row;
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($rows)));
-        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($this->suggestionOptions()));
+        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
         return '✅ ' . $what . ' steht jetzt in der Liste — noch NICHT gespeichert.' . "\n"
             . 'Bitte mit ✏️ prüfen (Geräte, Zeiten) und unten „Übernehmen“ klicken.' . $note;
     }
@@ -918,10 +975,7 @@ class Automat extends IPSModule
             return $s['key'] !== $key;
         }));
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
-        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($this->suggestionOptions()));
-        $this->UpdateFormField('cfg_Suggestion', 'value', $this->suggestions()[0]['key'] ?? '');
-        $this->UpdateFormField('SuggestDetails', 'caption', $this->suggestionDetails());
-        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine());
+        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
         return '🙈 Vorschlag ausgeblendet — er erscheint auch bei der nächsten Suche nicht mehr. („Ausgeblendete Vorschläge wieder anzeigen“ holt ihn zurück.)';
     }
 
@@ -1698,19 +1752,37 @@ class Automat extends IPSModule
                 ? 'ℹ️ Raumstruktur gefunden — die Räume werden bei der Suche übernommen.'
                 : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
         }
-        $sugg = $this->suggestions();
+        $order = $this->ReadPropertyInteger('cfg_SuggestOrder');
+        $opts = $this->suggestionOptions($order);
+        $n = count($this->suggestions());
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '🔎  Entdecken — Vorschläge aus deinen Geräten',
             'items' => [
                 ['type' => 'Button', 'caption' => '🔎 Jetzt Vorschläge suchen', 'onClick' => 'echo AUTOMAT_Discover($id);'],
                 ['type' => 'Label', 'name' => 'DiscoverHead', 'caption' => $this->discoverHeadLine()],
                 ['type' => 'Label', 'name' => 'RoomSource', 'caption' => $src, 'color' => strpos($src, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'Select', 'name' => 'cfg_Suggestion', 'caption' => 'Vorschlag', 'width' => '640px', 'options' => $this->suggestionOptions(), 'value' => $sugg[0]['key'] ?? ''],
+                ['type' => 'Select', 'name' => 'cfg_SuggestOrder', 'caption' => 'Ordnen nach', 'width' => '320px', 'onChange' => 'AUTOMAT_UISetSuggestOrder($id, $cfg_SuggestOrder);', 'options' => [
+                    ['caption' => 'Raum, darin nach Art', 'value' => 0],
+                    ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
+                ]],
+                [
+                    'type' => 'List', 'name' => 'SuggestList', 'caption' => 'Vorschläge (gelb = dieselben Geräte werden schon anderswo geschaltet)', 'rowCount' => max(5, min(15, $n)),
+                    'add' => false, 'delete' => false, 'loadValuesFromConfiguration' => false, 'values' => $this->suggestionRows(), 'sort' => $this->suggestionSort($order),
+                    'columns' => [
+                        ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'save' => false, 'sortColumn' => 'SortRoom'],
+                        ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '230px', 'save' => false, 'sortColumn' => 'SortType'],
+                        ['caption' => 'Vorschlag', 'name' => 'Title', 'width' => '240px', 'save' => false],
+                        ['caption' => 'Warum', 'name' => 'Why', 'width' => 'auto', 'save' => false],
+                        ['caption' => 'Hinweise', 'name' => 'Hints', 'width' => '320px', 'save' => false],
+                        ['caption' => 'Sortierung Raum', 'name' => 'SortRoom', 'width' => '10px', 'save' => false, 'visible' => false],
+                        ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'save' => false, 'visible' => false],
+                    ],
+                ],
+                ['type' => 'Select', 'name' => 'cfg_Suggestion', 'caption' => 'Vorschlag', 'width' => '640px', 'options' => $opts, 'value' => $opts[0]['value']],
                 ['type' => 'Button', 'caption' => '➕ In die Liste übernehmen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdopt($id, (string)$cfg_Suggestion, json_encode($r));'],
                 ['type' => 'Button', 'caption' => '🙈 Diesen Vorschlag ausblenden', 'onClick' => 'echo AUTOMAT_DismissSuggestion($id, (string)$cfg_Suggestion);'],
-                ['type' => 'Label', 'name' => 'SuggestDetails', 'caption' => $this->suggestionDetails()],
                 ['type' => 'Button', 'caption' => 'Ausgeblendete Vorschläge wieder anzeigen', 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
-                ['type' => 'Label', 'caption' => 'ℹ️ Gesucht wird nach Bewegungsmeldern, Lichtern (Schalter/Dimmer), Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von Haushaltsgeräten. ⚠️ an einem Vorschlag heißt: dieselben Geräte werden schon anderswo gesteuert.'],
+                ['type' => 'Label', 'caption' => 'ℹ️ Gesucht wird nach Bewegungsmeldern, Lichtern (Schalter/Dimmer), Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von Haushaltsgeräten. ⚠️ bzw. gelb heißt: dieselben Geräte werden schon anderswo geschaltet — Details mit „Öffnen“-Knopf im Bearbeiten-Dialog nach dem Übernehmen.'],
             ],
         ];
     }

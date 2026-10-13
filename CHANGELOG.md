@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6 (Build 7) — 13.10.2026
+
+- Entdecken: Vorschläge als sortierbare Liste (Raum, Art, Vorschlag, Warum, Hinweise) statt Textblock; „Ordnen nach“ Raum oder Funktion, Spaltenköpfe Raum/Art gruppieren wie in der Hauptliste; Vorschläge mit Doppelsteuerung gelb.
+- Auswahl „Vorschlag“ folgt derselben Ordnung und nennt Raum und Art („Flur · 🚶 Bewegungslicht: …“). Wunsch Dietmar.
+
 ## 0.1.5 (Build 6) — 13.10.2026
 
 - Prüfung auf doppelte Steuerung im Bearbeiten-Dialog: jede Fundstelle mit „Öffnen“-Knopf (springt ins Objekt), in eigenem Abschnitt (aufgeklappt, wenn etwas dasselbe schaltet).
