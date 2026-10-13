@@ -1,0 +1,15 @@
+{
+  "id": "{A92CA7FD-B746-45C4-902B-3CBAE1F3FA27}",
+  "library": "{D7A3CB8F-E43B-4307-AB64-BAD160C1823A}",
+  "name": "Automat",
+  "type": 3,
+  "vendor": "",
+  "aliases": [
+    "DG65-Toolkit Automat"
+  ],
+  "url": "https://github.com/DG65/Automat",
+  "parentRequirements": [],
+  "childRequirements": [],
+  "implemented": [],
+  "prefix": "AUTOMAT"
+}

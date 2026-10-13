@@ -1,0 +1,12 @@
+{
+  "id": "{D7A3CB8F-E43B-4307-AB64-BAD160C1823A}",
+  "author": "DG65",
+  "name": "DG65-Toolkit Automat",
+  "url": "https://github.com/DG65/Automat",
+  "compatibility": {
+    "version": "9.0"
+  },
+  "version": "0.1.0",
+  "build": 1,
+  "date": 1791849600
+}
