@@ -106,25 +106,51 @@ class AUTOMATErkennung
         return false;
     }
 
-    private static function norm(string $s): string
+    /** Grundformen von Raumwörtern: Kurz- und Langform werden gleich („Essen“/„Esszimmer“ → „ess“). */
+    private const ROOM_STEMS = [
+        'essen' => 'ess', 'ess' => 'ess',
+        'wohnen' => 'wohn', 'wohn' => 'wohn',
+        'schlafen' => 'schlaf', 'schlaf' => 'schlaf',
+        'kinder' => 'kind', 'kinds' => 'kind', 'kind' => 'kind',
+        'bade' => 'bad', 'bad' => 'bad',
+        'gäste' => 'gast', 'gaeste' => 'gast', 'gasts' => 'gast', 'gast' => 'gast',
+        'arbeiten' => 'arbeit', 'arbeits' => 'arbeit', 'arbeit' => 'arbeit',
+        'spielen' => 'spiel', 'spiel' => 'spiel',
+        'kochen' => 'koch', 'koch' => 'koch',
+        'baden' => 'bad',
+    ];
+
+    /** Grundform eines Raumworts: „Esszimmer“ → „ess“, „Kinderzimmer“ → „kind“, „Wohnen“ → „wohn“. */
+    public static function roomStem(string $word): string
+    {
+        $w = mb_strtolower(trim($word));
+        if (mb_strlen($w) > 7 && mb_substr($w, -6) === 'zimmer') {
+            $w = mb_substr($w, 0, -6);
+        }
+        return self::ROOM_STEMS[$w] ?? $w;
+    }
+
+    /** Text als Folge von Raum-Grundformen, mit Leerzeichen umrahmt (für Ganzwort-Vergleiche). */
+    private static function stemSeq(string $s): string
     {
         $s = mb_strtolower($s);
-        $s = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $s);
-        return ' ' . trim(preg_replace('/\s+/u', ' ', $s)) . ' ';
+        $parts = preg_split('/[^\p{L}\p{N}]+/u', $s, -1, PREG_SPLIT_NO_EMPTY);
+        return ' ' . implode(' ', array_map([self::class, 'roomStem'], $parts)) . ' ';
     }
 
     /**
-     * Bekannten Raum im Gerätenamen finden („Thermostat Kind II" → „Kind II"). Längster Treffer gewinnt,
-     * nur ganze Wörter („Kind I" passt nicht in „Kind II"); führende Raumnummern („101 Küche") zählen optional.
+     * Bekannten Raum im Gerätenamen finden („Thermostat Kind II“ → „Kind II“, „Licht Essen“ → „Esszimmer“).
+     * Verglichen wird über Raum-Grundformen; längster Treffer gewinnt, nur ganze Wörter („Kind I“ passt
+     * nicht in „Kind II“); führende Raumnummern („101 Küche“) zählen optional.
      */
     public static function roomFromName(string $text, array $rooms): ?string
     {
-        $hay = self::norm($text);
+        $hay = self::stemSeq($text);
         $best = null;
         $bestLen = 0;
         foreach ($rooms as $room) {
             $room = (string)$room;
-            foreach (array_unique([self::norm($room), self::norm(preg_replace('/^\s*\d+\s*/u', '', $room))]) as $needle) {
+            foreach (array_unique([self::stemSeq($room), self::stemSeq(preg_replace('/^\s*\d+\s*/u', '', $room))]) as $needle) {
                 $len = mb_strlen(trim($needle));
                 if ($len >= 2 && $len > $bestLen && mb_strpos($hay, $needle) !== false) {
                     $best = $room;
@@ -135,7 +161,7 @@ class AUTOMATErkennung
         return $best;
     }
 
-    /** Raum-Schlüsselwörter aus einem Instanznamen (Gerätewörter entfernt). */
+    /** Raumwörter aus einem Instanznamen (Gerätewörter entfernt): [Grundform => erstes Originalwort]. */
     public static function roomTokens(string $name): array
     {
         $name = mb_strtolower($name);
@@ -146,9 +172,12 @@ class AUTOMATErkennung
             if (mb_strlen($p) < 2 || in_array($p, self::ROOM_STOP, true)) {
                 continue;
             }
-            $out[$p] = true;
+            $stem = self::roomStem($p);
+            if (!isset($out[$stem])) {
+                $out[$stem] = $p;
+            }
         }
-        return array_keys($out);
+        return $out;
     }
 
     /**
@@ -162,15 +191,18 @@ class AUTOMATErkennung
         $rooms = [];
         $count = [];
         $pending = [];
+        $orig = [];
         foreach ($items as $it) {
             if (!empty($it['room'])) {
                 $rooms[(string)$it['room']][] = $it;
                 continue;
             }
-            $tokens = self::roomTokens((string)($it['inst'] ?? $it['name'] ?? ''));
-            if (count($tokens) === 0) {
+            $words = self::roomTokens((string)($it['inst'] ?? $it['name'] ?? ''));
+            if (count($words) === 0) {
                 continue;
             }
+            $orig += $words;
+            $tokens = array_map('strval', array_keys($words));
             foreach ($tokens as $t) {
                 $count[$t] = ($count[$t] ?? 0) + 1;
             }
@@ -189,10 +221,11 @@ class AUTOMATErkennung
             if (count($list) < 2) {
                 continue;
             }
-            $label = mb_convert_case($t, MB_CASE_TITLE);
+            $label = mb_convert_case((string)($orig[$t] ?? $t), MB_CASE_TITLE);
             foreach ($known as $k) {
-                if (mb_strtolower((string)$k) === mb_strtolower($t)) {
-                    $label = (string)$k; // Schreibweise aus Raumstruktur („HWR“ statt „Hwr“)
+                // Gleicher Raum in Raumstruktur (auch Kurz-/Langform: „Essen“ ↔ „Esszimmer“) → deren Name und Schreibweise
+                if (trim(self::stemSeq((string)$k)) === $t || trim(self::stemSeq(preg_replace('/^\s*\d+\s*/u', '', (string)$k))) === $t) {
+                    $label = (string)$k;
                 }
             }
             if (isset($rooms[$label])) {

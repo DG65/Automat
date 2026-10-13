@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.8 (Build 9) — 13.10.2026
+
+- Räume: Kurz- und Langform gelten als derselbe Raum — Essen/Esszimmer, Wohnen/Wohnzimmer, Schlafen/Schlafzimmer, Kind/Kinderzimmer, Bad/Badezimmer, Gäste/Gästezimmer, Arbeiten/Arbeitszimmer. Nummern bleiben unterschieden („Kind II“ → „Kinderzimmer II“). Der Raumname folgt Raumstruktur, falls vorhanden. Hinweis Dietmar.
+
 ## 0.1.7 (Build 8) — 13.10.2026
 
 - Entdecken: Vorschläge direkt in der Liste anhaken (Spalte „✔“) und mit „Angehakte in die Liste übernehmen“ alle auf einmal anlegen bzw. mit „Angehakte ausblenden“ wegräumen; das separate Auswahlfeld „Vorschlag“ entfällt.

@@ -656,6 +656,19 @@ $s4 = AUTOMATErkennung::suggest($dup, [], []);
 check('Ein Vorschlag je Gerät, bevorzugt die Variable ohne „Original“', count($s4) === 1 && $s4[0]['row']['gf_var'] === 22, json_encode(array_column($s4, 'key')));
 check('Raum aus Gerätenamen: „Thermostat Kind II“ → „Kind II“, nicht „Kind I“', AUTOMATErkennung::roomFromName('Thermostat Kind II Sollwert', ['Kind I', 'Kind II']) === 'Kind II' && AUTOMATErkennung::roomFromName('Kind I Fenster', ['Kind I', 'Kind II']) === 'Kind I');
 check('Raum aus Gerätenamen mit Raumnummer: „Licht Küche“ → „101 Küche“', AUTOMATErkennung::roomFromName('Licht Küche', ['101 Küche']) === '101 Küche');
+foreach ([['Licht Essen', 'Esszimmer'], ['Thermostat Esszimmer', 'Essen'], ['Bewegungsmelder Wohnen', 'Wohnzimmer'], ['Licht Schlafen', 'Schlafzimmer'], ['Fenster Kind', 'Kinderzimmer'], ['Licht Bad', 'Badezimmer'], ['Thermostat Gästezimmer', 'Gäste']] as [$name, $room]) {
+    check('Kurz-/Langform: „' . $name . '“ → „' . $room . '“', AUTOMATErkennung::roomFromName($name, ['Flur', $room, 'Küche']) === $room, (string)AUTOMATErkennung::roomFromName($name, ['Flur', $room, 'Küche']));
+}
+check('Kurz-/Langform hält Nummern auseinander: „Fenster Kind II“ → „Kinderzimmer II“', AUTOMATErkennung::roomFromName('Fenster Kind II', ['Kinderzimmer I', 'Kinderzimmer II']) === 'Kinderzimmer II');
+check('Kein Fehltreffer: „Licht Flur“ passt zu keinem Zimmer', AUTOMATErkennung::roomFromName('Licht Flur', ['Esszimmer', 'Wohnzimmer']) === null);
+$ew = [
+    $it(['vid' => 41, 'type' => 0, 'profile' => '~Motion', 'name' => 'Bewegung', 'inst' => 'Essen Bewegungsmelder', 'role' => 'motion']),
+    $it(['vid' => 42, 'type' => 0, 'action' => true, 'profile' => '~Switch', 'name' => 'Status', 'inst' => 'Licht Esszimmer', 'role' => 'light']),
+];
+$s6 = AUTOMATErkennung::suggest($ew, [], []);
+check('Namensgruppen „Essen“ + „Esszimmer“ = ein Raum → Bewegungslicht', count(array_filter($s6, fn($x) => $x['type'] === 'bewegung')) === 1, json_encode(array_column($s6, 'room'), JSON_UNESCAPED_UNICODE));
+$s7 = AUTOMATErkennung::suggest($ew, [], [], ['Esszimmer']);
+check('… und heißt wie in Raumstruktur („Esszimmer“)', ($s7[0]['room'] ?? '') === 'Esszimmer', json_encode(array_column($s7, 'room'), JSON_UNESCAPED_UNICODE));
 $hw = [
     $it(['vid' => 31, 'type' => 0, 'name' => 'Zustand', 'inst' => 'Hwr Fenster', 'role' => 'contact']),
     $it(['vid' => 32, 'type' => 2, 'action' => true, 'profile' => '~ThermostatSetPoint.ZWave', 'name' => 'Sollwert', 'inst' => 'Thermostat Hwr', 'role' => 'setpoint']),
