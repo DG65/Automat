@@ -679,7 +679,7 @@ class Automat extends IPSModule
         $items = $this->collectItems();
         $sugg = AUTOMATErkennung::suggest($items, $this->rows(), $this->dismissed());
         foreach ($sugg as &$s) {
-            $s['conflicts'] = $this->conflicts($s['row'], '');
+            $s['conflicts'] = self::conflictLines($this->conflicts($s['row'], ''));
         }
         unset($s);
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
@@ -816,7 +816,10 @@ class Automat extends IPSModule
     {
         $opts = [];
         foreach ($this->suggestions() as $s) {
-            $opts[] = ['caption' => (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . $s['title'] . ($s['conflicts'] ? '  ⚠️' : ''), 'value' => $s['key']];
+            $warn = count(array_filter($s['conflicts'], function ($c) {
+                return strpos((string)$c, '⚠️') === 0;
+            }));
+            $opts[] = ['caption' => (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . $s['title'] . ($warn > 0 ? '  ⚠️' : ''), 'value' => $s['key']];
         }
         if (count($opts) === 0) {
             $opts[] = ['caption' => '— keine Vorschläge —', 'value' => ''];
@@ -934,7 +937,11 @@ class Automat extends IPSModule
     //  Doppelregelung
     // =====================================================================
 
-    /** Hinweise, wenn dieselben Variablen schon anderswo gesteuert/ausgewertet werden. */
+    /**
+     * Hinweise, wenn dieselben Variablen schon anderswo gesteuert oder ausgewertet werden.
+     * Rückgabe: Liste ['level' => '⚠️'|'ℹ️', 'text' => …, 'id' => Objekt zum Öffnen].
+     * ⚠️ = schaltet nachweislich dieselbe Variable; ℹ️ = reagiert nur auf dieselbe Variable bzw. reicht sie weiter.
+     */
     private function conflicts(array $row, string $ownUid): array
     {
         $vars = AUTOMATKatalog::variables($row);
@@ -948,9 +955,8 @@ class Automat extends IPSModule
                 if ($iid === $this->InstanceID && ($r['Uid'] ?? '') === $ownUid) {
                     continue;
                 }
-                $common = array_intersect($outs, AUTOMATKatalog::variables($r)['out']);
-                foreach ($common as $vid) {
-                    $out[] = '⚠️ „' . $this->rowName($r) . '“' . ($iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : '') . ' schaltet „' . $this->varLabel($vid) . '“ ebenfalls.';
+                foreach (array_intersect($outs, AUTOMATKatalog::variables($r)['out']) as $vid) {
+                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“' . ($iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : ' (diese Instanz)') . ' schaltet „' . $this->varLabel($vid) . '“ ebenfalls.'];
                 }
             }
         }
@@ -961,15 +967,20 @@ class Automat extends IPSModule
                 continue;
             }
             $tv = (int)($e['TriggerVariableID'] ?? 0);
-            if ($tv > 0 && (in_array($tv, $ins, true) || in_array($tv, $outs, true))) {
-                $out[] = 'ℹ️ Ereignis „' . IPS_GetName($eid) . '“ (#' . $eid . ') reagiert schon auf „' . $this->varLabel($tv) . '“ — prüfen, ob es dasselbe tut.';
+            if ($tv <= 0 || (!in_array($tv, $ins, true) && !in_array($tv, $outs, true))) {
+                continue;
             }
+            [$does, $target] = $this->eventAction($eid, $e);
+            $same = $target > 0 && in_array($target, $outs, true);
+            $out[] = ['level' => $same ? '⚠️' : 'ℹ️', 'id' => $eid, 'text' => $this->eventLabel($eid) . ': ' . $this->triggerText($e, $tv) . ' → ' . $does
+                . ($same ? ' — schaltet dasselbe wie dieser Automatismus.' : ' — prüfen, ob es dasselbe tut.')];
         }
         // Andere Instanzen, deren Konfiguration eine der geschalteten Variablen nennt
         if ($this->confCache === null) {
             $this->confCache = [];
+            $own = IPS_GetInstanceListByModuleID(self::MODULE_GUID);
             foreach (IPS_GetInstanceList() as $iid) {
-                if ($iid === $this->InstanceID || in_array($iid, IPS_GetInstanceListByModuleID(self::MODULE_GUID), true)) {
+                if (in_array($iid, $own, true)) {
                     continue;
                 }
                 $conf = (string)@IPS_GetConfiguration($iid);
@@ -981,12 +992,123 @@ class Automat extends IPSModule
         foreach ($outs as $vid) {
             $rx = '/[:\[,]\s*"?' . $vid . '"?\s*[,\]}]/';
             foreach ($this->confCache as $iid => $conf) {
-                if (preg_match($rx, $conf)) {
-                    $out[] = '⚠️ Instanz „' . IPS_GetName($iid) . '“ (#' . $iid . ') verwendet „' . $this->varLabel($vid) . '“ ebenfalls — regelt sie das schon, entsteht ein zweiter Regler.';
+                if (!preg_match($rx, $conf)) {
+                    continue;
+                }
+                $module = $this->moduleName($iid);
+                $where = 'Instanz „' . IPS_GetName($iid) . '“ (#' . $iid . ', Modul ' . $module . ', ' . $this->location($iid) . ')';
+                if ($this->isPassThrough($iid, $module)) {
+                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => $where . ' gibt „' . $this->varLabel($vid) . '“ nur an ein anderes System weiter oder zeigt es an — kein zweiter Regler.'];
+                } else {
+                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => $where . ' verwendet „' . $this->varLabel($vid) . '“ ebenfalls — regelt sie das schon, entsteht ein zweiter Regler.'];
                 }
             }
         }
-        return array_values(array_unique($out));
+        $uniq = [];
+        foreach ($out as $c) {
+            $uniq[$c['text']] = $c;
+        }
+        return array_values($uniq);
+    }
+
+    /** Konflikte als Textzeilen (für Vorschlagsliste und Speicher). */
+    private static function conflictLines(array $conflicts): array
+    {
+        return array_map(function ($c) {
+            return is_array($c) ? $c['level'] . ' ' . $c['text'] : (string)$c;
+        }, $conflicts);
+    }
+
+    /** Lesbarer Name eines Ereignisses: Symcons automatische Namen („Bei bestimmtem Wert for Variable …") durch Ort ersetzen. */
+    private function eventLabel(int $eid): string
+    {
+        $parent = IPS_GetParent($eid);
+        $name = IPS_GetName($eid);
+        $auto = preg_match('/^(Bei |On |Trigger)/i', $name) || stripos($name, 'for Variable') !== false;
+        $kind = $parent > 0 ? ([0 => 'Kategorie', 1 => 'Instanz', 2 => 'Variable', 3 => 'Skript'][(int)(@IPS_GetObject($parent)['ObjectType'] ?? -1)] ?? 'Objekt') : '';
+        return 'Ereignis #' . $eid . ($auto ? '' : ' „' . $name . '“') . ($parent > 0 ? ' unter ' . $kind . ' „' . IPS_GetName($parent) . '“ (' . $this->location($parent) . ')' : '');
+    }
+
+    private function triggerText(array $e, int $tv): string
+    {
+        $val = $e['TriggerValue'] ?? null;
+        $v = is_bool($val) ? ($val ? '„an“' : '„aus“') : '„' . AUTOMATLogik::fmtNum($val) . '“';
+        switch ((int)($e['TriggerType'] ?? -1)) {
+            case 0:
+                $t = 'bei jeder Aktualisierung';
+                break;
+            case 1:
+                $t = 'bei jeder Änderung';
+                break;
+            case 2:
+                $t = 'beim Überschreiten von ' . $v;
+                break;
+            case 3:
+                $t = 'beim Unterschreiten von ' . $v;
+                break;
+            case 4:
+                $t = 'bei Wert ' . $v;
+                break;
+            default:
+                $t = 'bei Auslösung';
+        }
+        $cond = is_array($e['EventConditions'] ?? null) && count($e['EventConditions']) > 0;
+        return $t . ' von „' . $this->varLabel($tv) . '“' . ($cond ? ' (mit Bedingung)' : '');
+    }
+
+    /** Was ein Ereignis tut, als Text, und welche Variable es ggf. schaltet: [Text, VariablenID|0]. */
+    private function eventAction(int $eid, array $e): array
+    {
+        $params = $e['EventActionParameters'] ?? [];
+        if (is_string($params)) {
+            $params = json_decode($params, true) ?: [];
+        }
+        $target = (int)($params['TARGET'] ?? 0);
+        if ($target > 0 && IPS_VariableExists($target)) {
+            return ['schaltet „' . $this->varLabel($target) . '“' . (isset($params['VALUE']) ? ' auf ' . AUTOMATLogik::fmtNum($params['VALUE']) : ''), $target];
+        }
+        if (trim((string)($e['EventScript'] ?? '')) !== '') {
+            return ['führt eigenen Skriptcode aus', 0];
+        }
+        $parent = IPS_GetParent($eid);
+        if ($parent > 0 && (int)(@IPS_GetObject($parent)['ObjectType'] ?? -1) === 3) {
+            return ['startet das Skript', 0];
+        }
+        if ($target > 0) {
+            return ['schaltet Objekt #' . $target, 0];
+        }
+        return ['führt eine Aktion aus', 0];
+    }
+
+    private function moduleName(int $iid): string
+    {
+        $i = @IPS_GetInstance($iid);
+        return is_array($i) ? (string)($i['ModuleInfo']['ModuleName'] ?? '?') : '?';
+    }
+
+    private function location(int $id): string
+    {
+        $loc = function_exists('IPS_GetLocation') ? (string)@IPS_GetLocation($id) : '';
+        if ($loc === '') {
+            return 'Objekt #' . $id;
+        }
+        // Lange Pfade vorne kürzen, das Ende ist das Aussagekräftige.
+        $parts = explode('\\', $loc);
+        return count($parts) > 3 ? '…\\' . implode('\\', array_slice($parts, -3)) : $loc;
+    }
+
+    /**
+     * Instanzen, die Variablen nur weiterreichen oder anzeigen (Sprachassistenten, HomeKit, Visualisierungen,
+     * Archiv, Export): kein zweiter Regler. Erkannt am Modultyp (kein Gerät) bzw. am Modulnamen.
+     */
+    private function isPassThrough(int $iid, string $module): bool
+    {
+        if (preg_match('/homekit|alexa|google|assistant|sprach|bridge|matter|visu|webfront|dashboard|kachel|archive|archiv|export|mqtt ?server|modbus ?server|influx|grafana|logging/i', $module)) {
+            return true;
+        }
+        $i = @IPS_GetInstance($iid);
+        $type = is_array($i) ? (int)($i['ModuleInfo']['ModuleType'] ?? 3) : 3;
+        return in_array($type, [4, 5, 6], true); // Konfigurator, Discovery, Visualisierung
     }
 
     // =====================================================================
@@ -1036,7 +1158,22 @@ class Automat extends IPSModule
             $row = $this->rowByUid($uid);
             if ($row !== null) {
                 $c = $this->conflicts($row, $uid);
-                $el[] = ['type' => 'Label', 'caption' => count($c) > 0 ? "Prüfung auf doppelte Steuerung (gespeicherter Stand):\n" . implode("\n", $c) : '✅ Keine andere Steuerung derselben Geräte gefunden (gespeicherter Stand).'];
+                if (count($c) === 0) {
+                    $el[] = ['type' => 'Label', 'caption' => '✅ Keine andere Steuerung derselben Geräte gefunden (gespeicherter Stand).'];
+                } else {
+                    $items = [['type' => 'Label', 'caption' => '⚠️ = schaltet nachweislich dasselbe · ℹ️ = reagiert auf dieselbe Variable oder reicht sie nur weiter. „Öffnen“ springt zur Fundstelle im Objektbaum.']];
+                    foreach ($c as $i => $x) {
+                        $items[] = ['type' => 'RowLayout', 'items' => [
+                            ['type' => 'OpenObjectButton', 'caption' => 'Öffnen', 'objectID' => $x['id'], 'width' => '90px'],
+                            ['type' => 'Label', 'caption' => $x['level'] . ' ' . $x['text']],
+                        ]];
+                    }
+                    $warn = count(array_filter($c, function ($x) {
+                        return $x['level'] === '⚠️';
+                    }));
+                    $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_conflicts', 'expanded' => $warn > 0,
+                        'caption' => ($warn > 0 ? '⚠️ ' : 'ℹ️ ') . 'Andere Steuerungen derselben Geräte: ' . count($c) . ($warn > 0 ? ' (davon ' . $warn . ' schalten dasselbe)' : ''), 'items' => $items];
+                }
             }
         } else {
             $el[] = ['type' => 'Label', 'caption' => 'ℹ️ Nach „Übernehmen“ prüft Automat, ob dieselben Geräte schon von einem Ereignis oder einer anderen Instanz gesteuert werden (Hinweis beim nächsten Öffnen).'];

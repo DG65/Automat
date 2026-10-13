@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5 (Build 6) — 13.10.2026
+
+- Prüfung auf doppelte Steuerung im Bearbeiten-Dialog: jede Fundstelle mit „Öffnen“-Knopf (springt ins Objekt), in eigenem Abschnitt (aufgeklappt, wenn etwas dasselbe schaltet).
+- Ereignisse in Klartext statt Symcons automatischem Namen: wo sie hängen (z. B. „unter Skript „Auslösung Alarmsensor Kochen“ (…\\Alarmanlage\\…)“), worauf sie reagieren und was sie tun (schaltet Variable X / startet das Skript); ⚠️ nur, wenn sie nachweislich dieselbe Variable schalten, sonst ℹ️.
+- Instanzen mit Modulname und Ort; Module, die Variablen nur weitergeben oder anzeigen (z. B. HomeKit Bridge, Sprachassistenten, Visualisierungen), gelten nicht mehr als zweiter Regler (ℹ️ statt ⚠️). Rückmeldung Dietmar.
+
 ## 0.1.4 (Build 5) — 13.10.2026
 
 - Liste der Automatismen: mindestens 12 Zeilen hoch (wächst bis 25), neue Spalte „Einstellungen“ mit den wichtigsten Werten (z. B. „Nachlauf 2:00 min · unter 30 lx (jetzt 12 lx) · 100 %, Nacht 20 %“).

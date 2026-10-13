@@ -92,7 +92,7 @@ function RequestAction($id, $v): bool
 function IPS_GetObject(int $id): array
 {
     $o = $GLOBALS['OBJ'][$id];
-    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden']];
+    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden'], 'ObjectType' => [1 => 1, 2 => 2, 3 => 3, 4 => 4][$o['kind']] ?? 0];
 }
 function IPS_GetObjectIDByIdent(string $ident, int $parent)
 {
@@ -121,6 +121,8 @@ function IPS_GetEventList(): array { return array_keys($GLOBALS['EVENTS']); }
 function IPS_GetEvent(int $id): array { return $GLOBALS['EVENTS'][$id]; }
 function IPS_GetConfiguration(int $id): string { return $GLOBALS['CONF'][$id] ?? '{}'; }
 function IPS_GetProperty(int $id, string $n) { return $GLOBALS['CONF_PROP'][$id][$n] ?? ''; }
+function IPS_GetInstance(int $id): array { return ['ModuleInfo' => ['ModuleName' => $GLOBALS['MODNAME'][$id] ?? 'Testgerät', 'ModuleType' => $GLOBALS['MODTYPE'][$id] ?? 3]]; }
+function IPS_GetLocation(int $id): string { $p = []; while ($id > 0 && isset($GLOBALS['OBJ'][$id])) { array_unshift($p, $GLOBALS['OBJ'][$id]['name']); $id = $GLOBALS['OBJ'][$id]['parent']; } return implode('\\', $p); }
 function VISU_PostNotificationEx(int $id, string $t, string $x, string $i, string $s, int $target): bool { $GLOBALS['PUSH'][] = [$id, $t, $x]; return true; }
 // Bewusst KEIN IPS_LogMessage()-Stub: ein Aufruf im Modul wäre ein Fatal Error (SUITE.md Store-Review Punkt 15).
 
@@ -841,8 +843,15 @@ $vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] ===
 check('Typwechsel im Dialog zeigt den passenden Abschnitt', count($vis) === 1 && array_values($vis)[0][0] === 'sec_fenster');
 
 heading('C4. Entdecken, Übernehmen, Ausblenden');
-$GLOBALS['EVENTS'][77000] = ['EventType' => 0, 'EventActive' => true, 'TriggerVariableID' => 1011];
+$GLOBALS['EVENTS'][77000] = ['EventType' => 0, 'EventActive' => true, 'TriggerVariableID' => 1011, 'TriggerType' => 4, 'TriggerValue' => true, 'EventScript' => '', 'EventActionParameters' => ['TARGET' => 1001, 'VALUE' => true], 'EventConditions' => []];
 $GLOBALS['OBJ'][77000] = ['kind' => 4, 'name' => 'Flurlicht alt', 'parent' => 0, 'ident' => '', 'hidden' => false];
+$GLOBALS['OBJ'][77100] = ['kind' => 3, 'name' => 'Alarm Flur', 'parent' => 0, 'ident' => '', 'hidden' => false];
+$GLOBALS['EVENTS'][77101] = ['EventType' => 0, 'EventActive' => true, 'TriggerVariableID' => 1011, 'TriggerType' => 4, 'TriggerValue' => true, 'EventScript' => '', 'EventActionParameters' => [], 'EventConditions' => [['x' => 1]]];
+$GLOBALS['OBJ'][77101] = ['kind' => 4, 'name' => 'Bei bestimmtem Wert for Variable "Flur Bewegung" with Limit true', 'parent' => 77100, 'ident' => '', 'hidden' => false];
+mkinst(1075, 'HomeKit Bridge');
+$GLOBALS['MODNAME'][1075] = 'HomeKitBridge';
+$GLOBALS['MODTYPE'][1075] = 4;
+$GLOBALS['CONF'][1075] = json_encode(['Lightbulbs' => [['ID' => 1, 'VariableID' => 1001]]]);
 mkinst(1050, 'Licht Garage');
 mkvar(1051, VARIABLETYPE_BOOLEAN, false, 'Status', 1050, true, '~Switch');
 mkinst(1060, 'Garage Bewegungsmelder');
@@ -887,9 +896,15 @@ $m->RestoreSuggestions();
 $sugg = json_decode($m->attrs['Suggestions'], true);
 check('Raumstruktur verbunden: Statuszeile grün mit 🔗', strpos($m->attrs['RoomSource'], '🔗 Räume von Raumstruktur #14000') !== false, $m->attrs['RoomSource']);
 check('Raum aus Raumstruktur: Bewegungslicht „Werkstatt“', count(array_filter($sugg, fn($x) => $x['type'] === 'bewegung' && $x['room'] === 'Werkstatt')) === 1, implode(',', array_column($sugg, 'room')));
-// Ereignis-Hinweis im Dialog
+// Fundstellen im Dialog: Öffnen-Knopf, Klartext, Einstufung
 $dlg = json_decode($m->UIEditForm('aflur1', 'bewegung'), true);
-check('Dialog warnt vor Ereignis auf demselben Melder', strpos(json_encode($dlg, JSON_UNESCAPED_UNICODE), 'Flurlicht alt') !== false);
+$dt = json_encode($dlg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$sec = $find($dlg, 'sec_conflicts');
+check('Fundstellen als eigener Abschnitt, aufgeklappt bei ⚠️', $sec !== null && $sec['expanded'] === true, json_encode($sec['caption'] ?? null, JSON_UNESCAPED_UNICODE));
+check('Jede Fundstelle mit Öffnen-Knopf auf das Objekt', strpos($dt, '"type":"OpenObjectButton","caption":"Öffnen","objectID":77000') !== false && strpos($dt, '"objectID":77101') !== false && strpos($dt, '"objectID":1075') !== false);
+check("Ereignis mit Ziel-Variable: ⚠️ schaltet dasselbe, Klartext statt Rohname", strpos($dt, '⚠️ Ereignis #77000 „Flurlicht alt“') !== false && strpos($dt, 'schaltet „Licht Flur / Status“ auf an') !== false, mb_substr($dt, mb_strpos($dt, "77000") - 20, 400));
+check('Automatischer Ereignisname ersetzt durch Ort: unter Skript „Alarm Flur“, startet das Skript, ℹ️', strpos($dt, 'ℹ️ Ereignis #77101 unter Skript „Alarm Flur“') !== false && strpos($dt, 'startet das Skript') !== false && strpos($dt, 'with Limit') === false && strpos($dt, '(mit Bedingung)') !== false);
+check('HomeKit Bridge: ℹ️ nur Weitergabe, kein zweiter Regler, mit Modulname', strpos($dt, 'ℹ️ Instanz „HomeKit Bridge“ (#1075, Modul HomeKitBridge') !== false && strpos($dt, 'kein zweiter Regler') !== false);
 
 heading('C5. Kachel');
 $html = $m->GetVisualizationTile();
