@@ -133,6 +133,13 @@ class AUTOMATKatalog
                             'Schalter AN: Automat beachtet nur, wann zuletzt „an“ gemeldet wurde, und startet ab da jedes Mal die Nachlaufzeit neu. Ein „aus“ wird ignoriert.',
                             'Einschalten, wenn das Licht dauerhaft an bleibt, obwohl niemand mehr da ist — dann geht die Variable des Melders nie oder erst sehr spät auf „aus“ zurück (z. B. Melder, die bei jeder Bewegung nur erneut „an“ schreiben).',
                         ]]],
+                    ['n' => 'bl_melmax', 'k' => 'int', 'c' => 'Melder gilt als „keine Bewegung“, wenn er so lange nichts meldet (0 = automatisch gelernt)', 'd' => 0, 'suffix' => ' s', 'min' => 0, 'max' => 7200,
+                        'help' => ['Wozu dient die Rückfallzeit der Melder?', [
+                            'Funkmelder (z. B. Z-Wave) verlieren gelegentlich die Meldung „keine Bewegung“. Dann steht der Melder scheinbar dauerhaft auf „Bewegung“ und das Licht ginge nie aus.',
+                            'Automat merkt sich je Melder, wie lange „Bewegung“ normalerweise ansteht (aus dem Archiv der letzten Tage und laufend dazugelernt). Meldet ein Melder länger als das Dreifache davon nichts Neues (mindestens 30 s), gilt er als „keine Bewegung“ und der Nachlauf beginnt. Das steht dann im Protokoll.',
+                            'Eine erneute Bewegungsmeldung setzt die Zeit zurück — wer sich im Raum bewegt, behält Licht. Präsenzmelder, die lange „an“ bleiben, lernen automatisch eine lange Zeit.',
+                            '0 = automatisch (empfohlen). Ein fester Wert gilt für alle Melder dieses Automatismus.',
+                        ]]],
                     ['k' => 'info', 'c' => 'Was soll geschaltet werden?'],
                     ['n' => 'bl_out', 'k' => 'vars', 'c' => 'Licht / Ausgang', 'req' => true],
                     ['k' => 'info', 'c' => 'Zeiten, Helligkeit und Handbedienung'],
@@ -436,6 +443,9 @@ class AUTOMATKatalog
                     $p[] = 'Handpause ' . (int)$row['bl_handpause'] . ' min';
                 }
                 $p[] = count(self::vars($row, 'bl_mel')) . ' Melder';
+                if ((int)($row['bl_melmax'] ?? 0) > 0) {
+                    $p[] = 'Melder-Rückfall ' . self::dur((int)$row['bl_melmax']);
+                }
                 break;
             case 'daemmerung':
                 $ein = (int)($row['dz_ein'] ?? 0);

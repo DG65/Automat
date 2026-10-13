@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.10-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.11-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.10:** neu gebaut und am Prüfstand (249 Prüfungen) getestet, **noch nicht an einer echten
+> **Stand 0.1.11:** neu gebaut und am Prüfstand (256 Prüfungen) getestet, **noch nicht an einer echten
 > Symcon-Installation geprüft**. Rückmeldungen willkommen.
 
 ## Automatismen
@@ -23,7 +23,7 @@ Geräten vor, was sich lohnt.
 | | Art | Was es tut | Besonderheiten |
 |---|---|---|---|
 | ⏲ | Zeitlicht (Treppenlicht) | Licht geht nach einer Leuchtdauer von selbst aus | per Taster oder bei jedem Einschalten; Nachtriggern; Vorwarnung (Dimmer: halbe Helligkeit, Schalter: kurz aus); Dauerlicht |
-| 🚶 | Bewegungslicht | an bei Bewegung, aus nach Nachlauf | bis 4 Melder (ODER); bleibt an, solange Bewegung gemeldet wird; Helligkeitsschwelle nur beim Einschalten (das eigene Licht schaltet sich nicht wieder aus); übernimmt kein Licht, das schon an war; Pause nach Ausschalten von Hand |
+| 🚶 | Bewegungslicht | an bei Bewegung, aus nach Nachlauf | bis 4 Melder (ODER); bleibt an, solange Bewegung gemeldet wird; Helligkeitsschwelle nur beim Einschalten (das eigene Licht schaltet sich nicht wieder aus); übernimmt kein Licht, das schon an war; Pause nach Ausschalten von Hand; **Melder-Rückfall**: geht die Meldung „keine Bewegung“ unterwegs verloren (Funk/Z-Wave), gilt ein Melder nach dem Dreifachen seiner gelernten üblichen Meldedauer als still |
 | 🌆 | Dämmerungs- und Zeitschaltung | an/aus nach Sonnenstand, Uhrzeit oder Helligkeit | Versatz zu Sonnenauf-/-untergang, Zufallsversatz je Tag, über Mitternacht; von Hand aus = bleibt bis zum nächsten Schaltfenster aus |
 | 🪟 | Fenster offen → Heizung runter | senkt Sollwerte ab, stellt beim Schließen wieder her | Verzögerung (kurz lüften zählt nicht); ändert ein Wochenplan den Sollwert bei offenem Fenster, wird der neue Wert gemerkt; invertierte Kontakte (Matter/Zigbee) |
 | ⏱ | Wächter „bleibt zu lange so" | meldet, wenn ein Zustand zu lange anhält | gleich/ungleich/größer/kleiner/an/aus; Wiederholung; Entwarnung |

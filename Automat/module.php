@@ -45,6 +45,8 @@ class Automat extends IPSModule
     // Push-Ziele (SUITE.md Stolperstein 22): klassisches WebFront und Kachel-Visualisierung.
     private const WEBFRONT_GUID = '{3565B1F2-8F7B-4311-A4B6-1BF1D868F39E}';
     private const VISU_GUID     = '{B5B875BB-9B76-45FD-4E67-2607E45B3AC4}';
+    // Archive Control (Kernmodul) — zum Anlernen der Melder-Dauern aus den letzten Tagen.
+    private const ARCHIVE_GUID  = '{43192F0B-135B-4CE7-A0A7-1475603F3060}';
 
     // „Neu bis Version“: erst ab der ersten veröffentlichten Version gepflegt
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
@@ -88,6 +90,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('Due', '{}');
         $this->RegisterAttributeString('End', '{}');
         $this->RegisterAttributeString('Sent', '{}');
+        $this->RegisterAttributeString('MelStats', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
         $this->RegisterAttributeString('Suggestions', '[]');
         $this->RegisterAttributeString('Dismissed', '[]');
@@ -179,6 +182,7 @@ class Automat extends IPSModule
         }
 
         $this->SetStatus($enabled > 0 ? 102 : 104);
+        $this->bootstrapMelders($rows);
         foreach ($rows as $row) {
             $this->process($row, ['k' => 'flag']);
         }
@@ -204,6 +208,7 @@ class Automat extends IPSModule
             $this->evaluateMode(true);
         }
         $own = $this->consumeEcho($vid, $value);
+        $this->learnMelder($vid, $value);
         $touched = false;
         foreach ($this->rows() as $row) {
             if (empty($row['Enabled'])) {
@@ -389,6 +394,11 @@ class Automat extends IPSModule
             'names'     => $names,
             'rnd'       => $this->randomUnit(),
         ];
+        if ($row['Type'] === 'bewegung') {
+            foreach (AUTOMATKatalog::vars($row, 'bl_mel') as $m) {
+                $ctx['melTimeout'][$m] = $this->melderTimeout($m);
+            }
+        }
         if ($row['Type'] === 'daemmerung') {
             $today = date('Y-m-d', $ctx['now']);
             foreach ([-1, 0, 1, 2] as $n) {
@@ -482,6 +492,108 @@ class Automat extends IPSModule
             $this->WriteAttributeString('Sent', json_encode($sent));
         }
         return $fresh && $same;
+    }
+
+    // =====================================================================
+    //  Melder-Dauern lernen (Rückfall bei verlorener „keine Bewegung“-Meldung)
+    // =====================================================================
+
+    /** Melder aller eingeschalteten Bewegungslichter. */
+    private function melderIDs(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $r) {
+            if (!empty($r['Enabled']) && $r['Type'] === 'bewegung' && empty($r['bl_impuls'])) {
+                foreach (AUTOMATKatalog::vars($r, 'bl_mel') as $m) {
+                    $ids[$m] = true;
+                }
+            }
+        }
+        return array_keys($ids);
+    }
+
+    /** Dauer „Bewegung“ → „keine Bewegung“ je Melder mitschreiben (die letzten 50). */
+    private function learnMelder(int $vid, $value): void
+    {
+        if (!in_array($vid, $this->melderIDs($this->rows()), true)) {
+            return;
+        }
+        $stats = $this->attrMap('MelStats');
+        $st = $stats[$vid] ?? ['d' => [], 't' => null, 'boot' => false];
+        $now = $this->now();
+        if (AUTOMATLogik::isTrue($value)) {
+            if ($st['t'] === null) {
+                $st['t'] = $now;
+            }
+        } elseif ($st['t'] !== null) {
+            $d = $now - (int)$st['t'];
+            if ($d >= 0 && $d <= 7200) {
+                $st['d'][] = $d;
+                $st['d'] = array_slice($st['d'], -50);
+            }
+            $st['t'] = null;
+        }
+        $stats[$vid] = $st;
+        $this->WriteAttributeString('MelStats', json_encode($stats));
+    }
+
+    /**
+     * Einmalig je Melder die Dauern der letzten 3 Tage aus dem Archiv lesen (falls archiviert),
+     * damit die Rückfallzeit nicht erst nach Tagen passt.
+     */
+    private function bootstrapMelders(array $rows): void
+    {
+        $stats = $this->attrMap('MelStats');
+        $ac = (int)(@IPS_GetInstanceListByModuleID(self::ARCHIVE_GUID)[0] ?? 0);
+        $changed = false;
+        foreach ($this->melderIDs($rows) as $vid) {
+            if (!empty($stats[$vid]['boot']) || !IPS_VariableExists($vid)) {
+                continue;
+            }
+            $st = $stats[$vid] ?? ['d' => [], 't' => null, 'boot' => false];
+            $st['boot'] = true;
+            if ($ac > 0 && function_exists('AC_GetLoggingStatus') && function_exists('AC_GetLoggedValues')) {
+                try {
+                    if (AC_GetLoggingStatus($ac, $vid)) {
+                        $vals = AC_GetLoggedValues($ac, $vid, strtotime('-3 days', $this->now()), $this->now(), 0);
+                        $vals = is_array($vals) ? array_reverse($vals) : []; // älteste zuerst
+                        $start = null;
+                        $d = [];
+                        foreach ($vals as $e) {
+                            if (AUTOMATLogik::isTrue($e['Value'])) {
+                                $start = $start ?? (int)$e['TimeStamp'];
+                            } elseif ($start !== null) {
+                                $d[] = (int)$e['TimeStamp'] - $start;
+                                $start = null;
+                            }
+                        }
+                        $st['d'] = array_slice(array_merge($d, $st['d']), -50);
+                    }
+                } catch (Throwable $e) {
+                    $this->SendDebug('Melder', 'Archiv für #' . $vid . ' nicht lesbar: ' . $e->getMessage(), 0);
+                }
+            }
+            $stats[$vid] = $st;
+            $changed = true;
+        }
+        if ($changed) {
+            $this->WriteAttributeString('MelStats', json_encode($stats));
+        }
+    }
+
+    /**
+     * Gelernte Rückfallzeit eines Melders: 3 × das 90-%-Quantil der üblichen „Bewegung“-Dauer, 30 s bis 1 h.
+     * Ein einzelner verlorener „aus“-Wert verfälscht das 90-%-Quantil kaum. Unter 5 Messungen: 10 min.
+     */
+    private function melderTimeout(int $vid): int
+    {
+        $d = $this->attrMap('MelStats')[$vid]['d'] ?? [];
+        if (count($d) < 5) {
+            return 600;
+        }
+        sort($d);
+        $p90 = (int)$d[(int)floor((count($d) - 1) * 0.9)];
+        return max(30, min(3600, 3 * $p90));
     }
 
     // =====================================================================
@@ -1579,6 +1691,15 @@ class Automat extends IPSModule
             $r['Settings'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::summary($r, function (int $vid) {
                 return $this->liveText($vid);
             }) : '';
+            if (($r['Type'] ?? '') === 'bewegung' && empty($r['bl_impuls']) && (int)($r['bl_melmax'] ?? 0) <= 0) {
+                $t = [];
+                foreach (AUTOMATKatalog::vars($r, 'bl_mel') as $m) {
+                    $t[] = $this->melderTimeout($m);
+                }
+                if (count($t) > 0) {
+                    $r['Settings'] .= ' · Melder-Rückfall auto ' . AUTOMATKatalog::dur(max($t));
+                }
+            }
             // Sortierschlüssel: Raum → Art → Name bzw. Art → Raum → Name (Spaltenkopf oder „Ordnen nach“).
             $room = mb_strtolower(trim((string)($r['Room'] ?? '')) ?: '~');
             $type = (string)($r['Type'] ?? '');

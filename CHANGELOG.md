@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11 (Build 12) — 13.10.2026
+
+- Bewegungslicht: Melder-Rückfall für verlorene „keine Bewegung“-Meldungen (z. B. Z-Wave). Automat lernt je Melder, wie lange „Bewegung“ üblicherweise ansteht — zum Start aus dem Archiv der letzten 3 Tage, danach laufend — und wertet einen Melder nach dem Dreifachen des 90-%-Werts (30 s bis 1 h, ohne Daten 10 min) ohne neue Meldung als still. Steht im Protokoll; eine neue Bewegungsmeldung setzt die Zeit zurück. Fester Wert im Dialog möglich (0 = automatisch), gelernter Wert in der Spalte „Einstellungen“. Anlass: Dietmars Z-Wave-Melder (üblich 10 s, einzelne Fälle 8–15 min).
+
 ## 0.1.10 (Build 11) — 13.10.2026
 
 - Wird im Bearbeiten-Dialog ein Variablenfeld geleert, setzt Automat es sofort auf 0 (Symcon lieferte dafür teils 1) — gespeichert wird so eine saubere 0. Wunsch Dietmar.

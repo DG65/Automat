@@ -123,6 +123,8 @@ function IPS_GetConfiguration(int $id): string { return $GLOBALS['CONF'][$id] ??
 function IPS_GetProperty(int $id, string $n) { return $GLOBALS['CONF_PROP'][$id][$n] ?? ''; }
 function IPS_GetInstance(int $id): array { return ['ModuleInfo' => ['ModuleName' => $GLOBALS['MODNAME'][$id] ?? 'Testgerät', 'ModuleType' => $GLOBALS['MODTYPE'][$id] ?? 3]]; }
 function IPS_GetLocation(int $id): string { $p = []; while ($id > 0 && isset($GLOBALS['OBJ'][$id])) { array_unshift($p, $GLOBALS['OBJ'][$id]['name']); $id = $GLOBALS['OBJ'][$id]['parent']; } return implode('\\', $p); }
+function AC_GetLoggingStatus(int $ac, int $vid): bool { return isset($GLOBALS['ARCHIVE'][$vid]); }
+function AC_GetLoggedValues(int $ac, int $vid, int $from, int $to, int $limit): array { return array_reverse($GLOBALS['ARCHIVE'][$vid] ?? []); }
 function VISU_PostNotificationEx(int $id, string $t, string $x, string $i, string $s, int $target): bool { $GLOBALS['PUSH'][] = [$id, $t, $x]; return true; }
 // Bewusst KEIN IPS_LogMessage()-Stub: ein Aufruf im Modul wäre ein Fatal Error (SUITE.md Store-Review Punkt 15).
 
@@ -329,7 +331,7 @@ $r = step($b, $st, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => $v])
 check('Zu hell: nicht eingeschaltet, Grund mit lx', $r['cmd'] === [] && strpos((string)$r['log'], '120 lx') !== false, (string)$r['log']);
 $v[400] = 5.0;
 $r = step($b, $st, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => $v]);
-check('Dunkel: an, keine Frist solange Bewegung', cmdMap($r) === ['100=true'] && $st['until'] === 0 && $r['due'] === null);
+check('Dunkel: an, kein Nachlauf solange Bewegung (nur Rückfall-Frist 10 min)', cmdMap($r) === ['100=true'] && $st['until'] === 0 && $r['due'] === ts('2026-10-13 19:10:00'), (string)$r['due']);
 $v[100] = true;
 $v[400] = 400.0; // eigenes Licht macht hell — darf das Licht nicht ausschalten
 $r = step($b, $st, ['k' => 'trigger', 'vid' => 301, 'v' => true], ['val' => $v]);
@@ -393,6 +395,36 @@ $r = step($bd, $st, ['k' => 'tick'], ['val' => [100 => 80] + $v, 'dim' => [100 =
 check('Vorwarnung Dimmer: auf halbe Helligkeit (40)', cmdMap($r) === ['100=40'] && $st['ph'] === 'warn', implode(',', cmdMap($r)));
 $r = step($bd, $st, ['k' => 'trigger', 'vid' => 301, 'v' => true], ['val' => [100 => 40] + $v, 'dim' => [100 => 100.0]]);
 check('Bewegung in der Vorwarnung: wieder 80', cmdMap($r) === ['100=80'] && $st['ph'] === 'an');
+
+// Verlorene „keine Bewegung“-Meldung (Z-Wave): Rückfall nach gelernter Zeit
+$bz = $b;
+$bz['bl_nachlauf'] = 60;
+$st = [];
+at('23:00:00');
+$v = [100 => false, 300 => false, 301 => false, 400 => 5.0];
+step($bz, $st, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => $v, 'melTimeout' => [300 => 30, 301 => 30], 'names' => [300 => 'Flur / Bewegung']]);
+$v[100] = true;
+$v[300] = true;
+at('23:00:20');
+$r = step($bz, $st, ['k' => 'tick'], ['val' => $v, 'melTimeout' => [300 => 30, 301 => 30]]);
+check('Melder steht auf „Bewegung“: Rückfall-Frist als nächster Termin', $r['due'] === ts('2026-10-13 23:00:30') && $r['cmd'] === []);
+at('23:00:30');
+$r = step($bz, $st, ['k' => 'tick'], ['val' => $v, 'melTimeout' => [300 => 30, 301 => 30], 'names' => [300 => 'Flur / Bewegung']]);
+check('„keine Bewegung“ verloren: nach 30 s gilt Melder als still, Nachlauf startet', $st['until'] === ts('2026-10-13 23:01:30') && strpos((string)$r['log'], 'vermutlich unterwegs verloren') !== false && strpos((string)$r['log'], 'Flur / Bewegung') !== false, (string)$r['log']);
+at('23:01:30');
+$r = step($bz, $st, ['k' => 'tick'], ['val' => $v, 'melTimeout' => [300 => 30, 301 => 30]]);
+check('… und Licht geht nach dem Nachlauf aus', cmdMap($r) === ['100=false']);
+$st = [];
+at('23:10:00');
+step($bz, $st, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => [100 => false] + $v, 'melTimeout' => [300 => 30]]);
+at('23:10:25');
+step($bz, $st, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => [100 => true] + $v, 'melTimeout' => [300 => 30]]);
+at('23:10:40');
+$r = step($bz, $st, ['k' => 'tick'], ['val' => [100 => true] + $v, 'melTimeout' => [300 => 30]]);
+check('Erneute Bewegungsmeldung setzt die Rückfallzeit zurück', $st['act'][300] === true && $r['due'] === ts('2026-10-13 23:10:55'));
+$bf = $bz;
+$bf['bl_melmax'] = 300;
+check('Fest eingestellte Rückfallzeit hat Vorrang vor der gelernten', AUTOMATLogik::melderTimeout($bf, ['melTimeout' => [300 => 30]], 300) === 300 && AUTOMATLogik::melderTimeout($bz, ['melTimeout' => [300 => 10]], 300) === 30);
 
 heading('A4. Fenster offen → Heizung runter');
 $f = AUTOMATKatalog::defaults('fenster');
@@ -743,11 +775,24 @@ $zl['zl_trg1'] = 1091;
 $zl['zl_dauer'] = 30;
 $zl['zl_vorwarn'] = 10;
 $GLOBALS['CLOCK'] = ts('2026-10-13 20:00:00');
+mkinst(53244, 'Archiv');
+$GLOBALS['MODULES']['{43192F0B-135B-4CE7-A0A7-1475603F3060}'] = [53244];
+$GLOBALS['ARCHIVE'][1011] = [];
+foreach ([10, 11, 9, 10, 12, 10, 627] as $i => $dur) {
+    $t0 = ts('2026-10-12 08:00:00') + $i * 3600;
+    $GLOBALS['ARCHIVE'][1011][] = ['TimeStamp' => $t0, 'Value' => true];
+    $GLOBALS['ARCHIVE'][1011][] = ['TimeStamp' => $t0 + $dur, 'Value' => false];
+}
 $m = new AutomatTest();
 $m->Create();
 $m->props['Automations'] = json_encode([$bl, $fo, $gf, $zl]);
 $m->ApplyChanges();
 check('Status 102', $m->status === 102);
+$ms = json_decode($m->attrs['MelStats'], true);
+check('Melder-Dauern aus dem Archiv angelernt (7 Läufe, inkl. eines verlorenen „aus“)', count($ms[1011]['d'] ?? []) === 7 && $ms[1011]['boot'] === true, json_encode($ms));
+$fv = json_decode($m->GetConfigurationForm(), true);
+$fl = json_encode($fv, JSON_UNESCAPED_UNICODE);
+check('Gelernte Rückfallzeit: 3 × 90-%-Wert (12 s → 36 s), der 627-s-Ausreißer verfälscht nichts', strpos($fl, 'Melder-Rückfall auto 36 s') !== false, preg_match('/Melder-Rückfall auto [^"·]*/u', $fl, $mm) ? $mm[0] : 'kein Text');
 foreach (['s_aflur1', 'r_aflur1', 'l_aflur1', 'd_aflur1', 's_abad01', 'l_abad01', 'Hausmodus', 'Pause', 'LastMessage'] as $ident) {
     check('Variable „' . $ident . '“ angelegt', @IPS_GetObjectIDByIdent($ident, 12345) !== false);
 }

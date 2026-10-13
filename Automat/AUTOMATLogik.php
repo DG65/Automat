@@ -411,6 +411,14 @@ class AUTOMATLogik
                 $st['act'][$m] = !$impuls && self::isTrue($ctx['val'][$m] ?? false);
             }
         }
+        if (!isset($st['since']) || !is_array($st['since'])) {
+            $st['since'] = [];
+        }
+        foreach ($mel as $m) {
+            if (!empty($st['act'][$m]) && !isset($st['since'][$m])) {
+                $st['since'][$m] = $now;
+            }
+        }
         $res = self::lightCommon($row, $st, $ev, $ctx, $res, $outs, 'bl', $nach);
         if ($res['done'] ?? false) {
             unset($res['done']);
@@ -424,6 +432,11 @@ class AUTOMATLogik
             $active = self::isTrue($ev['v'] ?? false);
             if (!$impuls) {
                 $st['act'][$vid] = $active;
+                if ($active) {
+                    $st['since'][$vid] = $now; // jede neue „Bewegung“ startet die Rückfallzeit neu
+                } else {
+                    unset($st['since'][$vid]);
+                }
             }
             $anyActive = $impuls ? $active : in_array(true, $st['act'], true);
             if ($anyActive) {
@@ -487,8 +500,50 @@ class AUTOMATLogik
             $st['ph'] = 'aus';
             $res['log'] = $res['log'] ?? 'Pause nach Handbedienung vorbei — Bewegung schaltet wieder.';
         }
+        // Melder-Rückfall: meldet ein Melder zu lange nichts Neues, gilt er als „keine Bewegung“ —
+        // Funkmelder (z. B. Z-Wave) verlieren gelegentlich genau diese Meldung, dann bliebe das Licht an.
+        $nextFallback = null;
+        if (!$impuls) {
+            $lost = [];
+            foreach ($mel as $m) {
+                if (empty($st['act'][$m]) || !isset($st['since'][$m])) {
+                    continue;
+                }
+                $limit = self::melderTimeout($row, $ctx, $m);
+                if ($now - (int)$st['since'][$m] >= $limit) {
+                    $st['act'][$m] = false;
+                    unset($st['since'][$m]);
+                    $lost[] = ((string)($ctx['names'][$m] ?? ('#' . $m))) . ' (seit ' . self::fmtDuration(max(60, $limit)) . ')';
+                } else {
+                    $t = (int)$st['since'][$m] + $limit;
+                    $nextFallback = $nextFallback === null ? $t : min($nextFallback, $t);
+                }
+            }
+            if (count($lost) > 0) {
+                $txt = 'Melder ' . implode(', ', $lost) . ' meldet nichts mehr — gilt als „keine Bewegung“ (Meldung vermutlich unterwegs verloren).';
+                if (!in_array(true, $st['act'], true) && in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0) {
+                    $st['until'] = $now + $nach;
+                    $txt .= ' Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+                }
+                $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
+            }
+        }
         $res['st'] = $st;
-        return self::lightTimers($row, $res, $ctx, $outs, 'bl', (int)($row['bl_vorwarn'] ?? 0));
+        $res = self::lightTimers($row, $res, $ctx, $outs, 'bl', (int)($row['bl_vorwarn'] ?? 0));
+        if ($nextFallback !== null && ($res['due'] === null || $nextFallback < $res['due'])) {
+            $res['due'] = $nextFallback;
+        }
+        return $res;
+    }
+
+    /** Rückfallzeit eines Melders: fest eingestellt (bl_melmax > 0) oder vom Modul gelernt (ctx), sonst 10 min. */
+    public static function melderTimeout(array $row, array $ctx, int $vid): int
+    {
+        $fix = (int)($row['bl_melmax'] ?? 0);
+        if ($fix > 0) {
+            return $fix;
+        }
+        return max(30, (int)($ctx['melTimeout'][$vid] ?? 600));
     }
 
     // ------------------------------------------------------------------
