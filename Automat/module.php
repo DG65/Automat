@@ -2211,18 +2211,52 @@ class Automat extends IPSModule
         $this->UpdateFormField('ModeAutoState', 'caption', $this->modeAutoLine($auto) . ' (noch nicht übernommen)');
     }
 
-    /** AUTOMAT_UIDayRefChanged($id, $ref) — nur die zur Auswahl passenden Felder zeigen (Uhrzeit bzw. Versatz). */
-    public function UIDayRefChanged(int $ref): void
+    /**
+     * AUTOMAT_UIRefChanged($id, $day, $eve) — nur die zur Auswahl passenden Felder zeigen (Uhrzeit bzw. Versatz)
+     * und die Infozeile zur Location Control nachführen. Tag: 0 Uhrzeit, 1 Sonnenaufgang, 2 „Ist es Tag“;
+     * Abend: 0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“.
+     */
+    public function UIRefChanged(int $day, int $eve): void
     {
-        $this->UpdateFormField('cfg_DayFrom', 'visible', $ref === 0);
-        $this->UpdateFormField('cfg_DayOffset', 'visible', $ref === 1);
+        $this->UpdateFormField('cfg_DayFrom', 'visible', $day === 0);
+        $this->UpdateFormField('cfg_DayOffset', 'visible', $day === 1);
+        $this->UpdateFormField('cfg_EveningFrom', 'visible', $eve === 1);
+        $this->UpdateFormField('cfg_EveningOffset', 'visible', $eve === 0);
+        $line = $this->locationLine($day, $eve);
+        $this->UpdateFormField('LocationInfo', 'caption', $line);
+        $this->UpdateFormField('LocationInfo', 'visible', $line !== '');
     }
 
-    /** AUTOMAT_UIEveRefChanged($id, $ref) — wie oben für den Abend (0 Sonnenuntergang, 1 Uhrzeit, 2 „Ist es Tag“). */
-    public function UIEveRefChanged(int $ref): void
+    /**
+     * Was die gewählten Einstellungen aus der Location Control lesen — mit den heutigen Werten.
+     * Leer, wenn nichts davon gebraucht wird (alles „zur Uhrzeit“).
+     */
+    private function locationLine(int $day, int $eve): string
     {
-        $this->UpdateFormField('cfg_EveningFrom', 'visible', $ref === 1);
-        $this->UpdateFormField('cfg_EveningOffset', 'visible', $ref === 0);
+        $needSunrise = $day === 1;
+        $needSunset = $eve === 0;
+        $needIsDay = $day === 2 || $eve === 2;
+        if (!$needSunrise && !$needSunset && !$needIsDay) {
+            return '';
+        }
+        if ($this->locationVariable('Sunset') === 0) {
+            return '⚠️ Keine Location-Control-Instanz gefunden — bis eine angelegt ist, gelten die Uhrzeiten (Tag 06:30 bzw. Abend 18:00 aus den Einstellungen).';
+        }
+        $today = date('Y-m-d', $this->now());
+        $p = [];
+        if ($needSunrise) {
+            $t = $this->sunOn('Sunrise', $today);
+            $p[] = 'Sonnenaufgang heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'unbekannt');
+        }
+        if ($needSunset) {
+            $t = $this->sunOn('Sunset', $today);
+            $p[] = 'Sonnenuntergang heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'unbekannt');
+        }
+        if ($needIsDay) {
+            $vid = $this->locationVariable('IsDay');
+            $p[] = '„Ist es Tag“ gerade: ' . ($vid > 0 ? ((bool)GetValue($vid) ? 'ja' : 'nein') : 'nicht vorhanden');
+        }
+        return 'ℹ️ Aus der Location Control: ' . implode(' · ', $p) . '.';
     }
 
     private function ModePanel(): array
@@ -2240,23 +2274,21 @@ class Automat extends IPSModule
             $presText .= ' Im Feld „Anwesenheits-Variable“ steht noch die Ergebnisvariable selbst — das ist nicht nötig, sie wird ohnehin genutzt.';
             $presShow = true;
         }
-        $loc = $this->locationVariable('Sunset') > 0
-            ? '✅ 🔗 Sonnenaufgang, Sonnenuntergang und „Ist es Tag“ aus Symcons Location Control.'
-            : 'ℹ️ Keine Location-Control-Instanz — Sonnenaufgang/-untergang und „Ist es Tag“ fallen auf die Uhrzeiten zurück (Einstellungen → Standort).';
+        $loc = $this->locationLine($dayRef, $eveRef);
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
             'items' => [
                 ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
                 ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
-                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIDayRefChanged($id, $cfg_DayRef);', 'options' => [
+                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef);', 'options' => [
                     ['caption' => 'zur Uhrzeit', 'value' => 0],
                     ['caption' => 'bei Sonnenaufgang (± Versatz)', 'value' => 1],
                     ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2],
                 ]],
                 ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag beginnt um', 'visible' => $dayRef === 0],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz zum Sonnenaufgang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $dayRef === 1],
-                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIEveRefChanged($id, $cfg_EveningRef);', 'options' => [
+                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '420px', 'onChange' => 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef);', 'options' => [
                     ['caption' => 'bei Sonnenuntergang (± Versatz)', 'value' => 0],
                     ['caption' => 'zur Uhrzeit', 'value' => 1],
                     ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2],
@@ -2264,7 +2296,7 @@ class Automat extends IPSModule
                 ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend beginnt um', 'visible' => $eveRef === 1],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz zum Sonnenuntergang (− = früher)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => $eveRef === 0],
                 ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um'],
-                ['type' => 'Label', 'caption' => $loc, 'color' => strpos($loc, '🔗') !== false ? 0x2E8B3D : -1],
+                ['type' => 'Label', 'name' => 'LocationInfo', 'caption' => $loc, 'visible' => $loc !== ''],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],
                 ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => $presField ? 'Andere Anwesenheits-Quelle (hat Vorrang vor dem Automatismus; Bool: wahr = jemand zu Hause)' : 'Anwesenheits-Variable (nur nötig ohne Automatismus „Anwesenheit zusammenfassen“; Bool: wahr = jemand zu Hause)', 'width' => '520px', 'visible' => $presShow],

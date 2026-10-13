@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.21 (Build 22) — 13.10.2026
+
+- Hausmodus: Die grüne Zeile „🔗 … aus Symcons Location Control“ klang, als sei schon alles verbunden. Ersetzt durch eine Infozeile, die nur nennt, was die Auswahl wirklich nutzt, mit den heutigen Werten (z. B. „Sonnenaufgang heute 07:45 Uhr · „Ist es Tag“ gerade: ja“); bei „zur Uhrzeit“ ausgeblendet, ohne Location Control ⚠️ mit Rückfall auf die Uhrzeiten. Folgt dem Umstellen sofort. Rückmeldung Dietmar.
+
 ## 0.1.20 (Build 21) — 13.10.2026
 
 - Hausmodus: Es sind nur noch die Felder sichtbar, die zur Auswahl passen — „zur Uhrzeit“ zeigt die Uhrzeit, Sonnenaufgang/-untergang den Versatz, „Ist es Tag“ keins von beiden. Wechselt sofort beim Umstellen. Rückmeldung Dietmar.
