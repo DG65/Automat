@@ -150,6 +150,22 @@ class AUTOMATKatalog
                     ['n' => 'bl_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
                     ['n' => 'bl_nachtwert', 'k' => 'int', 'c' => 'Helligkeit im Hausmodus „Nacht“ (0 = wie oben)', 'd' => 0, 'suffix' => ' %', 'min' => 0, 'max' => 100],
                     ['n' => 'bl_handpause', 'k' => 'int', 'c' => 'Nach Ausschalten von Hand: Automatik pausieren für', 'd' => 15, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
+                    ['k' => 'info', 'c' => 'Lernen und weitere Anzeichen für Anwesenheit'],
+                    ['n' => 'bl_lernen', 'k' => 'bool', 'c' => 'Nachlauf aus Fehlabschaltungen lernen (verlängert sich, wenn das Licht kurz nach dem Ausschalten wieder angeht)', 'd' => true],
+                    ['n' => 'bl_nachlaufmax', 'k' => 'int', 'c' => '… gelernter Nachlauf höchstens', 'd' => 1800, 'suffix' => ' s', 'min' => 10, 'max' => 86400,
+                        'help' => ['Wie lernt der Nachlauf?', [
+                            'Geht das Licht innerhalb von 3 Minuten nach dem automatischen Ausschalten wieder an — durch Bewegung oder von Hand —, war jemand noch da, den der Melder nicht gesehen hat (still am Tisch, am Herd). Das ist eine Fehlabschaltung.',
+                            'Dann verlängert Automat den Nachlauf dieses Automatismus um die Hälfte, höchstens bis zum eingestellten Höchstwert. Bleiben Fehlabschaltungen einen Tag lang aus, geht er um 10 % Richtung Grundwert zurück.',
+                            'Kurz nach dem eigenen Ausschalten schaltet Bewegung das Licht auch dann wieder ein, wenn der Raum laut Helligkeitssensor gerade noch hell genug wäre (Restlicht der eben ausgeschalteten Lampe).',
+                            'Der aktuelle Wert und die Zahl der Fehlabschaltungen der letzten 7 Tage stehen in der Spalte „Einstellungen“ und im Protokoll.',
+                        ]]],
+                    ['n' => 'bl_hint', 'k' => 'vars', 'c' => 'Weiteres Anzeichen für Anwesenheit',
+                        'help' => ['Was sind weitere Anzeichen für Anwesenheit?', [
+                            'Variablen, die zeigen, dass jemand im Raum ist, auch wenn der Melder nichts sieht — z. B. Leistung von Herd, Dunstabzug oder Kaffeemaschine, ein laufender Fernseher, Musik, ein Schalter.',
+                            'Solange ein Anzeichen aktiv ist, beginnt kein Nachlauf und eine Vorwarnung wird zurückgenommen. Erst wenn kein Melder und kein Anzeichen mehr aktiv ist, läuft die Zeit. Anzeichen schalten das Licht nie selbst ein.',
+                            'Aktiv heißt: Schalter auf „an“, Zahlen (z. B. Leistung in W) über der Schwelle darunter. Geräte, die stundenlang laufen und mit Anwesenheit nichts zu tun haben (Spülmaschine, Kühlschrank), nicht eintragen.',
+                        ]]],
+                    ['n' => 'bl_hintmin', 'k' => 'float', 'c' => 'Anzeichen gilt als aktiv über (bei Zahlenwerten, z. B. Leistung in W)', 'd' => 10.0, 'suffix' => '', 'min' => 0, 'max' => 100000],
                 ];
             case 'daemmerung':
                 return [
@@ -313,7 +329,7 @@ class AUTOMATKatalog
                 $in = self::vars($row, 'zl_trg');
                 break;
             case 'bewegung':
-                $in = self::vars($row, 'bl_mel');
+                $in = array_values(array_unique(array_merge(self::vars($row, 'bl_mel'), self::vars($row, 'bl_hint'))));
                 $out = self::vars($row, 'bl_out');
                 if ((int)($row['bl_lux'] ?? 0) >= self::$minId) {
                     $read[] = (int)$row['bl_lux'];
@@ -443,6 +459,10 @@ class AUTOMATKatalog
                     $p[] = 'Handpause ' . (int)$row['bl_handpause'] . ' min';
                 }
                 $p[] = count(self::vars($row, 'bl_mel')) . ' Melder';
+                $nh = count(self::vars($row, 'bl_hint'));
+                if ($nh > 0) {
+                    $p[] = $nh . ' Anzeichen für Anwesenheit (über ' . rtrim(rtrim(number_format((float)($row['bl_hintmin'] ?? 10), 1, ',', ''), '0'), ',') . ')';
+                }
                 if ((int)($row['bl_melmax'] ?? 0) > 0) {
                     $p[] = 'Melder-Rückfall ' . self::dur((int)$row['bl_melmax']);
                 }

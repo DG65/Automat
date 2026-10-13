@@ -396,15 +396,68 @@ class AUTOMATLogik
     // Bewegungslicht
     // ------------------------------------------------------------------
 
+    /** Zeitfenster nach einem automatischen Ausschalten, in dem Wieder-Einschalten als Fehlabschaltung gilt. */
+    public const FALSE_OFF_WINDOW = 180;
+
+    /** Aktive „weitere Anzeichen für Anwesenheit“ (Namen); Zahlen zählen über der Schwelle, sonst „an“. */
+    private static function activeHints(array $row, array $ctx): array
+    {
+        $min = (float)($row['bl_hintmin'] ?? 10);
+        $out = [];
+        foreach (AUTOMATKatalog::vars($row, 'bl_hint') as $h) {
+            if (!array_key_exists($h, $ctx['val'] ?? [])) {
+                continue;
+            }
+            $v = $ctx['val'][$h];
+            $active = is_bool($v) ? $v : ((is_int($v) || is_float($v) || (is_string($v) && is_numeric($v))) ? (float)$v > $min : self::isTrue($v));
+            if ($active) {
+                $out[] = (string)($ctx['names'][$h] ?? ('#' . $h));
+            }
+        }
+        return $out;
+    }
+
+    /** Gelernter Nachlauf: Grundwert, bei Fehlabschaltungen verlängert, höchstens bl_nachlaufmax. */
+    public static function effectiveNachlauf(array $row, array $st): int
+    {
+        $base = max(1, (int)($row['bl_nachlauf'] ?? 120));
+        if (!($row['bl_lernen'] ?? true)) {
+            return $base;
+        }
+        $max = max($base, (int)($row['bl_nachlaufmax'] ?? 1800));
+        return min($max, max($base, (int)($st['learnN'] ?? 0)));
+    }
+
     private static function bewegung(array $row, array $st, array $ev, array $ctx, array $res): array
     {
         $now = (int)$ctx['now'];
         $mel = AUTOMATKatalog::vars($row, 'bl_mel');
+        $hints = AUTOMATKatalog::vars($row, 'bl_hint');
         $outs = AUTOMATKatalog::vars($row, 'bl_out');
-        $nach = max(1, (int)($row['bl_nachlauf'] ?? 120));
+        $base = max(1, (int)($row['bl_nachlauf'] ?? 120));
+        $learnOn = (bool)($row['bl_lernen'] ?? true);
+        $maxN = max($base, (int)($row['bl_nachlaufmax'] ?? 1800));
         $impuls = !empty($row['bl_impuls']);
         $handPause = max(0, (int)($row['bl_handpause'] ?? 0)) * 60;
-        $st += ['ph' => 'aus', 'until' => 0, 'fl' => 0, 'hu' => 0];
+        $st += ['ph' => 'aus', 'until' => 0, 'fl' => 0, 'hu' => 0, 'learnN' => 0, 'offAt' => 0, 'fo' => [], 'lastDecay' => 0];
+        // Gelernten Nachlauf langsam zurückführen: je Tag ohne Fehlabschaltung 10 % Richtung Grundwert.
+        if ($learnOn && (int)$st['learnN'] > $base) {
+            if ((int)$st['lastDecay'] === 0) {
+                $st['lastDecay'] = $now;
+            } elseif ($now >= strtotime('+1 day', (int)$st['lastDecay'])) {
+                $recent = array_filter((array)$st['fo'], function ($t) use ($st) {
+                    return (int)$t >= (int)$st['lastDecay'];
+                });
+                if (count($recent) === 0) {
+                    $st['learnN'] = max($base, (int)round((int)$st['learnN'] * 0.9));
+                }
+                $st['lastDecay'] = $now;
+            }
+        }
+        $st['fo'] = array_values(array_filter((array)$st['fo'], function ($t) use ($now) {
+            return (int)$t >= strtotime('-7 days', $now);
+        }));
+        $nach = self::effectiveNachlauf($row, $st);
         if (!isset($st['act']) || !is_array($st['act'])) {
             // Erster Lauf: Melderzustand aus den aktuellen Werten übernehmen.
             $st['act'] = [];
@@ -428,6 +481,27 @@ class AUTOMATLogik
         $st = $res['st'];
         $k = $ev['k'] ?? 'tick';
         $vid = (int)($ev['vid'] ?? 0);
+        $hintNames = self::activeHints($row, $ctx);
+
+        // Wieder an kurz nach automatischem Aus = Fehlabschaltung → Nachlauf verlängern.
+        $noteReOn = function (string $how) use (&$st, &$res, $now, $learnOn, $maxN, $base, &$nach) {
+            if ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > self::FALSE_OFF_WINDOW) {
+                $st['offAt'] = 0;
+                return;
+            }
+            $gap = $now - (int)$st['offAt'];
+            $st['offAt'] = 0;
+            $st['fo'][] = $now;
+            $txt = 'Fehlabschaltung: Licht ' . $how . ' ' . self::fmtDuration(max(60, $gap)) . ' nach dem automatischen Ausschalten wieder an.';
+            if ($learnOn) {
+                $old = self::effectiveNachlauf(['bl_nachlauf' => $base, 'bl_nachlaufmax' => $maxN, 'bl_lernen' => true], $st);
+                $st['learnN'] = min($maxN, max($base, (int)round($old * 1.5)));
+                $st['lastDecay'] = $now;
+                $nach = $st['learnN'];
+                $txt .= $st['learnN'] > $old ? ' Nachlauf gelernt: ' . AUTOMATKatalog::dur($old) . ' → ' . AUTOMATKatalog::dur($st['learnN']) . '.' : ' Nachlauf ist schon beim Höchstwert ' . AUTOMATKatalog::dur($maxN) . '.';
+            }
+            $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
+        };
 
         if ($k === 'trigger' && in_array($vid, $mel, true)) {
             $active = self::isTrue($ev['v'] ?? false);
@@ -454,15 +528,17 @@ class AUTOMATLogik
                         $luxMax = (float)($row['bl_luxschwelle'] ?? 30);
                         if ($soft !== '') {
                             $res['log'] = 'Bewegung — nicht eingeschaltet: ' . $soft . '.';
-                        } elseif ($luxVal !== null && $luxVal >= $luxMax) {
+                        } elseif ($luxVal !== null && $luxVal >= $luxMax && (int)$st['offAt'] <= 0) {
                             $res['log'] = 'Bewegung — nicht eingeschaltet: hell genug (' . self::fmtNum($luxVal) . ' lx ≥ ' . self::fmtNum($luxMax) . ' lx).';
                         } elseif (self::anyOn($outs, $ctx)) {
                             $res['log'] = 'Bewegung — Licht war schon an (von Hand oder anderer Steuerung), wird nicht übernommen.';
                         } else {
+                            // Kurz nach dem eigenen Ausschalten zählt die Helligkeit nicht (Restlicht/Nachleuchten): sonst bliebe es nach einer Fehlabschaltung dunkel.
                             $res['cmd'] = self::onCmds($outs, $row, $ctx, 'bl');
                             $st['ph'] = 'an';
-                            $st['until'] = $impuls ? $now + $nach : 0;
                             $res['log'] = 'Bewegung — Licht an.';
+                            $noteReOn('durch Bewegung');
+                            $st['until'] = $impuls ? $now + $nach : 0;
                         }
                     } else {
                         if ($st['ph'] === 'warn' || $st['ph'] === 'flash') {
@@ -473,7 +549,7 @@ class AUTOMATLogik
                         $st['until'] = $impuls ? $now + $nach : 0;
                     }
                 }
-            } elseif (in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0) {
+            } elseif (in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0 && count($hintNames) === 0) {
                 $st['until'] = $now + $nach;
                 $res['log'] = 'Keine Bewegung mehr — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
             }
@@ -481,10 +557,12 @@ class AUTOMATLogik
             if (self::isTrue($ev['v'] ?? false)) {
                 if ($st['ph'] === 'aus' || $st['ph'] === 'hand') {
                     $st['ph'] = 'an';
+                    $noteReOn('von Hand');
                     $st['until'] = $now + max($nach, $handPause);
-                    $res['log'] = 'Licht wurde von Hand eingeschaltet — geht um ' . date('H:i:s', $st['until']) . ' Uhr aus, Bewegung verlängert.';
+                    $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Licht wurde von Hand eingeschaltet — geht um ' . date('H:i:s', $st['until']) . ' Uhr aus, Bewegung verlängert.';
                 }
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
+                $st['offAt'] = 0; // von Hand aus: kein Lernanlass
                 if ($handPause > 0) {
                     $st['ph'] = 'hand';
                     $st['hu'] = $now + $handPause;
@@ -523,15 +601,40 @@ class AUTOMATLogik
             }
             if (count($lost) > 0) {
                 $txt = 'Melder ' . implode(', ', $lost) . ' meldet nichts mehr — gilt als „keine Bewegung“ (Meldung vermutlich unterwegs verloren).';
-                if (!in_array(true, $st['act'], true) && in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0) {
+                if (!in_array(true, $st['act'], true) && count($hintNames) === 0 && in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0) {
                     $st['until'] = $now + $nach;
                     $txt .= ' Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
                 }
                 $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
             }
         }
+        // Weitere Anzeichen für Anwesenheit halten das Licht an (schalten aber nie ein).
+        if (in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
+            if (count($hintNames) > 0) {
+                if ((int)$st['until'] > 0) {
+                    if ($st['ph'] === 'warn' || $st['ph'] === 'flash') {
+                        $res['cmd'] = array_merge($res['cmd'], self::onCmds($outs, $row, $ctx, 'bl'));
+                    }
+                    $st['ph'] = 'an';
+                    $st['until'] = 0;
+                    $txt = 'Anwesenheit (' . implode(', ', $hintNames) . ') — Licht bleibt an.';
+                    $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
+                }
+            } elseif ((int)$st['until'] === 0 && ($impuls || !in_array(true, $st['act'], true))) {
+                $st['until'] = $now + $nach;
+                $txt = ($k === 'trigger' && in_array($vid, $hints, true) ? 'Anzeichen für Anwesenheit vorbei' : 'Keine Bewegung und kein Anzeichen mehr') . ' — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+                $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
+            }
+        }
+        $phBefore = $st['ph'];
         $res['st'] = $st;
         $res = self::lightTimers($row, $res, $ctx, $outs, 'bl', (int)($row['bl_vorwarn'] ?? 0));
+        if (in_array($phBefore, ['an', 'warn', 'flash'], true) && $res['st']['ph'] === 'aus') {
+            $res['st']['offAt'] = $now; // automatisch aus — Wieder-An in den nächsten Minuten wäre eine Fehlabschaltung
+        }
+        if (count($hintNames) > 0 && $res['st']['ph'] === 'an') {
+            $res['status'] = '💡 An — Anwesenheit: ' . implode(', ', $hintNames);
+        }
         if ($nextFallback !== null && ($res['due'] === null || $nextFallback < $res['due'])) {
             $res['due'] = $nextFallback;
         }

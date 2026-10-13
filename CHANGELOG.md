@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.13 (Build 14) — 13.10.2026
+
+- Bewegungslicht lernt aus Fehlabschaltungen: Geht das Licht innerhalb von 3 Minuten nach dem automatischen Ausschalten wieder an (Bewegung oder von Hand), verlängert sich der Nachlauf um die Hälfte (bis zum einstellbaren Höchstwert, Standard 30 min); ohne Fehlabschaltung geht er je Tag um 10 % Richtung Grundwert zurück. Kurz nach dem eigenen Aus zählt der Helligkeitssensor nicht (Restlicht). Anzeige in „Einstellungen“ („🕒 Nachlauf gelernt 4:30 min · 3× zu früh aus (7 Tage)“), im Dialog am Nachlauf-Feld und im Protokoll; abschaltbar. Standardmäßig an — auch für bestehende Bewegungslichter.
+- Weitere Anzeichen für Anwesenheit (bis zu 4 Variablen, z. B. Herd-/Dunstabzug-Leistung, Fernseher, Musik): Solange eines aktiv ist (Schalter an bzw. Zahl über der Schwelle), beginnt kein Nachlauf und eine Vorwarnung wird zurückgenommen; sie schalten nie selbst ein.
+- Anlass: Dietmars Archiv — Esszimmer 7, Küche 6 Fehlabschaltungen in 3 Tagen.
+
 ## 0.1.12 (Build 13) — 13.10.2026
 
 - Impuls-Melder werden erkannt: Sendet ein Melder mindestens 10× „Bewegung“ und nie „keine Bewegung“, steht in „Einstellungen“ „ℹ️ Impuls-Melder erkannt“ und im Dialog direkt am Schalter „Nachlauf bei jeder Bewegungsmeldung“ ein Hinweis mit dem Meldernamen.

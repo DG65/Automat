@@ -661,6 +661,12 @@ class Automat extends IPSModule
                 $impulse[] = $this->varLabel($vid);
             }
         }
+        $stt = $this->attrMap('States')[$row['Uid'] ?? ''] ?? [];
+        $eff = AUTOMATLogik::effectiveNachlauf($row, is_array($stt) ? $stt : []);
+        $fo = count((array)($stt['fo'] ?? []));
+        if ($fo > 0 || $eff > max(1, (int)($row['bl_nachlauf'] ?? 120))) {
+            $out['bl_nachlauf'] = '🕒 Gelernt: ' . AUTOMATKatalog::dur($eff) . ($fo > 0 ? ' — ' . $fo . '× zu früh ausgeschaltet in den letzten 7 Tagen' : '') . '. Der Wert hier ist der Grundwert, zu dem Automat zurückkehrt.';
+        }
         if (count($impulse) > 0) {
             $out['bl_impuls'] = 'ℹ️ ' . implode(', ', $impulse) . ' sendet offenbar nie „aus“ (nur „Bewegung“) — diesen Schalter einschalten, dann beginnt der Nachlauf bei jeder Meldung.';
         }
@@ -1783,7 +1789,12 @@ class Automat extends IPSModule
                 }
                 $hints = $this->melderHints($r);
                 $pre = isset($hints['bl_impuls']) ? 'ℹ️ Impuls-Melder erkannt (✏️) · ' : '';
-                $r['Settings'] = $pre . $r['Settings'] . ($lost > 0 ? ' · 📶 ' . $lost . '× Meldung verloren (7 Tage)' : '');
+                $stt = $this->attrMap('States')[$r['Uid'] ?? ''] ?? [];
+                $eff = AUTOMATLogik::effectiveNachlauf($r, is_array($stt) ? $stt : []);
+                $fo = count((array)($stt['fo'] ?? []));
+                $learned = $eff > max(1, (int)($r['bl_nachlauf'] ?? 120)) ? ' · 🕒 Nachlauf gelernt ' . AUTOMATKatalog::dur($eff) : '';
+                $learned .= $fo > 0 ? ' · ' . $fo . '× zu früh aus (7 Tage)' : '';
+                $r['Settings'] = $pre . $r['Settings'] . $learned . ($lost > 0 ? ' · 📶 ' . $lost . '× Meldung verloren (7 Tage)' : '');
             }
             // Sortierschlüssel: Raum → Art → Name bzw. Art → Raum → Name (Spaltenkopf oder „Ordnen nach“).
             $room = mb_strtolower(trim((string)($r['Room'] ?? '')) ?: '~');
