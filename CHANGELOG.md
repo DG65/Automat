@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 (Build 8) — 13.10.2026
+
+- Entdecken: Vorschläge direkt in der Liste anhaken (Spalte „✔“) und mit „Angehakte in die Liste übernehmen“ alle auf einmal anlegen bzw. mit „Angehakte ausblenden“ wegräumen; das separate Auswahlfeld „Vorschlag“ entfällt.
+- Räume: Geräte ohne Raum in Raumstruktur, deren Name einen bekannten Raum nennt („Thermostat Kind II“), kommen in genau diesen Raum; Schreibweise aus Raumstruktur („HWR“ statt „Hwr“); „Kind I“ und „Kind II“ werden nicht mehr zusammengelegt.
+- Gerät fertig: ein Vorschlag je Gerät, auch wenn es mehrere Leistungsvariablen hat (bevorzugt die ohne „Original“).
+- Doppelsteuerung: Die Anwesenheitssimulation gilt nicht mehr als zweiter Regler (ℹ️ mit Tipp, den Automatismus im Hausmodus „Abwesend“ abzuwählen). Rückmeldungen Dietmar.
+
 ## 0.1.6 (Build 7) — 13.10.2026
 
 - Entdecken: Vorschläge als sortierbare Liste (Raum, Art, Vorschlag, Warum, Hinweise) statt Textblock; „Ordnen nach“ Raum oder Funktion, Spaltenköpfe Raum/Art gruppieren wie in der Hauptliste; Vorschläge mit Doppelsteuerung gelb.

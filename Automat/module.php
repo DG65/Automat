@@ -54,6 +54,8 @@ class Automat extends IPSModule
     private const PAYPAL_URL  = 'https://paypal.me/DietmarGureth';
 
     private const PROFILE_MODE = 'AUTOMAT.Hausmodus';
+    // onClick-Vorspann: Schlüssel der angehakten Vorschläge aus der offenen Liste lesen (Zeilen per Array-Zugriff).
+    private const PICKED_KEYS = '$k = []; foreach ($SuggestList as $x) { if (!empty($x[\'Pick\'])) { $k[] = (string)$x[\'Key\']; } }';
     private const MAX_TICK_S   = 60;   // spätestens minütlich nachsehen (Dämmerung, Hausmodus, Wächter)
     private const REST_TICK_S  = 5;    // so oft wird „… · Restzeit" nachgeführt, solange unter einer Stunde läuft
     private const ECHO_S       = 15;   // so lange gilt eine Wertänderung als Echo des eigenen Befehls
@@ -61,6 +63,9 @@ class Automat extends IPSModule
 
     /** Pro Aufruf zwischengespeicherte Instanz-Konfigurationen (Doppelregelungs-Prüfung). */
     private ?array $confCache = null;
+
+    /** Raumnamen aus Raumstruktur (für Zuordnung über Gerätenamen), je Suche gefüllt. */
+    private array $roomLabels = [];
 
     public function Create()
     {
@@ -678,7 +683,7 @@ class Automat extends IPSModule
     {
         $this->confCache = null;
         $items = $this->collectItems();
-        $sugg = AUTOMATErkennung::suggest($items, $this->rows(), $this->dismissed());
+        $sugg = AUTOMATErkennung::suggest($items, $this->rows(), $this->dismissed(), $this->roomLabels);
         foreach ($sugg as &$s) {
             $s['conflicts'] = self::conflictLines($this->conflicts($s['row'], ''));
         }
@@ -698,12 +703,13 @@ class Automat extends IPSModule
         }
         return (count($sugg) > 0 ? '✅ ' . count($sugg) . ' Vorschläge gefunden.' : 'ℹ️ Keine neuen Vorschläge.')
             . "\nGefunden: " . implode(', ', $parts) . '.'
-            . (count($sugg) > 0 ? "\nVorschlag auswählen und „In die Liste übernehmen“ klicken — angelegt wird erst mit „Übernehmen“ unten." : '');
+            . (count($sugg) > 0 ? "\nGewünschte Vorschläge in der Liste anhaken und „Angehakte in die Liste übernehmen“ klicken — angelegt wird erst mit „Übernehmen“ unten." : '');
     }
 
     /** Steckbriefe aller Variablen, die eine Rolle spielen könnten. */
     private function collectItems(): array
     {
+        $this->roomLabels = [];
         $roomByInstance = $this->raumRooms();
         $items = [];
         foreach (IPS_GetVariableList() as $vid) {
@@ -733,6 +739,10 @@ class Automat extends IPSModule
                 'name' => (string)$obj['ObjectName'], 'inst' => $parent > 0 ? IPS_GetName($parent) : '', 'ident' => (string)$obj['ObjectIdent'],
                 'room' => $roomByInstance[$instID] ?? ($roomByInstance[$vid] ?? null),
             ];
+            if ($item['room'] === null && count($this->roomLabels) > 0) {
+                // Gerät hängt nicht in einem Raum, nennt ihn aber im Namen („Thermostat Kind II“).
+                $item['room'] = AUTOMATErkennung::roomFromName($item['inst'] . ' ' . $item['name'], $this->roomLabels);
+            }
             $item['role'] = AUTOMATErkennung::role($item);
             if ($item['role'] !== '') {
                 $items[] = $item;
@@ -767,6 +777,9 @@ class Automat extends IPSModule
             return $map;
         }
         $n = 0;
+        $this->roomLabels = array_values(array_filter(array_map(function ($r) {
+            return (string)($r['label'] ?? '');
+        }, $data['rooms'])));
         foreach ($data['rooms'] as $room) {
             foreach ((array)($room['deviceInstanceIDs'] ?? []) as $iid) {
                 $map[(int)$iid] = (string)($room['label'] ?? $room['key'] ?? '');
@@ -837,27 +850,14 @@ class Automat extends IPSModule
         }));
     }
 
-    private function suggestionOptions(int $order): array
-    {
-        $opts = [];
-        foreach ($this->sortedSuggestions($order) as $s) {
-            $room = trim((string)$s['room']) ?: 'ohne Raum';
-            $label = (AUTOMATKatalog::TYPES[$s['type']]['icon'] ?? '') . ' ' . (AUTOMATKatalog::TYPES[$s['type']]['label'] ?? '');
-            $head = $order === 1 ? $label . ' · ' . $room : $room . ' · ' . $label;
-            $opts[] = ['caption' => $head . ': ' . $s['title'] . ($this->suggestionWarnings($s) > 0 ? '  ⚠️' : ''), 'value' => $s['key']];
-        }
-        if (count($opts) === 0) {
-            $opts[] = ['caption' => '— keine Vorschläge —', 'value' => ''];
-        }
-        return $opts;
-    }
-
     /** Zeilen der Vorschlagsliste (nur Anzeige, nichts davon wird gespeichert). */
     private function suggestionRows(): array
     {
         $rows = [];
         foreach ($this->suggestions() as $s) {
             $rows[] = [
+                'Pick' => false,
+                'Key' => $s['key'],
                 'Room' => trim((string)$s['room']) ?: 'ohne Raum',
                 'TypeLabel' => AUTOMATKatalog::label((string)$s['type']),
                 'Title' => $s['title'],
@@ -879,21 +879,15 @@ class Automat extends IPSModule
     /** Kopfzeile, Liste und Auswahl der Vorschläge im offenen Formular gemeinsam auffrischen (SUITE.md: nie einzeln). */
     private function refreshSuggestionsForm(int $order): void
     {
-        $opts = $this->suggestionOptions($order);
         $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine());
         $this->UpdateFormField('SuggestList', 'values', json_encode($this->suggestionRows()));
         $this->UpdateFormField('SuggestList', 'rowCount', max(5, min(15, count($this->suggestions()))));
-        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($opts));
-        $this->UpdateFormField('cfg_Suggestion', 'value', $opts[0]['value']);
     }
 
     /** AUTOMAT_UISetSuggestOrder($id, $order) — Vorschläge nach Raum (0) oder Funktion (1) ordnen. */
     public function UISetSuggestOrder(int $order): void
     {
         $this->UpdateFormField('SuggestList', 'sort', json_encode($this->suggestionSort($order)));
-        $opts = $this->suggestionOptions($order);
-        $this->UpdateFormField('cfg_Suggestion', 'options', json_encode($opts));
-        $this->UpdateFormField('cfg_Suggestion', 'value', $opts[0]['value']);
     }
 
     private function discoverHeadLine(): string
@@ -907,18 +901,28 @@ class Automat extends IPSModule
     }
 
     /**
-     * AUTOMAT_UIAdopt($id, $key, $rowsJson): string — Vorschlag als neue Zeile in
-     * die OFFENE Liste einfügen (gespeichert wird erst mit „Übernehmen“).
+     * AUTOMAT_UIAdoptMany($id, $keysJson, $rowsJson): string — angehakte Vorschläge als neue Zeilen
+     * in die OFFENE Liste einfügen (gespeichert wird erst mit „Übernehmen“).
      */
-    public function UIAdopt(string $key, string $rowsJson): string
+    public function UIAdoptMany(string $keysJson, string $rowsJson): string
     {
+        $keys = json_decode($keysJson, true);
+        if (!is_array($keys) || count($keys) === 0) {
+            return 'ℹ️ Bitte zuerst in der Vorschlagsliste die gewünschten Vorschläge anhaken (Spalte „✔“).';
+        }
+        $new = [];
         foreach ($this->suggestions() as $s) {
-            if ($s['key'] === $key) {
-                $row = $s['row'];
-                return $this->insertRow($row, $rowsJson, '„' . $row['Name'] . '“');
+            if (in_array($s['key'], $keys, true)) {
+                $new[] = $s['row'];
             }
         }
-        return 'ℹ️ Bitte zuerst einen Vorschlag auswählen (oder „Jetzt Vorschläge suchen“).';
+        if (count($new) === 0) {
+            return 'ℹ️ Die angehakten Vorschläge gibt es nicht mehr — bitte „Jetzt Vorschläge suchen“.';
+        }
+        $names = array_map(function ($r) {
+            return '„' . $r['Name'] . '“';
+        }, $new);
+        return $this->insertRows($new, $rowsJson, count($new) === 1 ? $names[0] : count($new) . ' Automatismen (' . implode(', ', $names) . ')');
     }
 
     /** AUTOMAT_UIAddType($id, $type, $rowsJson): string — leeren Automatismus eines Typs einfügen. */
@@ -930,10 +934,10 @@ class Automat extends IPSModule
         $row = AUTOMATKatalog::defaults($type);
         $row['Name'] = AUTOMATKatalog::TYPES[$type]['label'];
         $row['Room'] = '';
-        return $this->insertRow($row, $rowsJson, 'Ein neuer Automatismus „' . $row['Name'] . '“');
+        return $this->insertRows([$row], $rowsJson, 'Ein neuer Automatismus „' . $row['Name'] . '“');
     }
 
-    private function insertRow(array $row, string $rowsJson, string $what): string
+    private function insertRows(array $newRows, string $rowsJson, string $what): string
     {
         $rows = json_decode($rowsJson, true);
         $note = '';
@@ -951,32 +955,32 @@ class Automat extends IPSModule
             $rows = $this->rows();
             $note = "\n⚠️ Noch nicht übernommene Änderungen in der Liste konnten nicht gelesen werden — die Liste zeigt jetzt den gespeicherten Stand plus den neuen Eintrag.";
         }
-        $row['Uid'] = $this->newUid($rows);
-        $row['Enabled'] = true;
-        $rows[] = $row;
+        foreach ($newRows as $row) {
+            $row['Uid'] = $this->newUid($rows);
+            $row['Enabled'] = true;
+            $rows[] = $row;
+        }
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($rows)));
         $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
-        return '✅ ' . $what . ' steht jetzt in der Liste — noch NICHT gespeichert.' . "\n"
+        return '✅ ' . $what . (count($newRows) === 1 ? ' steht' : ' stehen') . ' jetzt in der Liste — noch NICHT gespeichert.' . "\n"
             . 'Bitte mit ✏️ prüfen (Geräte, Zeiten) und unten „Übernehmen“ klicken.' . $note;
     }
 
-    /** AUTOMAT_DismissSuggestion($id, $key): string — Vorschlag nicht mehr anbieten. */
-    public function DismissSuggestion(string $key): string
+    /** AUTOMAT_DismissSuggestions($id, $keysJson): string — angehakte Vorschläge nicht mehr anbieten. */
+    public function DismissSuggestions(string $keysJson): string
     {
-        if ($key === '') {
-            return 'ℹ️ Bitte zuerst einen Vorschlag auswählen.';
+        $keys = json_decode($keysJson, true);
+        if (!is_array($keys) || count($keys) === 0) {
+            return 'ℹ️ Bitte zuerst in der Vorschlagsliste die Vorschläge anhaken, die nicht mehr erscheinen sollen.';
         }
-        $d = $this->dismissed();
-        if (!in_array($key, $d, true)) {
-            $d[] = $key;
-        }
+        $d = array_values(array_unique(array_merge($this->dismissed(), array_map('strval', $keys))));
         $this->WriteAttributeString('Dismissed', json_encode($d));
-        $sugg = array_values(array_filter(json_decode($this->ReadAttributeString('Suggestions'), true) ?: [], function ($s) use ($key) {
-            return $s['key'] !== $key;
+        $sugg = array_values(array_filter(json_decode($this->ReadAttributeString('Suggestions'), true) ?: [], function ($s) use ($keys) {
+            return !in_array($s['key'], $keys, true);
         }));
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
         $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
-        return '🙈 Vorschlag ausgeblendet — er erscheint auch bei der nächsten Suche nicht mehr. („Ausgeblendete Vorschläge wieder anzeigen“ holt ihn zurück.)';
+        return '🙈 ' . count($keys) . ' Vorschlag/Vorschläge ausgeblendet — auch bei der nächsten Suche nicht mehr. („Ausgeblendete Vorschläge wieder anzeigen“ holt sie zurück.)';
     }
 
     /** AUTOMAT_RestoreSuggestions($id): string */
@@ -1051,7 +1055,9 @@ class Automat extends IPSModule
                 }
                 $module = $this->moduleName($iid);
                 $where = 'Instanz „' . IPS_GetName($iid) . '“ (#' . $iid . ', Modul ' . $module . ', ' . $this->location($iid) . ')';
-                if ($this->isPassThrough($iid, $module)) {
+                if (preg_match('/anwesenheit|schein|presence ?sim/i', $module . ' ' . IPS_GetName($iid))) {
+                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => $where . ' schaltet „' . $this->varLabel($vid) . '“ nur, solange die Anwesenheitssimulation läuft (niemand zu Hause). Tipp: diesen Automatismus im Hausmodus „Abwesend“ abwählen (Dialog → „Wann ist der Automatismus aktiv?“).'];
+                } elseif ($this->isPassThrough($iid, $module)) {
                     $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => $where . ' gibt „' . $this->varLabel($vid) . '“ nur an ein anderes System weiter oder zeigt es an — kein zweiter Regler.'];
                 } else {
                     $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => $where . ' verwendet „' . $this->varLabel($vid) . '“ ebenfalls — regelt sie das schon, entsteht ein zweiter Regler.'];
@@ -1733,7 +1739,7 @@ class Automat extends IPSModule
                     ['type' => 'PopupButton', 'caption' => 'Wie lege ich einen Automatismus an?', 'width' => '420px', 'popup' => [
                         'caption' => 'Wie lege ich einen Automatismus an?',
                         'items' => [
-                            ['type' => 'Label', 'caption' => '1. Am einfachsten über „🔎 Entdecken“: Vorschlag wählen, „In die Liste übernehmen“.'],
+                            ['type' => 'Label', 'caption' => '1. Am einfachsten über „🔎 Entdecken“: Vorschläge anhaken, „Angehakte in die Liste übernehmen“.'],
                             ['type' => 'Label', 'caption' => '2. Oder im „📚 Katalog“ einen Typ wählen und „Leeren Automatismus anlegen“.'],
                             ['type' => 'Label', 'caption' => '3. Oder „+“ an der Liste: Im Dialog zuerst die Art wählen, dann Geräte und Zeiten.'],
                             ['type' => 'Label', 'caption' => 'Danach mit ✏️ prüfen und unten „Übernehmen“ klicken — erst dann arbeitet der Automatismus. Rot markierte Zeilen sind unvollständig, die Spalte „Zustand“ sagt, was fehlt.'],
@@ -1753,7 +1759,6 @@ class Automat extends IPSModule
                 : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
         }
         $order = $this->ReadPropertyInteger('cfg_SuggestOrder');
-        $opts = $this->suggestionOptions($order);
         $n = count($this->suggestions());
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '🔎  Entdecken — Vorschläge aus deinen Geräten',
@@ -1769,6 +1774,7 @@ class Automat extends IPSModule
                     'type' => 'List', 'name' => 'SuggestList', 'caption' => 'Vorschläge (gelb = dieselben Geräte werden schon anderswo geschaltet)', 'rowCount' => max(5, min(15, $n)),
                     'add' => false, 'delete' => false, 'loadValuesFromConfiguration' => false, 'values' => $this->suggestionRows(), 'sort' => $this->suggestionSort($order),
                     'columns' => [
+                        ['caption' => '✔', 'name' => 'Pick', 'width' => '45px', 'save' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'save' => false, 'sortColumn' => 'SortRoom'],
                         ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '230px', 'save' => false, 'sortColumn' => 'SortType'],
                         ['caption' => 'Vorschlag', 'name' => 'Title', 'width' => '240px', 'save' => false],
@@ -1776,11 +1782,13 @@ class Automat extends IPSModule
                         ['caption' => 'Hinweise', 'name' => 'Hints', 'width' => '320px', 'save' => false],
                         ['caption' => 'Sortierung Raum', 'name' => 'SortRoom', 'width' => '10px', 'save' => false, 'visible' => false],
                         ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'save' => false, 'visible' => false],
+                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '10px', 'save' => false, 'visible' => false],
                     ],
                 ],
-                ['type' => 'Select', 'name' => 'cfg_Suggestion', 'caption' => 'Vorschlag', 'width' => '640px', 'options' => $opts, 'value' => $opts[0]['value']],
-                ['type' => 'Button', 'caption' => '➕ In die Liste übernehmen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdopt($id, (string)$cfg_Suggestion, json_encode($r));'],
-                ['type' => 'Button', 'caption' => '🙈 Diesen Vorschlag ausblenden', 'onClick' => 'echo AUTOMAT_DismissSuggestion($id, (string)$cfg_Suggestion);'],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'Button', 'caption' => '➕ Angehakte in die Liste übernehmen', 'onClick' => self::PICKED_KEYS . ' $r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdoptMany($id, json_encode($k), json_encode($r));'],
+                    ['type' => 'Button', 'caption' => '🙈 Angehakte ausblenden', 'onClick' => self::PICKED_KEYS . ' echo AUTOMAT_DismissSuggestions($id, json_encode($k));'],
+                ]],
                 ['type' => 'Button', 'caption' => 'Ausgeblendete Vorschläge wieder anzeigen', 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
                 ['type' => 'Label', 'caption' => 'ℹ️ Gesucht wird nach Bewegungsmeldern, Lichtern (Schalter/Dimmer), Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von Haushaltsgeräten. ⚠️ bzw. gelb heißt: dieselben Geräte werden schon anderswo geschaltet — Details mit „Öffnen“-Knopf im Bearbeiten-Dialog nach dem Übernehmen.'],
             ],

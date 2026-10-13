@@ -32,7 +32,7 @@ class AUTOMATErkennung
     private const ROOM_STOP = ['licht', 'light', 'lampe', 'leuchte', 'aktor', 'actor', 'sensor', 'melder', 'bewegungsmelder', 'thermostat',
         'fenster', 'tür', 'tuer', 'kontakt', 'contact', 'stromversorgung', 'status', 'schalter', 'switch', 'dimmer', 'steckdose', 'plug',
         'heizung', 'heating', 'control', 'präsenzmelder', 'motion', 'window', 'door', 'links', 'rechts', 'oben', 'unten', 'senkrecht',
-        'kipp', 'l', 'r', 'i', 'ii', 'iii', 'und', 'the', 'der', 'die', 'das', 'zigbee', 'zwave', 'z-wave', 'matter', 'shelly', 'hue', 'knx'];
+        'kipp', 'l', 'r', 'und', 'the', 'der', 'die', 'das', 'zigbee', 'zwave', 'z-wave', 'matter', 'shelly', 'hue', 'knx'];
 
     /** Rolle einer Variable oder '' (nicht zuordenbar). */
     public static function role(array $v): string
@@ -106,6 +106,35 @@ class AUTOMATErkennung
         return false;
     }
 
+    private static function norm(string $s): string
+    {
+        $s = mb_strtolower($s);
+        $s = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $s);
+        return ' ' . trim(preg_replace('/\s+/u', ' ', $s)) . ' ';
+    }
+
+    /**
+     * Bekannten Raum im Gerätenamen finden („Thermostat Kind II" → „Kind II"). Längster Treffer gewinnt,
+     * nur ganze Wörter („Kind I" passt nicht in „Kind II"); führende Raumnummern („101 Küche") zählen optional.
+     */
+    public static function roomFromName(string $text, array $rooms): ?string
+    {
+        $hay = self::norm($text);
+        $best = null;
+        $bestLen = 0;
+        foreach ($rooms as $room) {
+            $room = (string)$room;
+            foreach (array_unique([self::norm($room), self::norm(preg_replace('/^\s*\d+\s*/u', '', $room))]) as $needle) {
+                $len = mb_strlen(trim($needle));
+                if ($len >= 2 && $len > $bestLen && mb_strpos($hay, $needle) !== false) {
+                    $best = $room;
+                    $bestLen = $len;
+                }
+            }
+        }
+        return $best;
+    }
+
     /** Raum-Schlüsselwörter aus einem Instanznamen (Gerätewörter entfernt). */
     public static function roomTokens(string $name): array
     {
@@ -128,7 +157,7 @@ class AUTOMATErkennung
      * Instanznamen ein Raumwort teilen („Licht Flur“, „Flur Bewegungsmelder“).
      * Rückgabe: [Raumname => [Steckbrief, …]]
      */
-    public static function groupRooms(array $items): array
+    public static function groupRooms(array $items, array $known = []): array
     {
         $rooms = [];
         $count = [];
@@ -161,7 +190,14 @@ class AUTOMATErkennung
                 continue;
             }
             $label = mb_convert_case($t, MB_CASE_TITLE);
-            if (!isset($rooms[$label])) {
+            foreach ($known as $k) {
+                if (mb_strtolower((string)$k) === mb_strtolower($t)) {
+                    $label = (string)$k; // Schreibweise aus Raumstruktur („HWR“ statt „Hwr“)
+                }
+            }
+            if (isset($rooms[$label])) {
+                $rooms[$label] = array_merge($rooms[$label], $list);
+            } else {
                 $rooms[$label] = $list;
             }
         }
@@ -173,7 +209,7 @@ class AUTOMATErkennung
      * $existing = vorhandene Listenzeilen, $dismissed = ausgeblendete Schlüssel.
      * Rückgabe: Liste ['key','type','room','title','row' (vorbelegte Listenzeile),'why']
      */
-    public static function suggest(array $items, array $existing, array $dismissed): array
+    public static function suggest(array $items, array $existing, array $dismissed, array $knownRooms = []): array
     {
         $used = [];
         foreach ($existing as $row) {
@@ -214,7 +250,7 @@ class AUTOMATErkennung
             return array_values($o);
         };
 
-        foreach (self::groupRooms($items) as $room => $list) {
+        foreach (self::groupRooms($items, $knownRooms) as $room => $list) {
             $lights = $byRole($list, 'light');
             $motions = $byRole($list, 'motion');
             $contacts = $byRole($list, 'contact');
@@ -256,7 +292,26 @@ class AUTOMATErkennung
             }
         }
 
+        // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen
+        // (z. B. „Wirkleistung“ und „Wirkleistung Original“), gewinnt die ohne „Original“.
+        $powerBest = [];
         foreach ($items as $it) {
+            if (($it['role'] ?? '') !== 'power') {
+                continue;
+            }
+            $label = mb_strtolower(trim((string)($it['inst'] ?? '')) ?: (string)($it['name'] ?? ''));
+            $score = (stripos((string)$it['name'], 'original') === false ? 2 : 0) + (empty($it['action']) ? 1 : 0);
+            if (!isset($powerBest[$label]) || $score > $powerBest[$label][0]) {
+                $powerBest[$label] = [$score, $it['vid']];
+            }
+        }
+        foreach ($items as $it) {
+            if (($it['role'] ?? '') === 'power') {
+                $pl = mb_strtolower(trim((string)($it['inst'] ?? '')) ?: (string)($it['name'] ?? ''));
+                if (($powerBest[$pl][1] ?? null) !== $it['vid']) {
+                    continue;
+                }
+            }
             $text = ($it['name'] ?? '') . ' ' . ($it['inst'] ?? '');
             $label = trim((string)($it['inst'] ?? '')) ?: (string)($it['name'] ?? '');
             if (($it['role'] ?? '') === 'power') {

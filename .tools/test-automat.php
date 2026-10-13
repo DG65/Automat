@@ -648,6 +648,20 @@ $withRoom[0]['inst'] = 'Sensor 17';
 $withRoom[1]['inst'] = 'Aktor 3';
 $s3 = AUTOMATErkennung::suggest($withRoom, [], []);
 check('Raum aus Raumstruktur hat Vorrang vor Namen', in_array('Diele', array_column($s3, 'room'), true));
+$dup = [
+    $it(['vid' => 21, 'type' => 2, 'profile' => '~Watt.3680', 'suffix' => 'W', 'name' => 'Wirkleistung Original', 'inst' => 'Waschmaschine', 'role' => 'power']),
+    $it(['vid' => 22, 'type' => 2, 'profile' => '~Watt.3680', 'suffix' => 'W', 'name' => 'Wirkleistung', 'inst' => 'Waschmaschine', 'role' => 'power']),
+];
+$s4 = AUTOMATErkennung::suggest($dup, [], []);
+check('Ein Vorschlag je Gerät, bevorzugt die Variable ohne „Original“', count($s4) === 1 && $s4[0]['row']['gf_var'] === 22, json_encode(array_column($s4, 'key')));
+check('Raum aus Gerätenamen: „Thermostat Kind II“ → „Kind II“, nicht „Kind I“', AUTOMATErkennung::roomFromName('Thermostat Kind II Sollwert', ['Kind I', 'Kind II']) === 'Kind II' && AUTOMATErkennung::roomFromName('Kind I Fenster', ['Kind I', 'Kind II']) === 'Kind I');
+check('Raum aus Gerätenamen mit Raumnummer: „Licht Küche“ → „101 Küche“', AUTOMATErkennung::roomFromName('Licht Küche', ['101 Küche']) === '101 Küche');
+$hw = [
+    $it(['vid' => 31, 'type' => 0, 'name' => 'Zustand', 'inst' => 'Hwr Fenster', 'role' => 'contact']),
+    $it(['vid' => 32, 'type' => 2, 'action' => true, 'profile' => '~ThermostatSetPoint.ZWave', 'name' => 'Sollwert', 'inst' => 'Thermostat Hwr', 'role' => 'setpoint']),
+];
+$s5 = AUTOMATErkennung::suggest($hw, [], [], ['HWR', 'Kind I']);
+check('Namensgruppe übernimmt Schreibweise aus Raumstruktur („Hwr“ → „HWR“)', ($s5[0]['room'] ?? '') === 'HWR', json_encode(array_column($s5, 'room')));
 
 // ===========================================================================
 // TEIL C — Modul gegen nachgebildetes IPS
@@ -860,6 +874,9 @@ mkinst(1095, 'Licht Terrasse');
 mkvar(1096, VARIABLETYPE_BOOLEAN, false, 'Status', 1095, true, '~Switch');
 mkinst(1097, 'Wäschetrockner');
 mkvar(1098, VARIABLETYPE_FLOAT, 0.0, 'Leistung', 1097, false, '~Watt.3680');
+mkinst(1076, 'Anwesenheitssimulation Flur');
+$GLOBALS['MODNAME'][1076] = 'DG65Anwesenheitssimulation';
+$GLOBALS['CONF'][1076] = json_encode(['Channels' => json_encode([['TargetID' => 1001]])]);
 mkinst(1070, 'Alte Lichtsteuerung');
 $GLOBALS['CONF'][1070] = json_encode(['Outputs' => [1051], 'Duration' => 60]);
 $m->fieldUpdates = [];
@@ -870,35 +887,42 @@ $garage = array_values(array_filter($sugg, fn($x) => $x['type'] === 'bewegung' &
 check('Bewegungslicht Garage vorgeschlagen', count($garage) === 1);
 check('… mit Warnung: alte Instanz nutzt das Licht schon', count($garage) === 1 && strpos(implode(' ', $garage[0]['conflicts']), 'Alte Lichtsteuerung') !== false, json_encode($garage[0]['conflicts'] ?? [], JSON_UNESCAPED_UNICODE));
 check('Bereits eingerichtetes Flurlicht nicht erneut vorgeschlagen', count(array_filter($sugg, fn($x) => $x['type'] === 'bewegung' && $x['room'] === 'Flur')) === 0);
-check('Kopfzeile und Auswahl im offenen Formular aufgefrischt', count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'DiscoverHead')) === 1 && count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'cfg_Suggestion' && $u[1] === 'options')) === 1);
+check('Kopfzeile und Vorschlagsliste gemeinsam aufgefrischt', count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'DiscoverHead')) === 1 && count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'SuggestList' && $u[1] === 'values')) === 1);
 $sl = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'SuggestList' && $u[1] === 'values'));
 $slRows = json_decode($sl[0][2] ?? '[]', true);
-check('Vorschlagsliste aufgefrischt, mit Raum/Art/Warum und Sortierschlüsseln', count($slRows) === count($sugg) && isset($slRows[0]['Room'], $slRows[0]['TypeLabel'], $slRows[0]['Why'], $slRows[0]['SortRoom'], $slRows[0]['SortType']));
+check('Vorschlagsliste mit Haken, Schlüssel, Raum/Art/Warum und Sortierschlüsseln', count($slRows) === count($sugg) && isset($slRows[0]['Key'], $slRows[0]['Room'], $slRows[0]['TypeLabel'], $slRows[0]['Why'], $slRows[0]['SortRoom'], $slRows[0]['SortType']) && $slRows[0]['Pick'] === false);
 check('Vorschlag mit Doppelsteuerung gelb markiert', count(array_filter($slRows, fn($r) => $r['rowColor'] === '#FFFFC0')) >= 1);
-$opt = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'cfg_Suggestion' && $u[1] === 'options'));
-$optList = json_decode($opt[0][2] ?? '[]', true);
-check('Auswahl nach Raum geordnet: „Raum · Art: Titel“', strpos($optList[0]['caption'] ?? '', ' · ') !== false && strpos($optList[0]['caption'], ': ') !== false, $optList[0]['caption'] ?? '');
 $m->fieldUpdates = [];
 $m->UISetSuggestOrder(1);
 $so = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'SuggestList' && $u[1] === 'sort'));
-$o2 = json_decode(array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'cfg_Suggestion' && $u[1] === 'options'))[0][2] ?? '[]', true);
-$types = array_map(fn($o) => explode(' · ', $o['caption'])[0], $o2);
-$sortedTypes = $types; sort($sortedTypes);
-$blocks = []; $prev = null; foreach ($types as $t) { if ($t !== $prev) { $blocks[] = $t; $prev = $t; } }
-check('„Ordnen nach Art“: Liste sortiert nach Art, Auswahl in zusammenhängenden Art-Blöcken', strpos($so[0][2] ?? '', 'TypeLabel') !== false && count($blocks) === count(array_unique($types)) && count(array_unique($types)) >= 2, json_encode($types, JSON_UNESCAPED_UNICODE));
+check('„Ordnen nach Art“ sortiert die Vorschlagsliste über die Art-Spalte', strpos($so[0][2] ?? '', 'TypeLabel') !== false);
+$byType = $slRows; usort($byType, fn($a, $b) => strcmp($a['SortType'], $b['SortType']));
+$blocks = []; $prev = null; foreach ($byType as $r) { if ($r['TypeLabel'] !== $prev) { $blocks[] = $r['TypeLabel']; $prev = $r['TypeLabel']; } }
+check('Sortierschlüssel Art ergibt zusammenhängende Art-Blöcke', count($blocks) === count(array_unique(array_column($slRows, 'TypeLabel'))) && count($blocks) >= 2, json_encode($blocks, JSON_UNESCAPED_UNICODE));
+$form2 = json_decode($m->GetConfigurationForm(), true);
+$ft = json_encode($form2, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+check('Kein separates Auswahlfeld „Vorschlag“ mehr, Übernehmen liest die Haken', strpos($ft, 'cfg_Suggestion') === false && strpos($ft, "AUTOMAT_UIAdoptMany(\$id, json_encode(\$k)") !== false && strpos($ft, "\$x['Pick']") !== false);
 check('Raumquelle ehrlich: ohne Raumstruktur aus Namen', strpos($m->attrs['RoomSource'], 'nicht installiert') !== false);
 $m->fieldUpdates = [];
 $current = json_encode($list['values']);
-$res = $m->UIAdopt($garage[0]['key'], $current);
+$res = $m->UIAdoptMany('[]', $current);
+check('Nichts angehakt → Hinweis statt Fehler', strpos($res, 'anhaken') !== false);
+$fertigKeys = array_values(array_map(fn($x) => $x['key'], array_filter($sugg, fn($x) => $x['type'] === 'daemmerung')));
+$m->fieldUpdates = [];
+$res = $m->UIAdoptMany(json_encode([$garage[0]['key']]), $current);
 $upd = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'Automations'));
 $newRows = json_decode($upd[0][2] ?? '[]', true);
 check('Übernehmen fügt eine Zeile in die offene Liste ein (nicht gespeichert)', count($newRows) === 5 && strpos($res, 'NICHT gespeichert') !== false && json_decode($m->props['Automations'], true) !== $newRows);
 check('Neue Zeile hat Kennung und ist eingeschaltet', preg_match('/^a[0-9a-f]{5}$/', $newRows[4]['Uid']) === 1 && $newRows[4]['Enabled'] === true && $newRows[4]['bl_out1'] === 1051);
-$res = $m->UIAdopt($garage[0]['key'], '[{},{}]');
+$res = $m->UIAdoptMany(json_encode([$garage[0]['key']]), '[{},{}]');
 check('Unlesbare Liste → Rückfall auf gespeicherten Stand mit Hinweis', strpos($res, 'konnten nicht gelesen werden') !== false);
+$m->fieldUpdates = [];
+$res = $m->UIAdoptMany(json_encode(array_merge([$garage[0]['key']], $fertigKeys)), $current);
+$upd = array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'Automations'));
+check('Mehrere angehakte Vorschläge auf einmal übernommen', count(json_decode($upd[0][2] ?? '[]', true)) === 4 + 1 + count($fertigKeys) && count($fertigKeys) >= 1 && strpos($res, 'Automatismen (') !== false, $res);
 $res = $m->UIAddType('waechter', $current);
 check('Katalog: leerer Wächter eingefügt', strpos($res, 'Wächter') !== false);
-$res = $m->DismissSuggestion($garage[0]['key']);
+$res = $m->DismissSuggestions(json_encode([$garage[0]['key']]));
 check('Ausblenden entfernt den Vorschlag', count(array_filter(json_decode($m->attrs['Suggestions'], true), fn($x) => $x['key'] === $garage[0]['key'])) === 0 && strpos($res, 'ausgeblendet') !== false);
 $m->Discover();
 check('… auch bei der nächsten Suche', count(array_filter(json_decode($m->attrs['Suggestions'], true), fn($x) => $x['key'] === $garage[0]['key'])) === 0);
@@ -923,6 +947,7 @@ check('Fundstellen als eigener Abschnitt, aufgeklappt bei ⚠️', $sec !== null
 check('Jede Fundstelle mit Öffnen-Knopf auf das Objekt', strpos($dt, '"type":"OpenObjectButton","caption":"Öffnen","objectID":77000') !== false && strpos($dt, '"objectID":77101') !== false && strpos($dt, '"objectID":1075') !== false);
 check("Ereignis mit Ziel-Variable: ⚠️ schaltet dasselbe, Klartext statt Rohname", strpos($dt, '⚠️ Ereignis #77000 „Flurlicht alt“') !== false && strpos($dt, 'schaltet „Licht Flur / Status“ auf an') !== false, mb_substr($dt, mb_strpos($dt, "77000") - 20, 400));
 check('Automatischer Ereignisname ersetzt durch Ort: unter Skript „Alarm Flur“, startet das Skript, ℹ️', strpos($dt, 'ℹ️ Ereignis #77101 unter Skript „Alarm Flur“') !== false && strpos($dt, 'startet das Skript') !== false && strpos($dt, 'with Limit') === false && strpos($dt, '(mit Bedingung)') !== false);
+check('Anwesenheitssimulation: ℹ️ mit Tipp zum Hausmodus „Abwesend“', strpos($dt, 'ℹ️ Instanz „Anwesenheitssimulation Flur“') !== false && strpos($dt, 'solange die Anwesenheitssimulation läuft') !== false);
 check('HomeKit Bridge: ℹ️ nur Weitergabe, kein zweiter Regler, mit Modulname', strpos($dt, 'ℹ️ Instanz „HomeKit Bridge“ (#1075, Modul HomeKitBridge') !== false && strpos($dt, 'kein zweiter Regler') !== false);
 
 heading('C5. Kachel');
