@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.35 (Build 36) — 14.10.2026
+
+Wunsch Dietmar („alles auf einmal“). Neu und **nur am Prüfstand getestet**:
+- Fünf Automatismen: 🚪 Gehen-Check, 🛎 Türklingel (Kamerabild an Skript-Meldewege als `$_IPS['MEDIA']`), ☀️ Sommer-Lüften (Taupunkt), 🧊 Ausfall-Wächter, 📅 Zeitschaltuhr.
+- 📄 Duplizieren mit Übertragen auf einen anderen Raum (Geräte gleicher Rolle werden eingesetzt).
+- 🧪 Probelauf je Automatismus.
+- 📅 Feiertage (DE nach Bundesland, AT, CH) für Rollläden, Aufwachlicht, Zeitschaltuhr.
+- 📊 Statistik (Schaltungen/Meldungen je Automatismus, Hinweis „30 Tage nichts getan“).
+- 💡 Gewohnheitsvorschläge aus dem Archiv (Licht werktags meist zur selben Zeit aus → Zeitschaltuhr „nur ausschalten“).
+- Entdecken erkennt Türklingeln, Kühlschränke/Gefriertruhen mit Leistungsmessung und Raum-/Außentemperaturen.
+
 ## 0.1.34 (Build 35) — 14.10.2026
 
 - Forum-Thread verlinkt (Hinweis „Rückmeldungen“ und „Dokumentation & Hilfe“), README-Stand aktualisiert.

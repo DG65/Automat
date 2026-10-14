@@ -1041,6 +1041,185 @@ at('12:00:00');
 
 check('Uhrzeit: bei Stunden Abstand ohne Sekunden, bei Minuten mit', AUTOMATLogik::fmtClock(ts('2026-10-13 18:41:36'), ts('2026-10-13 11:47:00')) === '18:41 Uhr (in 6 h 54 min)' && AUTOMATLogik::fmtClock(ts('2026-10-13 12:03:20'), ts('2026-10-13 12:00:00')) === '12:03:20 Uhr (in 3:20 min)');
 
+heading('A8k. Feiertage, Taupunkt, Gewohnheit');
+check('Ostern 2026 = 05.04., 2027 = 28.03.', AUTOMATLogik::easter(2026) === [4, 5] && AUTOMATLogik::easter(2027) === [3, 28]);
+check('Bundesweit: Karfreitag, Pfingstmontag, Tag der Deutschen Einheit', AUTOMATLogik::holiday('2026-04-03', 'BW') === 'Karfreitag' && AUTOMATLogik::holiday('2026-05-25', 'NW') === 'Pfingstmontag' && AUTOMATLogik::holiday('2026-10-03', 'HH') === 'Tag der Deutschen Einheit');
+check('Länder: Fronleichnam BW ja, NI nein; Reformationstag SN; Buß- und Bettag SN 18.11.2026', AUTOMATLogik::holiday('2026-06-04', 'BW') === 'Fronleichnam' && AUTOMATLogik::holiday('2026-06-04', 'NI') === '' && AUTOMATLogik::holiday('2026-10-31', 'SN') === 'Reformationstag' && AUTOMATLogik::holiday('2026-11-18', 'SN') === 'Buß- und Bettag' && AUTOMATLogik::holiday('2026-11-18', 'BY') === '');
+check('Österreich 26.10., ohne Bundesland keine Feiertage', AUTOMATLogik::holiday('2026-10-26', 'AT') === 'Nationalfeiertag' && AUTOMATLogik::holiday('2026-12-25', '') === '');
+check('Taupunkt 20 °C / 50 % ≈ 9,3 °C', abs(AUTOMATLogik::dewPoint(20, 50) - 9.26) < 0.1);
+$evH = [];
+for ($i = 0; $i < 21; $i++) {
+    $day = strtotime('2026-09-14 +' . $i . ' days');
+    if ((int)date('N', $day) > 5) {
+        continue;
+    }
+    $evH[] = [strtotime(date('Y-m-d', $day) . ' 19:00'), true];
+    $evH[] = [strtotime(date('Y-m-d', $day) . ' 22:' . (25 + $i % 10)), false];
+}
+$hb = AUTOMATLogik::habitOff($evH);
+check('Gewohnheit: werktags um ~22:30 aus erkannt', $hb !== null && $hb['min'] === 1350 && $hb['days'] === 15, json_encode($hb));
+check('Gewohnheit: zu wenige Tage → keine', AUTOMATLogik::habitOff(array_slice($evH, 0, 10)) === null);
+
+heading('A8l. Gehen-Check');
+$gc = AUTOMATKatalog::defaults('gehen') + ['Uid' => 'agehn1', 'Name' => 'Gehen-Check'];
+$gc['gc_kon1'] = 1300;
+$gc['gc_kon2'] = 1301;
+$gc['gc_geraet1'] = 1310;
+$gc['gc_geraet2'] = 1311;
+$nm = [1300 => 'Badfenster', 1301 => 'Garage', 1310 => 'Herd', 1311 => 'Bügeleisen'];
+$st = [];
+$r = step($gc, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [1300 => true, 1301 => false, 1310 => 850.0, 1311 => false], 'names' => $nm]);
+check('„Abwesend“: EINE Meldung mit offenem Fenster und Herd (Leistung über 10 W)', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'offen: Badfenster') !== false && strpos($r['msg'][0][1], 'noch an: Herd') !== false && $r['cmd'] === [], json_encode($r['msg'], JSON_UNESCAPED_UNICODE));
+check('Status bleibt auffällig (⚠️) bis zum nächsten Check', strpos($r['status'], '⚠️') === 0);
+$r = step($gc, $st, ['k' => 'mode', 'from' => 3, 'to' => 2], ['mode' => 2, 'val' => [1300 => true], 'names' => $nm]);
+check('„Nacht“ nicht angekreuzt: kein Check', $r['msg'] === []);
+$gc2 = $gc;
+$gc2['gc_aus'] = true;
+$st = [];
+$r = step($gc2, $st, ['k' => 'mode', 'from' => 0, 'to' => 4], ['mode' => 4, 'val' => [1300 => false, 1301 => false, 1310 => false, 1311 => true], 'names' => $nm]);
+check('„Gleich ausschalten“: Bügeleisen aus, Meldung nennt es', cmdMap($r) === ['1311=false'] && strpos($r['msg'][0][1], 'ausgeschaltet: Bügeleisen') !== false);
+$st = [];
+$r = step($gc, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [1300 => false, 1301 => false, 1310 => 0.0, 1311 => false], 'names' => $nm]);
+check('Alles zu: ohne „auch melden, wenn alles zu“ keine Meldung', $r['msg'] === [] && strpos($r['status'], '✅') === 0);
+
+heading('A8m. Türklingel');
+$kl = AUTOMATKatalog::defaults('klingel') + ['Uid' => 'aklng1', 'Name' => 'Haustür'];
+$kl['kl_taster'] = 1400;
+$kl['kl_licht1'] = 1401;
+$kl['kl_laut1'] = 1402;
+$kl['kl_bild'] = 1403;
+$nm = [1401 => 'Außenlicht', 1402 => 'Musik'];
+$st = [];
+at('21:00:00');
+$r = step($kl, $st, ['k' => 'trigger', 'vid' => 1400, 'v' => true], ['mode' => 1, 'val' => [1400 => true, 1401 => false, 1402 => 40.0], 'names' => $nm]);
+check('Abends: Meldung, Licht an, Musik leiser, Kamerabild dabei', count($r['msg']) === 1 && cmdMap($r) === ['1401=true', '1402=5.0'] && ($r['media'] ?? 0) === 1403 && $r['due'] === ts('2026-10-13 21:03:00'));
+at('21:00:05');
+$r = step($kl, $st, ['k' => 'trigger', 'vid' => 1400, 'v' => true], ['mode' => 1, 'val' => [1400 => true]]);
+check('Mehrfaches Drücken binnen 10 s: keine zweite Meldung', $r['msg'] === []);
+at('21:03:00');
+$r = step($kl, $st, ['k' => 'tick'], ['mode' => 1, 'val' => [1401 => true, 1402 => 5.0], 'names' => $nm]);
+check('Nach 3 min: Licht aus, Lautstärke zurück auf 40', cmdMap($r) === ['1401=false', '1402=40.0']);
+$st = [];
+at('21:10:00');
+step($kl, $st, ['k' => 'trigger', 'vid' => 1400, 'v' => true], ['mode' => 1, 'val' => [1401 => false, 1402 => 40.0], 'names' => $nm]);
+step($kl, $st, ['k' => 'output', 'vid' => 1401, 'v' => true], ['mode' => 1, 'val' => [1401 => true], 'names' => $nm]);
+step($kl, $st, ['k' => 'output', 'vid' => 1402, 'v' => 25.0], ['mode' => 1, 'val' => [1402 => 25.0], 'names' => $nm]);
+at('21:13:00');
+$r = step($kl, $st, ['k' => 'tick'], ['mode' => 1, 'val' => [1401 => true, 1402 => 25.0], 'names' => $nm]);
+check('Von Hand verstellt: wird nicht zurückgestellt', $r['cmd'] === [] || cmdMap($r) === ['1401=false'], implode(',', cmdMap($r)));
+$st = [];
+at('14:00:00');
+$r = step($kl, $st, ['k' => 'trigger', 'vid' => 1400, 'v' => true], ['mode' => 3, 'val' => [1401 => false, 1402 => 0.0], 'names' => $nm]);
+check('Tagsüber und abwesend: kein Licht, Meldung „niemand zu Hause“', $r['cmd'] === [] && strpos($r['msg'][0][0], 'niemand zu Hause') !== false);
+at('12:00:00');
+
+heading('A8n. Sommer-Lüften');
+$sl = AUTOMATKatalog::defaults('sommer') + ['Uid' => 'asomm1', 'Name' => 'Wohnzimmer'];
+$sl['sl_innen'] = 1500;
+$sl['sl_aussen'] = 1501;
+$sl['sl_kon1'] = 1502;
+$st = [];
+$r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 24.5, 1501 => 29.0, 1502 => true]]);
+check('Draußen wärmer, Fenster offen: „Fenster schließen“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Fenster schließen') !== false);
+$r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 24.6, 1501 => 29.5, 1502 => true]]);
+check('Keine Wiederholung bei gleicher Lage', $r['msg'] === []);
+$st = [];
+$r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 25.0, 1501 => 19.0, 1502 => false]]);
+check('Abends kühler, Fenster zu: „Jetzt lüften“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'lüften') !== false);
+$st = [];
+$r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 21.0, 1501 => 15.0, 1502 => false]]);
+check('Innen unter 23 °C: keine Empfehlung', $r['msg'] === [] && strpos($r['status'], 'Innen unter') !== false);
+$slK = $sl;
+$slK['sl_rhinnen'] = 1503;
+$slK['sl_rhaussen'] = 1504;
+$st = [];
+$r = step($slK, $st, ['k' => 'tick'], ['val' => [1500 => 24.0, 1501 => 21.0, 1502 => false, 1503 => 50.0, 1504 => 95.0]]);
+check('Keller-Fall: draußen kühler, aber feuchter (Taupunkt höher) → kein „lüften“', $r['msg'] === [] || strpos($r['msg'][0][1], 'lüften lohnt') === false);
+
+heading('A8o. Ausfall-Wächter');
+$af = AUTOMATKatalog::defaults('ausfall') + ['Uid' => 'aausf1', 'Name' => 'Gefriertruhe'];
+$af['af_var'] = 1600;
+$st = [];
+at('08:00:00');
+step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 80.0], ['val' => [1600 => 80.0]]);
+at('08:20:00');
+step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.5], ['val' => [1600 => 0.5]]);
+at('09:00:00');
+step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 75.0], ['val' => [1600 => 75.0]]);
+check('Normale Pause (40 min) wird als „normal“ gemerkt', $st['gaps'] === [2400] && strpos(step($af, $st, ['k' => 'tick'], ['val' => [1600 => 75.0]])['status'], 'bisher längste Pause 40 min') !== false);
+at('09:30:00');
+step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.0], ['val' => [1600 => 0.0]]);
+at('11:30:00');
+$r = step($af, $st, ['k' => 'tick'], ['val' => [1600 => 0.0]]);
+check('2 Stunden ohne Strom: Meldung', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'keinen Strom mehr') !== false && strpos($r['status'], '⚠️') === 0);
+$r = step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 90.0], ['val' => [1600 => 90.0]]);
+check('Strom wieder da: Entwarnung', count($r['msg']) === 1 && strpos($r['msg'][0][0], '✅') === 0);
+$afR = $af;
+$afR['af_modus'] = 1;
+$afR['af_dauer'] = 30;
+$st = [];
+at('10:00:00');
+step($afR, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 400.0], ['val' => [1600 => 400.0]]);
+at('10:31:00');
+$r = step($afR, $st, ['k' => 'tick'], ['val' => [1600 => 400.0]]);
+check('„Läuft zu lange am Stück“ (Pumpe 31 min > 30)', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'am Stück') !== false);
+at('12:00:00');
+
+heading('A8p. Zeitschaltuhr');
+$zs = AUTOMATKatalog::defaults('zeitschalt') + ['Uid' => 'azeit1', 'Name' => 'Kaffeemaschine'];
+$zs['zs_out1'] = 1700;
+$st = [];
+at('06:00:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('Vor 7 Uhr: nichts, nächste Schaltung 07:00', $r['cmd'] === [] && $r['due'] === ts('2026-10-13 07:00:00'));
+at('07:00:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('7 Uhr: ein', cmdMap($r) === ['1700=true']);
+at('07:20:00');
+$r = step($zs, $st, ['k' => 'output', 'vid' => 1700, 'v' => false], ['val' => [1700 => false]]);
+check('Von Hand aus: bleibt aus', $st['on'] === false && $st['manual'] === '2026-10-13');
+at('07:30:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('… auch beim nächsten Takt', $r['cmd'] === []);
+$GLOBALS['CLOCK'] = ts('2026-10-14 07:00:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('Nächster Tag 7 Uhr: wieder ein', cmdMap($r) === ['1700=true']);
+$GLOBALS['CLOCK'] = ts('2026-10-14 08:00:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => true]]);
+check('8 Uhr: aus', cmdMap($r) === ['1700=false']);
+$zsW = $zs;
+foreach (range(1, 5) as $n) {
+    $zsW['zs_t' . $n] = false;
+}
+$st = [];
+$GLOBALS['CLOCK'] = ts('2026-10-13 06:59:00');
+step($zsW, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+$GLOBALS['CLOCK'] = ts('2026-10-13 07:00:00');
+$r = step($zsW, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('Nur Wochenende angekreuzt: Dienstag nichts', $r['cmd'] === []);
+check('Feiertag „wie Sonntag“ bzw. „gar nicht“', AUTOMATLogik::zsDay($zsW, '2026-10-13', ['2026-10-13' => 'Test']) === true && AUTOMATLogik::zsDay(['zs_feiertag' => 2, 'zs_t2' => true], '2026-10-13', ['2026-10-13' => 'Test']) === false);
+$st = [];
+$GLOBALS['CLOCK'] = ts('2026-10-13 07:30:00');
+$r = step($zs, $st, ['k' => 'tick'], ['val' => [1700 => false]]);
+check('Mitten im Zeitfenster eingerichtet (Gerät aus): nichts nachholen', $r['cmd'] === []);
+$zsN = $zs;
+$zsN['zs_modus'] = 1;
+$zsN['zs_aus'] = AUTOMATKatalog::time(22, 30);
+$st = [];
+$GLOBALS['CLOCK'] = ts('2026-10-13 22:00:00');
+step($zsN, $st, ['k' => 'tick'], ['val' => [1700 => true]]);
+$GLOBALS['CLOCK'] = ts('2026-10-13 22:30:00');
+$r = step($zsN, $st, ['k' => 'tick'], ['val' => [1700 => true]]);
+check('„Nur ausschalten“ um 22:30: aus, einmal', cmdMap($r) === ['1700=false'] && step($zsN, $st, ['k' => 'tick'], ['val' => [1700 => true]])['cmd'] === []);
+$zsM = $zs;
+$zsM['zs_ein'] = AUTOMATKatalog::time(22, 0);
+$zsM['zs_aus'] = AUTOMATKatalog::time(6, 0);
+$st = ['on' => true, 'manual' => '', 'did' => [], 'jd' => '2026-10-14', 'jit' => 0];
+$GLOBALS['CLOCK'] = ts('2026-10-14 05:00:00');
+$r = step($zsM, $st, ['k' => 'tick'], ['val' => [1700 => true]]);
+check('Über Mitternacht (22–6 Uhr): um 5 Uhr noch an', $r['cmd'] === [] && $st['on'] === true);
+at('12:00:00');
+
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
 AUTOMATKatalog::$minId = 10000;
 $bad = AUTOMATKatalog::defaults('bewegung');
@@ -1097,6 +1276,12 @@ $cases = [
     ['', ['type' => 2, 'profile' => 'OpenWeatherMap.Humidity', 'name' => 'Luftfeuchtigkeit #34', 'inst' => 'Wetter-Prognose']],
     ['button', ['type' => 3, 'name' => 'action', 'inst' => 'Taster Flur', 'ident' => 'action']],
     ['button', ['type' => 1, 'name' => 'Central Scene', 'inst' => 'Wandschalter Küche']],
+    ['bell', ['type' => 0, 'name' => 'Klingel', 'inst' => 'Türklingel Haustür']],
+    ['cooling', ['type' => 2, 'profile' => '~Watt.3680', 'name' => 'Leistung', 'inst' => 'Gefriertruhe Keller']],
+    ['temp', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Temperatur', 'inst' => 'Wohnzimmer Sensor']],
+    ['temp', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Außentemperatur', 'inst' => 'Wetterstation']],
+    ['', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Vorlauftemperatur', 'inst' => 'Heizung']],
+    ['', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Außentemperatur (Gleitender MW 1 Stunde)', 'inst' => 'Wetterstation']],
 ];
 foreach ($cases as [$want, $a]) {
     $got = AUTOMATErkennung::role($it($a));
@@ -1358,7 +1543,7 @@ check('GetConfigurationForm liefert gültiges JSON', is_array($form));
 $txt = json_encode($form, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 $captions = array_map(fn($e) => $e['caption'] ?? '', $form['elements']);
 check('Reihenfolge: Wozu → Neu → Doku → Automatismen → Entdecken → … → Rückmeldungen → Über', strpos($captions[0], 'Wozu') !== false && strpos($captions[1], 'Neu bis Version') !== false && strpos($captions[2], 'Dokumentation') !== false && strpos($captions[3], 'Automatismen') !== false && strpos($captions[4], 'Entdecken') !== false && strpos(end($captions), 'Über dieses Modul') !== false, implode(' | ', $captions));
-check('„Neu“-Bereich zeigt die Einträge seit der Store-Veröffentlichung, aufgeklappt', strpos($captions[1], 'Neu bis Version 0.1.34') !== false && ($form['elements'][1]['expanded'] ?? false) === true && strpos($txt, 'Forum-Thread') !== false);
+check('„Neu“-Bereich zeigt die Einträge seit der Store-Veröffentlichung, aufgeklappt', strpos($captions[1], 'Neu bis Version ' . json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true)['version']) !== false && ($form['elements'][1]['expanded'] ?? false) === true && strpos($txt, 'Forum-Thread') !== false);
 $m->AckNews();
 $capsAck = array_map(fn($e) => $e['caption'] ?? '', json_decode($m->GetConfigurationForm(), true)['elements']);
 check('Nach „Verstanden“ ist der „Neu“-Bereich weg (gespeichert wird die installierte Version ohne Beta-Zusatz)', count(array_filter($capsAck, fn($c) => strpos($c, 'Neu bis Version') !== false)) === 0 && $m->attrs['SeenNews'] === json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true)['version']);
@@ -2102,6 +2287,83 @@ if (count($sugK) > 0) {
 $libV = json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true)['version'];
 check('README: Abzeichen „Modul Version“ = library.json (' . $libV . ')', strpos(file_get_contents(dirname(__DIR__) . '/README.md'), 'Modul%20Version-' . $libV . '-blue') !== false);
 $m->props['Automations'] = '[]';
+$m->ApplyChanges();
+
+heading('C15. Probelauf, Statistik, Duplizieren, Feiertage, Kamerabild');
+// Probelauf
+$dry = $zl;
+$dry['Uid'] = 'adry01';
+$dry['Dry'] = true;
+$dry['Enabled'] = true;
+$m->props['Automations'] = json_encode([$dry]);
+$m->props['cfg_QuietEnabled'] = false;
+at('20:00:00');
+$m->ApplyChanges();
+SetValue(1081, false);
+fire($m, 1091, true);
+$prot = implode("\n", array_map(fn($e) => $e[2], json_decode($m->attrs['Protocol'], true)));
+check('Probelauf: Taster gedrückt — Licht bleibt aus, Protokoll sagt, was passiert wäre', GetValue(1081) === false && strpos($prot, '🧪 Probelauf — würde:') !== false && strpos($prot, 'Licht Treppe') !== false, mb_substr($prot, 0, 200));
+check('Probelauf: Zustand mit 🧪 markiert', strpos((string)GetValue(IPS_GetObjectIDByIdent('s_adry01', 12345)), '🧪') === 0);
+// Statistik
+$live = $zl;
+$live['Uid'] = 'astat1';
+$live['Enabled'] = true;
+$m->props['Automations'] = json_encode([$live]);
+$m->ApplyChanges();
+fire($m, 1091, true);
+$stt = json_decode($m->attrs['Stats'], true);
+check('Statistik zählt die Schaltung', ($stt['astat1']['d']['2026-10-13'][0] ?? 0) >= 1);
+$fv = json_decode($m->GetConfigurationForm(), true);
+$sl2 = $find($fv['elements'], 'StatsList');
+check('Statistik-Liste im Protokoll-Bereich', is_array($sl2) && ($sl2['values'][0]['A7'] ?? 0) >= 1);
+$stt['astat1'] = ['first' => strtotime('-40 days', $GLOBALS['CLOCK']), 'd' => [], 'last' => 0];
+$m->attrs['Stats'] = json_encode($stt);
+$fv = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('„💤 Seit 30 Tagen nichts getan“ nennt den Automatismus', strpos($fv, '💤 Seit 30 Tagen nichts geschaltet oder gemeldet: „Treppenlicht“') !== false);
+// Duplizieren in einen anderen Raum
+mkinst(2100, 'Bewegungsmelder Bad');
+mkvar(2101, VARIABLETYPE_BOOLEAN, false, 'Bewegung', 2100, false, '~Motion');
+mkinst(2110, 'Licht Bad');
+mkvar(2111, VARIABLETYPE_BOOLEAN, false, 'Status', 2110, true, '~Switch');
+$blD = $bl;
+$blD['Uid'] = 'adup01';
+$blD['Enabled'] = true;
+$blD['Mark'] = true;
+$m->props['Automations'] = json_encode([$blD]);
+$m->ApplyChanges();
+$m->fieldUpdates = [];
+$dupMsg = $m->UIDuplicate(json_encode([$blD]), 'Bad');
+$vals = json_decode(array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'Automations' && $u[1] === 'values'))[0][2] ?? '[]', true);
+$copy = end($vals);
+check('Duplizieren nach „Bad“: Melder und Licht des Bads eingesetzt, Name angepasst, aktiv', count($vals) === 2 && $copy['bl_mel1'] === 2101 && $copy['bl_out1'] === 2111 && $copy['Room'] === 'Bad' && $copy['Name'] === 'Badlicht' && $copy['Enabled'] === true && strpos($dupMsg, '2 von 2 passend') !== false, $dupMsg . ' ' . json_encode($copy));
+$m->fieldUpdates = [];
+$dupMsg2 = $m->UIDuplicate(json_encode([$blD]), '');
+$vals2 = json_decode(array_values(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'Automations' && $u[1] === 'values'))[0][2] ?? '[]', true);
+$copy2 = end($vals2);
+check('Duplizieren ohne Raum: „(Kopie)“, gleiche Geräte, NICHT aktiv (sonst Doppelregelung)', $copy2['Name'] === 'Flurlicht (Kopie)' && $copy2['bl_out1'] === 1001 && $copy2['Enabled'] === false);
+check('Nichts angehakt: Hinweis', strpos($m->UIDuplicate(json_encode([$bl]), ''), 'Häkchen') !== false);
+// Feiertage
+$m->props['cfg_Bundesland'] = 'BW';
+$fv = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Hausmodus-Bereich nennt den nächsten Feiertag (BW: Allerheiligen 01.11.2026)', strpos($fv, '📅 Nächster Feiertag: Allerheiligen, 01.11.2026') !== false);
+$m->props['cfg_Bundesland'] = '';
+// Kamerabild an Skript-Meldeweg
+$GLOBALS['OBJ'][2200] = ['kind' => 3, 'name' => 'Telegram', 'parent' => 0, 'ident' => '', 'hidden' => false];
+mkinst(2210, 'Klingel');
+mkvar(2211, VARIABLETYPE_BOOLEAN, false, 'Klingel', 2210, false, '');
+$GLOBALS['OBJ'][2220] = ['kind' => 5, 'name' => 'Kamerabild Haustür', 'parent' => 0, 'ident' => '', 'hidden' => false];
+$klr = AUTOMATKatalog::defaults('klingel') + ['Uid' => 'aklng2', 'Name' => 'Haustür', 'Enabled' => true];
+$klr['kl_taster'] = 2211;
+$klr['kl_bild'] = 2220;
+$m->props['Automations'] = json_encode([$klr]);
+$m->props['cfg_Ways'] = json_encode([['Id' => 'tg', 'Name' => 'Telegram', 'Typ' => 'script', 'Target' => 2200, 'To' => '', 'Std' => true, 'Quiet' => false]]);
+$m->ApplyChanges();
+$GLOBALS['SCRIPTRUN'] = [];
+fire($m, 2211, true);
+check('Klingel: Skript-Meldeweg bekommt das Kamerabild ($_IPS[\'MEDIA\'])', ($GLOBALS['SCRIPTRUN'][0][1]['MEDIA'] ?? '') === '2220');
+$m->props['cfg_Ways'] = '[]';
+$m->props['Automations'] = '[]';
+at('12:00:00');
 $m->ApplyChanges();
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

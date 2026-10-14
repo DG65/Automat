@@ -24,3 +24,5 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
   im onClick, Echo-Laufzeiten echter Aktoren (Z-Wave), Push-Zustellung, Kachel in der echten Visualisierung.
 - Ab 0.1.31: Alarm, Rollladen, Standby, Lüften, Heizung nach Hausmodus, Taster, Aufwachlicht sind nur am Prüfstand
   getestet — Dietmar hat diese Geräte nicht. Rückmeldungen anderer Nutzer ernst nehmen und zuerst am Prüfstand nachbauen.
+- Ab 0.1.35 ebenfalls nur am Prüfstand: Gehen-Check, Türklingel, Sommer-Lüften, Ausfall-Wächter, Zeitschaltuhr,
+  Duplizieren, Probelauf, Feiertage, Statistik, Gewohnheitsvorschläge (Archivabfrage wochenweise, höchstens 25 Lichter).

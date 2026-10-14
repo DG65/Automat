@@ -41,9 +41,10 @@ class Automat extends IPSModule
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     // Je Typ das Feld „Melden“ im Dialog (was gemeldet wird, entscheidet der Nutzer je Automatismus).
     private const NOTIFY_FIELD = ['waechter' => 'wa_push', 'fertig' => 'gf_push', 'anwesenheit' => 'an_push', 'szene' => 'sz_push',
-        'alarm' => 'al_push', 'rollladen' => 'rl_push', 'standby' => 'sb_push', 'lueften' => 'lf_push'];
+        'alarm' => 'al_push', 'rollladen' => 'rl_push', 'standby' => 'sb_push', 'lueften' => 'lf_push',
+        'gehen' => 'gc_push', 'klingel' => 'kl_push', 'sommer' => 'sl_push', 'ausfall' => 'af_push'];
     // Typen, die beim Wechsel des Hausmodus ein eigenes Ereignis (von → nach) bekommen.
-    private const MODE_EVENT_TYPES = ['szene', 'heizung', 'rollladen', 'wecklicht'];
+    private const MODE_EVENT_TYPES = ['szene', 'heizung', 'rollladen', 'wecklicht', 'gehen'];
     private const SMTP_GUID = '{375EAF21-35EF-4BC4-83B3-C780FD8BD88A}';
     private const LOCATION_CONTROL_GUID = '{45E97A63-F870-408A-B259-2933F7EABF74}';
     // Zeitpunkte der Location Control je Auswahlwert (Idents live geprüft). Die Werte 0–2 bleiben aus 0.1.17 gültig.
@@ -68,6 +69,15 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.35' => [
+            '🚪 Gehen-Check: beim Wechsel auf „Abwesend“/„Urlaub“ EINE Meldung, was noch offen oder an ist.',
+            '🛎 Türklingel, ☀️ Sommer-Lüften (mit Taupunkt), 🧊 Ausfall-Wächter (Kühlschrank, Pumpe) und 📅 Zeitschaltuhr als neue Automatismen.',
+            '📄 Duplizieren: Automatismen in der Liste anhaken (☑︎) und in einen anderen Raum kopieren — Geräte gleicher Art werden dort eingesetzt.',
+            '🧪 Probelauf je Automatismus: nichts schalten, nur protokollieren, was passiert wäre.',
+            '📅 Feiertage nach Bundesland (unter „🏠 Hausmodus“) für Rollläden, Aufwachlicht und Zeitschaltuhr.',
+            '📊 Statistik je Automatismus und Hinweis auf solche, die 30 Tage nichts getan haben (unter „📜 Protokoll und Kachel“).',
+            '💡 Entdecken schlägt aus dem Archiv Gewohnheiten vor, z. B. „Licht geht werktags meist um 22:30 aus“.',
+        ],
         '0.1.34' => [
             '💬 Es gibt jetzt einen Forum-Thread für Fragen, Wünsche und Rückmeldungen — Link unter „💬 Rückmeldungen“ und in „📖 Dokumentation & Hilfe“.',
             '🕒 Uhrzeiten, die Stunden entfernt liegen, stehen ohne Sekunden in den Zuständen („Rollläden schließen um 18:41 Uhr“).',
@@ -120,6 +130,7 @@ class Automat extends IPSModule
         // Meldewege (ab 0.1.27). Leer = aus den früheren Einstellungen (cfg_NotifyPush/-Mail …) gebildet.
         $this->RegisterPropertyString('cfg_Ways', '[]');
         $this->RegisterPropertyString('FormLayout', '[]');
+        $this->RegisterPropertyString('cfg_Bundesland', '');
         $this->RegisterPropertyInteger('cfg_LightVar', 0);
         $this->RegisterPropertyFloat('cfg_LightDay', 50);
         $this->RegisterPropertyFloat('cfg_LightNight', 20);
@@ -145,6 +156,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeInteger('LastAutoMode', -1);
         $this->RegisterAttributeString('LightState', '{}');
         $this->RegisterAttributeString('Deferred', '[]');
+        $this->RegisterAttributeString('Stats', '{}');
         $this->RegisterAttributeBoolean('PurposeIntroGone', false);
         $this->RegisterAttributeString('SeenNews', '');
         $this->RegisterAttributeBoolean('ForumHintGone', false);
@@ -416,12 +428,38 @@ class Automat extends IPSModule
         $this->WriteAttributeString('Status', json_encode($status));
         $this->WriteAttributeString('Due', json_encode($due));
 
+        $dry = !empty($row['Dry']);
         $failed = [];
+        if ($dry) {
+            // Probelauf: nichts schalten, nichts melden — nur festhalten, was passiert wäre.
+            $would = [];
+            foreach ($res['cmd'] as [$vid, $value]) {
+                $would[] = $this->varLabel((int)$vid) . ' → ' . AUTOMATLogik::fmtNum($value);
+            }
+            foreach ($res['msg'] as [$title, $text]) {
+                $would[] = 'Meldung „' . $title . '“';
+            }
+            if (isset($res['mode'])) {
+                $would[] = 'Hausmodus „' . (AUTOMATKatalog::MODES[(int)$res['mode']] ?? '') . '“';
+            }
+            if ($would) {
+                $res['log'] = '🧪 Probelauf — würde: ' . implode('; ', $would) . ($res['log'] !== null ? ' (' . $res['log'] . ')' : '');
+            } elseif ($res['log'] !== null) {
+                $res['log'] = '🧪 ' . $res['log'];
+            }
+            $res['status'] = '🧪 ' . $res['status'];
+            $this->setVarIfChanged('s_' . $uid, $res['status']);
+            $res['cmd'] = [];
+            $res['msg'] = [];
+            unset($res['mode']);
+            $res['self'] = null;
+        }
         foreach ($res['cmd'] as [$vid, $value]) {
             if (!$this->switchVariable((int)$vid, $value, $row['Type'] === 'szene' ? $uid : '')) {
                 $failed[] = $this->varLabel((int)$vid);
             }
         }
+        $this->countStats($uid, count($res['cmd']) > 0, count($res['msg']) > 0);
         if (!empty($res['lost'])) {
             $this->recordLost($res['lost']);
         }
@@ -433,7 +471,7 @@ class Automat extends IPSModule
         }
         $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
         foreach ($res['msg'] as [$title, $text]) {
-            $this->message((string)$title, (string)$text, $notify, $row, !empty($res['urgent']));
+            $this->message((string)$title, (string)$text, $notify, $row, !empty($res['urgent']), (int)($res['media'] ?? 0));
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
@@ -511,6 +549,17 @@ class Automat extends IPSModule
         if ($row['Type'] === 'waechter') {
             $wv = (int)($row['wa_var'] ?? 0);
             $ctx['labels'][$wv] = $this->valueLabels($wv);
+        }
+        if (in_array($row['Type'], ['zeitschalt', 'rollladen', 'wecklicht'], true)) {
+            $land = $this->pStr('cfg_Bundesland');
+            $today = date('Y-m-d', $ctx['now']);
+            foreach ([-1, 0, 1] as $n) {
+                $d = AUTOMATLogik::addDays($today, $n);
+                $h = AUTOMATLogik::holiday($d, $land);
+                if ($h !== '') {
+                    $ctx['holiday'][$d] = $h;
+                }
+            }
         }
         if ($row['Type'] === 'daemmerung' || $row['Type'] === 'rollladen') {
             $today = date('Y-m-d', $ctx['now']);
@@ -964,7 +1013,7 @@ class Automat extends IPSModule
      * über die Meldewege, die er gewählt hat (sonst die Standard-Wege). Wege mit „Ruhezeit beachten“ halten
      * die Meldung in der Ruhezeit zurück; die übrigen stellen sofort zu.
      */
-    private function message(string $title, string $text, bool $notify, ?array $row, bool $urgent = false): void
+    private function message(string $title, string $text, bool $notify, ?array $row, bool $urgent = false, int $media = 0): void
     {
         $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — ' . $title . ': ' . $text);
         if (!$notify) {
@@ -975,11 +1024,11 @@ class Automat extends IPSModule
         $q = json_decode($this->aStr('Deferred'), true) ?: [];
         foreach ($this->waysFor($row) as $w) {
             if ($quiet && $w['quiet']) {
-                $q[] = [$this->now(), $title, $text, $w['id']];
+                $q[] = [$this->now(), $title, $text, $w['id'], $media];
                 $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten für „' . $w['name'] . '“: ' . $title, 0);
                 continue;
             }
-            $this->deliverWay($w, $title, $text);
+            $this->deliverWay($w, $title, $text, $media);
         }
         $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
     }
@@ -1008,7 +1057,7 @@ class Automat extends IPSModule
         foreach ($q as $e) {
             $w = $ways[(string)($e[3] ?? '')] ?? null;
             foreach ($w !== null ? [$w] : $this->waysFor(null) as $way) {
-                $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)');
+                $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)', (int)($e[4] ?? 0));
             }
         }
     }
@@ -1073,7 +1122,7 @@ class Automat extends IPSModule
     }
 
     /** Über einen Meldeweg zustellen. Rückgabe: Ergebnis in Worten (für Testmeldung und Debug). */
-    private function deliverWay(array $w, string $title, string $text): string
+    private function deliverWay(array $w, string $title, string $text, int $media = 0): string
     {
         switch ($w['typ']) {
             case 'mail':
@@ -1087,7 +1136,7 @@ class Automat extends IPSModule
                     break;
                 }
                 // Das Skript bekommt Titel und Text, z. B. für Telegram, Pushover oder eine Sprachausgabe.
-                $ok = IPS_RunScriptEx($w['target'], ['TITLE' => $title, 'TEXT' => $text, 'SENDER_AUTOMAT' => (string)$this->InstanceID]);
+                $ok = IPS_RunScriptEx($w['target'], ['TITLE' => $title, 'TEXT' => $text, 'MEDIA' => (string)$media, 'SENDER_AUTOMAT' => (string)$this->InstanceID]);
                 $res = $ok ? '✅ Skript „' . IPS_GetName($w['target']) . '“ gestartet' : '⚠️ Skript ließ sich nicht starten';
                 if (!$ok) {
                     $this->LogMessage('Meldeweg „' . $w['name'] . '“: Skript #' . $w['target'] . ' ließ sich nicht starten — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
@@ -1249,7 +1298,7 @@ class Automat extends IPSModule
     {
         $this->confCache = null;
         $items = $this->collectItems();
-        $sugg = AUTOMATErkennung::suggest($items, $this->rows(), $this->dismissed(), $this->roomLabels);
+        $sugg = AUTOMATErkennung::suggest($items, $this->rows(), $this->dismissed(), $this->roomLabels, $this->habits($items));
         foreach ($sugg as &$s) {
             $s['conflicts'] = self::conflictLines($this->conflicts($s['row'], ''));
         }
@@ -1323,6 +1372,18 @@ class Automat extends IPSModule
             }
         }
         return $items;
+    }
+
+    /** Raumnamen aus Raumstruktur (Name => true), leer ohne das Modul. */
+    private function raumRoomNames(): array
+    {
+        $o = [];
+        foreach ($this->raumRooms() as $label) {
+            if (is_string($label) && trim($label) !== '') {
+                $o[trim($label)] = true;
+            }
+        }
+        return $o;
     }
 
     /** Raumzuordnung aus Raumstruktur (optional): [InstanzID => Raumname]. */
@@ -1511,7 +1572,7 @@ class Automat extends IPSModule
         return $this->insertRows([$row], $rowsJson, 'Ein neuer Automatismus „' . $row['Name'] . '“');
     }
 
-    private function insertRows(array $newRows, string $rowsJson, string $what): string
+    private function insertRows(array $newRows, string $rowsJson, string $what, bool $keepEnabled = false): string
     {
         $rows = json_decode($rowsJson, true);
         $note = '';
@@ -1531,13 +1592,209 @@ class Automat extends IPSModule
         }
         foreach ($newRows as $row) {
             $row['Uid'] = $this->newUid($rows);
-            $row['Enabled'] = true;
+            if (!$keepEnabled) {
+                $row['Enabled'] = true;
+            }
+            unset($row['Mark']);
             $rows[] = $row;
         }
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($rows)));
         $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
         return '✅ ' . $what . (count($newRows) === 1 ? ' steht' : ' stehen') . ' jetzt in der Liste — noch NICHT gespeichert.' . "\n"
             . 'Bitte mit ✏️ prüfen (Geräte, Zeiten) und unten „Übernehmen“ klicken.' . $note;
+    }
+
+    /**
+     * AUTOMAT_UIDuplicate($id, $rowsJson, $room): string — angehakte Automatismen kopieren. Mit Zielraum werden die
+     * Geräte gleicher Rolle (Melder, Licht, Kontakt …) aus diesem Raum eingesetzt; was nicht passt, bleibt leer (rot).
+     */
+    public function UIDuplicate(string $rowsJson, string $room): string
+    {
+        $rows = json_decode($rowsJson, true);
+        $marked = array_values(array_filter(is_array($rows) ? $rows : [], function ($r) {
+            return is_array($r) && !empty($r['Mark']);
+        }));
+        if (count($marked) === 0) {
+            return 'ℹ️ Bitte zuerst in der Liste bei den Automatismen, die du kopieren willst, das Häkchen ☑︎ setzen.';
+        }
+        $items = $room !== '' ? $this->collectItems() : [];
+        $roleOf = [];
+        $byRoom = [];
+        foreach ($items as $it) {
+            $roleOf[(int)$it['vid']] = (string)($it['role'] ?? '');
+            // Raum aus Raumstruktur oder — ohne das Modul — aus dem Gerätenamen („Licht Bad“)
+            $itRoom = (string)($it['room'] ?? '') !== '' ? (string)$it['room'] : (string)AUTOMATErkennung::roomFromName($it['inst'] . ' ' . $it['name'], [$room]);
+            if (($it['role'] ?? '') !== '' && AUTOMATErkennung::sameRoom($itRoom, $room)) {
+                $byRoom[$it['role']][] = (int)$it['vid'];
+            }
+        }
+        $copies = [];
+        $mapped = 0;
+        $total = 0;
+        foreach ($marked as $r) {
+            $c = $r;
+            $old = trim((string)($r['Room'] ?? ''));
+            if ($room !== '' && $room !== $old) {
+                $c['Room'] = $room;
+                $c['Name'] = $old !== '' && mb_stripos((string)$r['Name'], $old) !== false ? str_ireplace($old, $room, (string)$r['Name']) : trim((string)$r['Name']) . ' ' . $room;
+                $taken = [];
+                foreach (AUTOMATKatalog::fields((string)$r['Type']) as $f) {
+                    if (!isset($f['n']) || !in_array($f['k'], ['var', 'vars'], true)) {
+                        continue;
+                    }
+                    $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
+                        return $f['n'] . $i;
+                    }, range(1, AUTOMATKatalog::slots($f['n']))) : [$f['n']];
+                    foreach ($names as $n) {
+                        $vid = (int)($r[$n] ?? 0);
+                        if ($vid < AUTOMATKatalog::$minId) {
+                            continue;
+                        }
+                        $total++;
+                        $role = $roleOf[$vid] ?? '';
+                        $pick = 0;
+                        foreach ($byRoom[$role] ?? [] as $cand) {
+                            if (!isset($taken[$cand])) {
+                                $pick = $cand;
+                                break;
+                            }
+                        }
+                        if ($pick > 0) {
+                            $taken[$pick] = true;
+                            $mapped++;
+                        }
+                        $c[$n] = $pick;
+                    }
+                }
+            } else {
+                $c['Name'] = trim((string)$r['Name']) . ' (Kopie)';
+            }
+            // Eine Kopie mit denselben Geräten würde doppelt regeln — deshalb erst nach dem Prüfen aktiv.
+            $c['Enabled'] = $room !== '' && $room !== $old && $total > 0 && $mapped === $total;
+            $copies[] = $c;
+        }
+        $msg = $this->insertRows($copies, $rowsJson, count($copies) . ' Kopie(n)', true);
+        if ($room !== '') {
+            $msg .= "\n🔁 Geräte für „" . $room . '“: ' . $mapped . ' von ' . $total . ' passend gefunden' . ($mapped < $total ? ' — die übrigen sind leer (rot), bitte im Dialog wählen; die Kopie ist bis dahin nicht aktiv.' : '.');
+        } else {
+            $msg .= "\nℹ️ Die Kopie nutzt dieselben Geräte und ist deshalb noch nicht aktiv — im Dialog anpassen und „Aktiv“ setzen.";
+        }
+        return $msg;
+    }
+
+    /** Räume für „Duplizieren in Raum“: bekannte Räume aus Raumstruktur bzw. Gerätenamen und Liste. */
+    private function copyRoomOptions(): array
+    {
+        $rooms = [];
+        foreach ($this->rows() as $r) {
+            $x = trim((string)($r['Room'] ?? ''));
+            if ($x !== '') {
+                $rooms[$x] = true;
+            }
+        }
+        foreach (array_keys($this->raumRoomNames()) as $x) {
+            $rooms[$x] = true;
+        }
+        ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
+        $o = [['caption' => '— gleicher Raum, gleiche Geräte (nur kopieren) —', 'value' => '']];
+        foreach (array_keys($rooms) as $x) {
+            $o[] = ['caption' => (string)$x, 'value' => (string)$x];
+        }
+        return $o;
+    }
+
+    /** Statistik je Automatismus: Schaltungen und Meldungen je Tag (30 Tage). */
+    private function countStats(string $uid, bool $acted, bool $msg): void
+    {
+        $all = json_decode($this->aStr('Stats'), true) ?: [];
+        $now = $this->now();
+        $s = $all[$uid] ?? ['first' => $now, 'd' => [], 'last' => 0];
+        if (!$acted && !$msg && isset($all[$uid])) {
+            return;
+        }
+        $day = date('Y-m-d', $now);
+        $s['d'][$day] = [(int)($s['d'][$day][0] ?? 0) + ($acted ? 1 : 0), (int)($s['d'][$day][1] ?? 0) + ($msg ? 1 : 0)];
+        if ($acted || $msg) {
+            $s['last'] = $now;
+        }
+        $cut = date('Y-m-d', strtotime('-30 days', $now));
+        $s['d'] = array_filter($s['d'], function ($k) use ($cut) {
+            return $k >= $cut;
+        }, ARRAY_FILTER_USE_KEY);
+        $all[$uid] = $s;
+        $this->WriteAttributeString('Stats', json_encode($all));
+    }
+
+    /** Statistik-Zeilen fürs Formular und die Liste der untätigen Automatismen. */
+    private function statsRows(): array
+    {
+        $all = json_decode($this->aStr('Stats'), true) ?: [];
+        $now = $this->now();
+        $d7 = date('Y-m-d', strtotime('-7 days', $now));
+        $rows = [];
+        $idle = [];
+        foreach ($this->rows() as $r) {
+            $s = $all[$r['Uid']] ?? null;
+            $a7 = $a30 = $m30 = 0;
+            foreach ((array)($s['d'] ?? []) as $day => [$a, $m]) {
+                $a30 += $a;
+                $m30 += $m;
+                if ($day >= $d7) {
+                    $a7 += $a;
+                }
+            }
+            $last = (int)($s['last'] ?? 0);
+            $rows[] = ['Name' => $this->rowName($r), 'A7' => $a7, 'A30' => $a30, 'M30' => $m30, 'Last' => $last > 0 ? date('d.m.Y H:i', $last) : '—'];
+            if (!empty($r['Enabled']) && $s !== null && $now - (int)($s['first'] ?? $now) >= 30 * 86400 && $a30 + $m30 === 0) {
+                $idle[] = '„' . $this->rowName($r) . '“';
+            }
+        }
+        return [$rows, $idle];
+    }
+
+    /**
+     * Gewohnheiten aus dem Archiv: Lichter, die werktags meist zur selben Zeit ausgehen (4 Wochen, wochenweise abgefragt).
+     * Rückgabe vid => ['min' => Minuten, 'days' => n, 'hits' => n].
+     */
+    private function habits(array $items): array
+    {
+        $ac = (int)(@IPS_GetInstanceListByModuleID(self::ARCHIVE_GUID)[0] ?? 0);
+        if ($ac <= 0 || !function_exists('AC_GetLoggingStatus') || !function_exists('AC_GetLoggedValues')) {
+            return [];
+        }
+        $now = $this->now();
+        $out = [];
+        $n = 0;
+        foreach ($items as $it) {
+            if (($it['role'] ?? '') !== 'light' || $n >= 25) {
+                continue;
+            }
+            $vid = (int)$it['vid'];
+            try {
+                if (!AC_GetLoggingStatus($ac, $vid)) {
+                    continue;
+                }
+                $n++;
+                $ev = [];
+                for ($w = 4; $w >= 1; $w--) {
+                    $vals = AC_GetLoggedValues($ac, $vid, strtotime('-' . $w . ' weeks', $now), strtotime('-' . ($w - 1) . ' weeks', $now), 0);
+                    if ($vals === false) {
+                        $this->SendDebug('Gewohnheit', 'Archiv lieferte nichts für #' . $vid, 0);
+                        continue;
+                    }
+                    foreach (array_reverse((array)$vals) as $e) {
+                        $ev[] = [(int)$e['TimeStamp'], AUTOMATLogik::isTrue($e['Value'])];
+                    }
+                }
+                $h = AUTOMATLogik::habitOff($ev);
+                if ($h !== null) {
+                    $out[$vid] = $h;
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+        return $out;
     }
 
     /** AUTOMAT_DismissSuggestions($id, $keysJson): string — angehakte Vorschläge nicht mehr anbieten. */
@@ -1775,6 +2032,7 @@ class Automat extends IPSModule
             ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => 'Bezeichnung (z. B. „Flurlicht“)', 'width' => '420px'],
             ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => 'Raum (optional, für Übersicht und Kachel)', 'width' => '420px'],
             ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => 'Aktiv', 'value' => true],
+            ['type' => 'CheckBox', 'name' => 'Dry', 'caption' => '🧪 Probelauf: nichts schalten und nichts melden, nur im Protokoll festhalten, was passiert wäre', 'value' => false],
             ['type' => 'ValidationTextBox', 'name' => 'Uid', 'caption' => 'Kennung', 'visible' => false, 'value' => $isNew ? $this->newUid($this->rows()) : $uid],
             ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
@@ -1917,6 +2175,8 @@ class Automat extends IPSModule
                 return [$base + ['type' => 'SelectTime', 'value' => $f['d']]];
             case 'text':
                 return [$base + ['type' => 'ValidationTextBox', 'value' => $f['d'], 'width' => '520px']];
+            case 'object':
+                return [$base + ['type' => 'SelectObject', 'value' => 0, 'width' => '520px']];
             case 'pick':
                 // Auswahl aus den möglichen Werten der gewählten Variable; schreibt ins Vergleichsfeld.
                 $opts = $this->pickOptions((int)($this->editRow[$f['src']] ?? 0));
@@ -2367,6 +2627,10 @@ class Automat extends IPSModule
             });
             $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : '❔ Typ wählen (✏️)';
             $r['State'] = empty($r['Enabled']) ? '⚫ Nicht aktiv' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
+            if (!empty($r['Dry']) && strpos($r['State'], '🧪') !== 0) {
+                $r['State'] = '🧪 ' . $r['State'];
+            }
+            $r['Mark'] = false;
             $r['Settings'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::summary($r, function (int $vid) {
                 return $this->liveText($vid);
             }) : '';
@@ -2410,6 +2674,24 @@ class Automat extends IPSModule
     }
 
     /** Aktueller Wert einer Variable kurz als Text mit Einheit („12 lx"), null wenn unbekannt. */
+    /** Nächster Feiertag fürs gewählte Bundesland (Anzeige im Hausmodus-Bereich). */
+    private function holidayLine(): string
+    {
+        $land = $this->pStr('cfg_Bundesland');
+        if ($land === '') {
+            return 'ℹ️ Feiertage werden nicht berücksichtigt.';
+        }
+        $d = date('Y-m-d', $this->now());
+        for ($i = 0; $i < 400; $i++) {
+            $h = AUTOMATLogik::holiday($d, $land);
+            if ($h !== '') {
+                return '📅 Nächster Feiertag: ' . $h . ', ' . date('d.m.Y', (int)strtotime($d)) . '.';
+            }
+            $d = AUTOMATLogik::addDays($d, 1);
+        }
+        return '';
+    }
+
     /** Katalog: Was gibt es für diesen Typ im Haus? Leer, solange noch nicht gesucht wurde. */
     private function catalogLine(string $type, ?array $counts): string
     {
@@ -2592,6 +2874,7 @@ class Automat extends IPSModule
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
                     'sort' => $this->listSort($this->pInt('cfg_ListOrder')),
                     'columns' => [
+                        ['caption' => '☑︎', 'name' => 'Mark', 'width' => '40px', 'add' => false, 'save' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Aktiv', 'name' => 'Enabled', 'width' => '60px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
                         ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '210px', 'add' => '', 'save' => true, 'sortColumn' => 'SortType'],
@@ -2605,6 +2888,10 @@ class Automat extends IPSModule
                     ],
                     'form' => "return json_decode(AUTOMAT_UIEditForm(\$id, (string)(\$Automations['Uid'] ?? ''), (string)(\$Automations['Type'] ?? '')), true);",
                 ],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'Select', 'name' => 'cfg_CopyRoom', 'caption' => 'Angehakte (☑︎) duplizieren — in Raum', 'width' => '320px', 'value' => '', 'options' => $this->copyRoomOptions()],
+                    ['type' => 'Button', 'caption' => '📄 Duplizieren', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIDuplicate($id, json_encode($r), (string)$cfg_CopyRoom);'],
+                ]],
                 ['type' => 'RowLayout', 'items' => [
                     ['type' => 'Button', 'caption' => '📋 Übersicht anzeigen', 'onClick' => 'echo AUTOMAT_Overview($id);'],
                     ['type' => 'PopupButton', 'caption' => 'Wie lege ich einen Automatismus an?', 'width' => '420px', 'popup' => [
@@ -2920,6 +3207,10 @@ class Automat extends IPSModule
                 ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um', 'visible' => !isset(self::NIGHT_EVENTS[$nightRef])],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_NightOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::NIGHT_EVENTS[$nightRef])],
                 ['type' => 'Label', 'name' => 'LocationInfo', 'caption' => $loc, 'visible' => $loc !== ''],
+                ['type' => 'Select', 'name' => 'cfg_Bundesland', 'caption' => 'Feiertage wie Wochenende behandeln (Rollläden, Aufwachlicht, Zeitschaltuhr)', 'width' => '520px', 'options' => array_map(function ($k, $v) {
+                    return ['caption' => $v, 'value' => (string)$k];
+                }, array_keys(AUTOMATKatalog::LAENDER), AUTOMATKatalog::LAENDER)],
+                ['type' => 'Label', 'caption' => $this->holidayLine()],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],
                 ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => $presField ? 'Andere Anwesenheits-Quelle (hat Vorrang vor dem Automatismus; Bool: wahr = jemand zu Hause)' : 'Anwesenheits-Variable (nur nötig ohne Automatismus „Anwesenheit zusammenfassen“; Bool: wahr = jemand zu Hause)', 'width' => '520px', 'visible' => $presShow],
@@ -2972,7 +3263,7 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => $legacy
                     ? 'ℹ️ Diese Wege stammen aus deinen bisherigen Einstellungen (Push/E-Mail). Mit „Übernehmen“ werden sie als Liste gespeichert — danach kannst du sie umbenennen, ergänzen und je Automatismus wählen.'
                     : (count($ways) === 0 ? '⚠️ Kein Meldeweg — Meldungen stehen nur in „Letzte Meldung“ und im Protokoll.' : '✅ Standard-Wege: ' . (implode(', ', $std) ?: '— keiner (dann melden nur Automatismen mit eigener Wahl) —') . '.')],
-                ['type' => 'Label', 'caption' => 'ℹ️ Skript-Wege bekommen $_IPS[\'TITLE\'] und $_IPS[\'TEXT\'] — so lässt sich jede Benachrichtigung anbinden (Telegram, Pushover, Sprachausgabe …).'],
+                ['type' => 'Label', 'caption' => 'ℹ️ Skript-Wege bekommen $_IPS[\'TITLE\'], $_IPS[\'TEXT\'] und $_IPS[\'MEDIA\'] (ID eines Kamerabilds, z. B. von der Türklingel, sonst 0) — so lässt sich jede Benachrichtigung anbinden (Telegram, Pushover, Sprachausgabe …).'],
                 ['type' => 'Label', 'caption' => '— Was wird gemeldet —', 'bold' => true],
                 ['type' => 'Label', 'caption' => count($who) > 0
                     ? '🔔 ' . implode(' · ', $who) . '. Ein- und ausschalten und Wege wählen je Automatismus im Dialog (✏️).'
@@ -2992,9 +3283,23 @@ class Automat extends IPSModule
 
     private function ProtocolPanel(): array
     {
+        [$stats, $idle] = $this->statsRows();
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📜  Protokoll und Kachel',
             'items' => [
+                ['type' => 'Label', 'caption' => '— Statistik (30 Tage) —', 'bold' => true],
+                ['type' => 'Label', 'caption' => count($idle) > 0 ? '💤 Seit 30 Tagen nichts geschaltet oder gemeldet: ' . implode(', ', $idle) . ' — noch gebraucht, oder stimmen die Geräte?' : 'ℹ️ Schaltungen und Meldungen je Automatismus; „💤“-Hinweise erscheinen, wenn ein aktiver Automatismus 30 Tage nichts getan hat.'],
+                [
+                    'type' => 'List', 'name' => 'StatsList', 'caption' => '', 'rowCount' => max(3, min(15, count($stats))), 'add' => false, 'delete' => false,
+                    'loadValuesFromConfiguration' => false, 'values' => $stats,
+                    'columns' => [
+                        ['caption' => 'Automatismus', 'name' => 'Name', 'width' => 'auto', 'save' => false],
+                        ['caption' => 'Schaltungen 7 Tage', 'name' => 'A7', 'width' => '150px', 'save' => false],
+                        ['caption' => '30 Tage', 'name' => 'A30', 'width' => '90px', 'save' => false],
+                        ['caption' => 'Meldungen 30 Tage', 'name' => 'M30', 'width' => '150px', 'save' => false],
+                        ['caption' => 'Zuletzt', 'name' => 'Last', 'width' => '150px', 'save' => false],
+                    ],
+                ],
                 ['type' => 'Label', 'caption' => 'Protokoll (neueste zuerst) — warum etwas geschaltet oder gemeldet wurde:'],
                 ['type' => 'Label', 'name' => 'ProtocolText', 'caption' => implode("\n", $this->protocolLines(30)) ?: '— noch leer —'],
                 ['type' => 'CheckBox', 'name' => 'cfg_TileLight', 'caption' => 'Helle Darstellung der Kachel'],

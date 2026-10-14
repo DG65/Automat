@@ -49,13 +49,28 @@ class AUTOMATErkennung
             && preg_match(self::APPLIANCE, $text)) {
             return 'power';
         }
+        // Türklingel (vor Taster: eine Klingel ist auch ein Taster)
+        if (!$action && preg_match('/klingel|doorbell|türglocke|\bring\b/iu', $text) && !preg_match('/batter|lautstärke|volume|ton\b|melodie/iu', $text)) {
+            return 'bell';
+        }
         // Taster melden ihren Druck oft als Szene/Aktion — vor dem Rausch-Filter („szene“ steht dort)
         if (!$action && preg_match('/taster|button|tastendruck|\baction\b|click|klick|central ?scene|zentralszene/i', $text)
             && !preg_match('/batter|signal|rssi|firmware/i', $text)) {
             return 'button';
         }
+        // Kühlschrank/Gefriertruhe mit Leistungsmessung (Ausfall-Wächter)
+        if (($type === 1 || $type === 2) && ($suffix === 'w' || preg_match('/(^|[.~])watt|\.w$/', $profile))
+            && preg_match('/kühlschrank|kuehlschrank|gefrier|tiefkühl|fridge|freezer|kühltruhe/iu', $text)) {
+            return 'cooling';
+        }
         if (preg_match(self::NOISE, $text)) {
             return '';
+        }
+        // Raum- und Außentemperatur (Messwert, kein Sollwert, keine Wasser-/Technik-Temperatur)
+        if (($type === 1 || $type === 2) && !$action
+            && (preg_match('/temperature|temperatur/', $profile) || $suffix === '°c')
+            && !preg_match('/soll|setpoint|vorlauf|rücklauf|ruecklauf|wasser|kessel|speicher|puffer|cpu|prognose|forecast|minimal|maximal|\bmin\b|\bmax\b|gefühlt|taupunkt|boden|vpd|mittel|gleitend/iu', $text)) {
+            return 'temp';
         }
         // Wasser-/Rauchmelder (Alarmzustand, keine Messwerte wie Wassertemperatur)
         if ($type === 0 && !$action && (preg_match('/smoke|water|leak|flood|moisture/', $profile)
@@ -164,6 +179,12 @@ class AUTOMATErkennung
     }
 
     /** Text als Folge von Raum-Grundformen, mit Leerzeichen umrahmt (für Ganzwort-Vergleiche). */
+    /** Gleicher Raum? Kurz- und Langform zählen gleich („Bad“/„Badezimmer“, „Essen“/„Esszimmer“). */
+    public static function sameRoom(string $a, string $b): bool
+    {
+        return trim($a) !== '' && self::stemSeq(mb_strtolower(trim($a))) === self::stemSeq(mb_strtolower(trim($b)));
+    }
+
     private static function stemSeq(string $s): string
     {
         $s = mb_strtolower($s);
@@ -275,7 +296,7 @@ class AUTOMATErkennung
      * $existing = vorhandene Listenzeilen, $dismissed = ausgeblendete Schlüssel.
      * Rückgabe: Liste ['key','type','room','title','row' (vorbelegte Listenzeile),'why']
      */
-    public static function suggest(array $items, array $existing, array $dismissed, array $knownRooms = []): array
+    public static function suggest(array $items, array $existing, array $dismissed, array $knownRooms = [], array $habits = []): array
     {
         $used = [];
         foreach ($existing as $row) {
@@ -452,6 +473,85 @@ class AUTOMATErkennung
             }
             $add('lueften', $room, 'Lüftungserinnerung', $row, ($co2 ? 'CO₂' : 'Luftfeuchte') . ' „' . (trim((string)$it['inst']) ?: $it['name']) . '“ — erinnert ab ' . ($co2 ? '1200 ppm' : '65 %'), [$it['vid']]);
         }
+        // Gehen-Check: alle Fenster-/Türkontakte des Hauses
+        $gk = $byR('contact');
+        if (count($gk) > 0) {
+            $row = AUTOMATKatalog::defaults('gehen');
+            $row['Name'] = 'Gehen-Check';
+            $row['Room'] = '';
+            foreach ($gk as $it) {
+                if (self::contactInverted($it)) {
+                    $row['gc_invert'] = true; // nur, wenn die Kontakte einheitlich so melden — im Dialog prüfen
+                }
+            }
+            $fill($row, 'gc_kon', array_column($gk, 'vid'));
+            $add('gehen', '', 'Gehen-Check', $row, count($gk) . ' Fenster-/Türkontakt(e) gefunden (' . $labels($gk, 4) . ') — beim Wechsel auf „Abwesend“/„Urlaub“ meldet er, was noch offen ist', array_column(array_slice($gk, 0, AUTOMATKatalog::slots('gc_kon')), 'vid'));
+        }
+        // Türklingel
+        foreach (array_slice($byR('bell'), 0, 2) as $it) {
+            $row = AUTOMATKatalog::defaults('klingel');
+            $row['Name'] = 'Türklingel';
+            $row['Room'] = (string)($it['room'] ?? '');
+            $row['kl_taster'] = $it['vid'];
+            $add('klingel', (string)($it['room'] ?? ''), 'Türklingel', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — Meldung beim Klingeln, abends Licht an', [$it['vid']]);
+        }
+        // Ausfall-Wächter: Kühlschrank/Gefriertruhe
+        foreach ($byR('cooling') as $it) {
+            $row = AUTOMATKatalog::defaults('ausfall');
+            $row['Name'] = 'Ausfall ' . (trim((string)$it['inst']) ?: $it['name']);
+            $row['Room'] = (string)($it['room'] ?? '');
+            $row['af_var'] = $it['vid'];
+            $add('ausfall', (string)($it['room'] ?? ''), 'Ausfall-Wächter', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — meldet, wenn der Kompressor 2 Stunden nicht anspringt', [$it['vid']]);
+        }
+        // Sommer-Lüften: nur mit Außentemperatur, je Raum die erste Raumtemperatur (höchstens 6)
+        $temps = $byR('temp');
+        $outside = null;
+        foreach ($temps as $it) {
+            if (preg_match('/außen|aussen|outdoor|outside/iu', $it['name'] . ' ' . $it['inst'])) {
+                $outside = $it;
+                break;
+            }
+        }
+        if ($outside !== null) {
+            $seenT = [];
+            foreach ($temps as $it) {
+                $room = (string)($it['room'] ?? '');
+                if ($it === $outside || $room === '' || isset($seenT[$room]) || count($seenT) >= 6 || preg_match('/außen|aussen|outdoor|outside/iu', $it['name'] . ' ' . $it['inst'])) {
+                    continue;
+                }
+                $seenT[$room] = true;
+                $row = AUTOMATKatalog::defaults('sommer');
+                $row['Name'] = 'Sommer-Lüften ' . $room;
+                $row['Room'] = $room;
+                $row['sl_innen'] = $it['vid'];
+                $row['sl_aussen'] = $outside['vid'];
+                $add('sommer', $room, 'Sommer-Lüften', $row, 'Innen „' . (trim((string)$it['inst']) ?: $it['name']) . '“, außen „' . (trim((string)$outside['inst']) ?: $outside['name']) . '“ — „Fenster schließen“ bzw. „jetzt lüften“ ab 23 °C innen', [$it['vid'], $outside['vid']]);
+            }
+        }
+        // Gewohnheiten aus dem Archiv: Licht geht werktags meist zur selben Zeit aus → Zeitschaltuhr „nur ausschalten“
+        $lightBy = [];
+        foreach ($items as $it) {
+            $lightBy[(int)$it['vid']] = $it;
+        }
+        foreach ($habits as $vid => $h) {
+            $it = $lightBy[(int)$vid] ?? null;
+            if ($it === null) {
+                continue;
+            }
+            $m = (int)$h['min'] % 1440;
+            $row = AUTOMATKatalog::defaults('zeitschalt');
+            $label = trim((string)$it['inst']) ?: (string)$it['name'];
+            $row['Name'] = $label . ' aus (Gewohnheit)';
+            $row['Room'] = (string)($it['room'] ?? '');
+            $row['zs_out1'] = (int)$vid;
+            $row['zs_modus'] = 1;
+            $row['zs_aus'] = AUTOMATKatalog::time(intdiv($m, 60), $m % 60);
+            $row['zs_t6'] = false;
+            $row['zs_t7'] = false;
+            $row['zs_feiertag'] = 2;
+            $add('zeitschalt', (string)($it['room'] ?? ''), 'Gewohnheit: Zeitschaltuhr', $row, '„' . $label . '“ ging an ' . $h['hits'] . ' von ' . $h['days'] . ' Werktagsabenden um ' . sprintf('%02d:%02d', intdiv($m, 60), $m % 60) . ' Uhr (±30 min) aus — ausschalten, falls es mal vergessen wird', [(int)$vid]);
+        }
+
         // Taster: je Taster ein Vorschlag (Aktionen trägt der Nutzer ein)
         foreach (array_slice($byR('button'), 0, 6) as $it) {
             $row = AUTOMATKatalog::defaults('taster');

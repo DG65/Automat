@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.34-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.35-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.34 (Beta im Module Store, 499 Prüfungen):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.1.35 (Beta im Module Store, 557 Prüfungen):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 
@@ -31,6 +31,11 @@ Geräten vor, was sich lohnt.
 | 🧺 | Gerät fertig | meldet das Ende eines Laufs an der Leistung | Mindestlaufzeit gegen Spitzen, Pausen/Schleudern überbrückt |
 | 🏠 | Anwesenheit zusammenfassen | bis 8 Anwesenheitssignale → „Jemand zu Hause“ | sofort „da“, „niemand da“ erst nach Wartezeit; nennt, wer da ist; speist den Hausmodus „Abwesend“ |
 | 🌙 | Zentral-Aus / Szene nach Hausmodus | beim Wechsel auf Nacht/Abwesend/… Geräte aus, ein oder auf Wert | bis 16 Geräte, Verzögerung, nur was anders steht; andere Automatismen sehen es als „zentral“, nicht als Handbedienung |
+| 🚪 | Gehen-Check | beim Wechsel auf Abwesend/Urlaub (wahlweise Nacht) EINE Meldung, was offen oder an ist | Fenster/Türen/Tore und Geräte (Schalter oder Leistung), wahlweise gleich ausschalten |
+| 🛎 | Türklingel | melden, abends Licht an, Musik leiser — danach wie vorher | Meldung „niemand zu Hause“ bei Abwesenheit; Kamerabild an Skript-Meldewege; Handänderungen bleiben |
+| ☀️ | Sommer-Lüften | „Fenster schließen“, wenn draußen wärmer, „jetzt lüften“, wenn kühler | Mindest-Innentemperatur, Hysterese, Taupunkt mit Luftfeuchte innen/außen (Keller) |
+| 🧊 | Ausfall-Wächter | zu lange ohne Strom (Kühlschrank) oder zu lange am Stück (Pumpe) | merkt sich die bisher längste Pause bzw. den längsten Lauf als „normal“ |
+| 📅 | Zeitschaltuhr | ein/aus nach Wochentag und Uhrzeit | nur ein / nur aus, über Mitternacht, Feiertage, Zufallsversatz; Handbedienung bleibt bis zur nächsten Schaltzeit |
 | 🚨 | Wasser-/Rauchmelder-Reaktion | Alarm: Licht an, Rollläden auf, Ventil/Geräte aus, melden | wirkt auch bei Pause und in der Ruhezeit; Erinnerung bis Entwarnung; schaltet danach nichts zurück |
 | 🪟 | Rollladen nach Zeit/Sonne | morgens auf, abends zu | Uhrzeit, Sonnenauf-/-untergang ± Versatz, Helligkeit oder Hausmodus; frühestens (werktags/Wochenende), spätestens; Aussperrschutz bei offener Tür |
 | 🔌 | Standby-Abschaltung | Steckdose aus, wenn das Gerät lange im Standby ist | Schwelle in W, Dauer; zwischendurch Betrieb setzt die Zeit zurück |
@@ -52,6 +57,12 @@ Geräten vor, was sich lohnt.
   bestimmte Visualisierung, E-Mail über SMTP an bestimmte Empfänger, Skript z. B. für Telegram), je Weg
   „Standard“ und „Ruhezeit beachten“. Je Automatismus „Melden“ und die Wahl seiner Wege (ohne Wahl: Standard);
   dazu wahlweise Störungen. Ruhezeit mit Nachholen, Testmeldung mit Ergebnis je Weg.
+- **Duplizieren**: Automatismen anhaken und in einen anderen Raum kopieren — Melder, Licht, Kontakte gleicher Art
+  werden dort eingesetzt; was nicht passt, bleibt leer und die Kopie bis zur Auswahl inaktiv.
+- **Probelauf** je Automatismus: nichts schalten, nichts melden, nur protokollieren, was passiert wäre.
+- **Feiertage** nach Bundesland (DE), Österreich oder Schweiz für Rollläden, Aufwachlicht und Zeitschaltuhr.
+- **Statistik** je Automatismus (Schaltungen, Meldungen) und Hinweis auf solche, die 30 Tage nichts getan haben.
+- **Gewohnheiten**: Entdecken wertet das Archiv der Lichter aus und schlägt z. B. „werktags um 22:30 aus“ vor.
 - **Formular: Aufbau** — je Bereich wählen, ob er beim Öffnen auf- oder zugeklappt ist, an welcher Position er
   steht oder ob er ganz ausgeblendet wird (z. B. „Katalog“ und „Entdecken“, wenn alles eingerichtet ist).
 - **Bedingungen** über Symcons eigene Bedingungs-Auswahl (z. B. nur werktags, nur wenn ein Schalter an ist).

@@ -52,6 +52,9 @@ class AUTOMATKatalog
         'shutter'  => 'Rollladen/Jalousie (Position)',
         'air'      => 'Raumluft (Feuchte oder CO₂)',
         'button'   => 'Taster/Szenen-Schalter',
+        'bell'     => 'Türklingel',
+        'cooling'  => 'Leistungsmessung Kühlschrank/Gefriertruhe',
+        'temp'     => 'Temperaturmessung (innen und außen)',
     ];
 
     public const TYPES = [
@@ -89,6 +92,31 @@ class AUTOMATKatalog
             'label' => 'Anwesenheit zusammenfassen', 'icon' => '🏠', 'cat' => 'haus', 'light' => false,
             'desc'  => 'Fasst mehrere Anwesenheitssignale (z. B. je Person Geofency oder Handy im WLAN) zu „Jemand zu Hause“ zusammen — sofort „da“, „niemand da“ erst nach einer Wartezeit gegen kurze Aussetzer. Der Hausmodus nutzt das Ergebnis automatisch.',
             'needs' => ['presence'],
+        ],
+        'gehen' => [
+            'label' => 'Gehen-Check', 'icon' => '🚪', 'cat' => 'ueberwachung', 'light' => false,
+            'desc'  => 'Wechselt der Hausmodus auf „Abwesend“ oder „Urlaub“ (wahlweise „Nacht“), prüft er Fenster, Türen und Geräte und meldet in EINER Nachricht, was noch offen oder an ist — wahlweise schaltet er die Geräte gleich aus.',
+            'needs' => ['contact'],
+        ],
+        'klingel' => [
+            'label' => 'Türklingel', 'icon' => '🛎', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Klingelt es: melden (bei Abwesenheit deutlich), abends Licht für ein paar Minuten an und Musik leiser — danach wieder wie vorher. Ein Kamerabild geht an Skript-Meldewege mit (z. B. Telegram).',
+            'needs' => ['bell'],
+        ],
+        'sommer' => [
+            'label' => 'Sommer-Lüften', 'icon' => '☀️', 'cat' => 'klima', 'light' => false,
+            'desc'  => 'Ist es draußen wärmer als drinnen: „Fenster schließen“. Wird es draußen kühler: „Jetzt lüften“. Mit Luftfeuchte innen und außen wird der Taupunkt verglichen — wichtig für den Keller.',
+            'needs' => ['temp'],
+        ],
+        'ausfall' => [
+            'label' => 'Ausfall-Wächter', 'icon' => '🧊', 'cat' => 'ueberwachung', 'light' => false,
+            'desc'  => 'Meldet, wenn ein Gerät zu lange keinen Strom zieht (Kühlschrank, Gefriertruhe — Kompressor springt nicht mehr an) oder zu lange am Stück läuft (Pumpe, Heizstab). Zeigt, was bisher „normal“ war.',
+            'needs' => ['cooling'],
+        ],
+        'zeitschalt' => [
+            'label' => 'Zeitschaltuhr', 'icon' => '📅', 'cat' => 'haus', 'light' => false,
+            'desc'  => 'Schaltet Geräte nach Wochentagen und Uhrzeit, mit Feiertagen und Zufallsversatz. Wer zwischendurch von Hand ausschaltet, behält das bis zum nächsten Schaltzeitpunkt.',
+            'needs' => [],
         ],
         'alarm' => [
             'label' => 'Wasser-/Rauchmelder-Reaktion', 'icon' => '🚨', 'cat' => 'ueberwachung', 'light' => false,
@@ -138,7 +166,13 @@ class AUTOMATKatalog
     public const WL_DIR = [0 => 'Aufwachen: langsam heller bis zur Weckzeit', 1 => 'Einschlafen: langsam dunkler bis aus'];
     public const WL_START = [0 => 'zur Uhrzeit', 1 => 'Weckzeit aus einer Variable (Zeitstempel oder „HH:MM“)', 2 => 'wenn der Hausmodus auf „Nacht“ wechselt (Einschlafen)'];
     /** Typen, bei denen der Hausmodus selbst Auslöser ist oder die immer gelten müssen — ohne die allgemeinen Modus-Häkchen. */
-    public const NO_MODE_FILTER = ['szene', 'alarm', 'heizung'];
+    public const NO_MODE_FILTER = ['szene', 'alarm', 'heizung', 'gehen'];
+    public const AF_MODES = [0 => 'zu lange ohne Strom (z. B. Kühlschrank, Gefriertruhe)', 1 => 'läuft zu lange am Stück (z. B. Pumpe, Heizstab)'];
+    public const ZS_MODES = [0 => 'ein- und ausschalten', 1 => 'nur ausschalten', 2 => 'nur einschalten'];
+    public const ZS_HOLIDAY = [0 => 'wie der Wochentag', 1 => 'wie Sonntag', 2 => 'gar nicht schalten'];
+    public const WEEKDAYS = [1 => 'Mo', 2 => 'Di', 3 => 'Mi', 4 => 'Do', 5 => 'Fr', 6 => 'Sa', 7 => 'So'];
+    /** Bundesländer für Feiertage (Kürzel => Name), '' = keine Feiertage berücksichtigen. */
+    public const LAENDER = ['' => 'keine Feiertage berücksichtigen', 'BW' => 'Baden-Württemberg', 'BY' => 'Bayern', 'BE' => 'Berlin', 'BB' => 'Brandenburg', 'HB' => 'Bremen', 'HH' => 'Hamburg', 'HE' => 'Hessen', 'MV' => 'Mecklenburg-Vorpommern', 'NI' => 'Niedersachsen', 'NW' => 'Nordrhein-Westfalen', 'RP' => 'Rheinland-Pfalz', 'SL' => 'Saarland', 'SN' => 'Sachsen', 'ST' => 'Sachsen-Anhalt', 'SH' => 'Schleswig-Holstein', 'TH' => 'Thüringen', 'AT' => 'Österreich', 'CH' => 'Schweiz (bundesweite Feiertage)'];
 
     // Auswahllisten
     public const WA_OPS = [0 => 'ist gleich', 1 => 'ist ungleich', 2 => 'ist größer als', 3 => 'ist kleiner als', 4 => 'ist an / wahr', 5 => 'ist aus / falsch'];
@@ -282,6 +316,77 @@ class AUTOMATKatalog
                     ['n' => 'an_weg', 'k' => 'int', 'c' => '„Niemand da“ erst, wenn alle so lange weg sind', 'd' => 10, 'suffix' => ' min', 'min' => 0, 'max' => 1440],
                     ['n' => 'an_push', 'k' => 'bool', 'c' => '„Alle weg“ und „Jemand ist heimgekommen“ melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
+            case 'gehen':
+                return [
+                    ['k' => 'info', 'c' => 'Wann? Beim Wechsel des Hausmodus auf …'],
+                    ['n' => 'gc_m3', 'k' => 'bool', 'c' => 'Abwesend', 'd' => true],
+                    ['n' => 'gc_m4', 'k' => 'bool', 'c' => 'Urlaub', 'd' => true],
+                    ['n' => 'gc_m2', 'k' => 'bool', 'c' => 'Nacht', 'd' => false],
+                    ['k' => 'info', 'c' => 'Was soll zu sein?'],
+                    ['n' => 'gc_kon', 'k' => 'vars', 'max' => 16, 'c' => 'Fenster/Tür/Tor (offen = wahr)', 'req' => true],
+                    ['n' => 'gc_invert', 'k' => 'bool', 'c' => 'Kontakte sind umgekehrt (wahr = zu)', 'd' => false],
+                    ['k' => 'info', 'c' => 'Was soll aus sein? (optional)'],
+                    ['n' => 'gc_geraet', 'k' => 'vars', 'max' => 8, 'c' => 'Gerät (Schalter oder Leistung)'],
+                    ['n' => 'gc_watt', 'k' => 'float', 'c' => 'Bei Leistungswerten: gilt als „an“ ab', 'd' => 10.0, 'suffix' => ' W', 'min' => 0, 'max' => 10000],
+                    ['n' => 'gc_aus', 'k' => 'bool', 'c' => 'Eingeschaltete Geräte gleich ausschalten (statt nur melden)', 'd' => false],
+                    ['k' => 'info', 'c' => 'Meldung'],
+                    ['n' => 'gc_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                    ['n' => 'gc_ok', 'k' => 'bool', 'c' => 'Auch melden, wenn alles zu ist („Alles zu“)', 'd' => false],
+                ];
+            case 'klingel':
+                return [
+                    ['k' => 'info', 'c' => 'Klingel'],
+                    ['n' => 'kl_taster', 'k' => 'var', 'c' => 'Klingel (wahr/Wert beim Klingeln)', 'req' => true],
+                    ['n' => 'kl_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                    ['n' => 'kl_bild', 'k' => 'object', 'c' => 'Kamerabild (Medienobjekt, optional — geht an Skript-Meldewege mit)'],
+                    ['k' => 'info', 'c' => 'Licht (nur bei „Abend“ und „Nacht“)'],
+                    ['n' => 'kl_licht', 'k' => 'vars', 'c' => 'Licht'],
+                    ['n' => 'kl_dauer', 'k' => 'int', 'c' => 'Danach wieder aus nach', 'd' => 3, 'suffix' => ' min', 'min' => 1, 'max' => 60],
+                    ['k' => 'info', 'c' => 'Musik leiser (optional)'],
+                    ['n' => 'kl_laut', 'k' => 'vars', 'c' => 'Lautstärke'],
+                    ['n' => 'kl_lautwert', 'k' => 'float', 'c' => 'Lautstärke beim Klingeln', 'd' => 5.0, 'min' => 0, 'max' => 100],
+                ];
+            case 'sommer':
+                return [
+                    ['k' => 'info', 'c' => 'Temperaturen'],
+                    ['n' => 'sl_innen', 'k' => 'var', 'c' => 'Temperatur innen', 'req' => true],
+                    ['n' => 'sl_aussen', 'k' => 'var', 'c' => 'Temperatur außen', 'req' => true],
+                    ['n' => 'sl_min', 'k' => 'float', 'c' => 'Nur, wenn es innen mindestens so warm ist', 'd' => 23.0, 'suffix' => ' °C', 'min' => 0, 'max' => 40],
+                    ['n' => 'sl_diff', 'k' => 'float', 'c' => 'Unterschied, ab dem es zählt', 'd' => 1.5, 'suffix' => ' K', 'min' => 0.5, 'max' => 10],
+                    ['k' => 'info', 'c' => 'Luftfeuchte (optional — dann wird der Taupunkt verglichen, z. B. Keller)'],
+                    ['n' => 'sl_rhinnen', 'k' => 'var', 'c' => 'Luftfeuchte innen (%)'],
+                    ['n' => 'sl_rhaussen', 'k' => 'var', 'c' => 'Luftfeuchte außen (%)'],
+                    ['k' => 'info', 'c' => 'Fenster und Meldung'],
+                    ['n' => 'sl_kon', 'k' => 'vars', 'c' => 'Fensterkontakt (optional: „schließen“ nur, wenn offen; „lüften“ nur, wenn zu)'],
+                    ['n' => 'sl_konInvert', 'k' => 'bool', 'c' => 'Kontakt ist umgekehrt (wahr = zu)', 'd' => false],
+                    ['n' => 'sl_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                ];
+            case 'ausfall':
+                return [
+                    ['k' => 'info', 'c' => 'Gerät'],
+                    ['n' => 'af_var', 'k' => 'var', 'c' => 'Leistung (W)', 'req' => true],
+                    ['n' => 'af_modus', 'k' => 'select', 'c' => 'Melden, wenn das Gerät', 'd' => 0, 'options' => self::AF_MODES],
+                    ['n' => 'af_schwelle', 'k' => 'float', 'c' => 'Läuft ab', 'd' => 5.0, 'suffix' => ' W', 'min' => 0, 'max' => 10000],
+                    ['n' => 'af_dauer', 'k' => 'int', 'c' => 'Länger als', 'd' => 120, 'suffix' => ' min', 'min' => 1, 'max' => 10080],
+                    ['n' => 'af_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
+                    ['n' => 'af_ende', 'k' => 'bool', 'c' => 'Entwarnung melden', 'd' => true],
+                ];
+            case 'zeitschalt':
+                $o = [
+                    ['k' => 'info', 'c' => 'Was?'],
+                    ['n' => 'zs_out', 'k' => 'vars', 'max' => 8, 'c' => 'Gerät / Licht', 'req' => true],
+                    ['n' => 'zs_modus', 'k' => 'select', 'c' => 'Schalten', 'd' => 0, 'options' => self::ZS_MODES],
+                    ['n' => 'zs_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
+                    ['k' => 'info', 'c' => 'Wann?'],
+                    ['n' => 'zs_ein', 'k' => 'time', 'c' => 'Einschalten um', 'd' => self::time(7, 0)],
+                    ['n' => 'zs_aus', 'k' => 'time', 'c' => 'Ausschalten um (früher als „ein“ = am nächsten Tag)', 'd' => self::time(8, 0)],
+                ];
+                foreach (self::WEEKDAYS as $n => $l) {
+                    $o[] = ['n' => 'zs_t' . $n, 'k' => 'bool', 'c' => $l, 'd' => true];
+                }
+                $o[] = ['n' => 'zs_feiertag', 'k' => 'select', 'c' => 'An Feiertagen (Bundesland unter „🏠 Hausmodus“)', 'd' => 1, 'options' => self::ZS_HOLIDAY];
+                $o[] = ['n' => 'zs_zufall', 'k' => 'int', 'c' => 'Zufallsversatz je Tag (±)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 120];
+                return $o;
             case 'alarm':
                 return [
                     ['k' => 'info', 'c' => 'Melder'],
@@ -434,7 +539,7 @@ class AUTOMATKatalog
                 for ($i = 1; $i <= ($f['max'] ?? self::SLOTS); $i++) {
                     $row[$f['n'] . $i] = 0;
                 }
-            } elseif ($f['k'] === 'var') {
+            } elseif ($f['k'] === 'var' || $f['k'] === 'object') {
                 $row[$f['n']] = 0;
             } else {
                 $row[$f['n']] = $f['d'];
@@ -573,6 +678,34 @@ class AUTOMATKatalog
             case 'szene':
                 $out = self::vars($row, 'sz_out');
                 break;
+            case 'gehen':
+                $read = array_merge(self::vars($row, 'gc_kon'), self::vars($row, 'gc_geraet'));
+                if (!empty($row['gc_aus'])) {
+                    $out = self::vars($row, 'gc_geraet');
+                }
+                break;
+            case 'klingel':
+                if ((int)($row['kl_taster'] ?? 0) >= self::$minId) {
+                    $in[] = (int)$row['kl_taster'];
+                }
+                $out = array_values(array_unique(array_merge(self::vars($row, 'kl_licht'), self::vars($row, 'kl_laut'))));
+                break;
+            case 'sommer':
+                foreach (['sl_innen', 'sl_aussen', 'sl_rhinnen', 'sl_rhaussen'] as $f) {
+                    if ((int)($row[$f] ?? 0) >= self::$minId) {
+                        $in[] = (int)$row[$f];
+                    }
+                }
+                $in = array_merge($in, self::vars($row, 'sl_kon'));
+                break;
+            case 'ausfall':
+                if ((int)($row['af_var'] ?? 0) >= self::$minId) {
+                    $in[] = (int)$row['af_var'];
+                }
+                break;
+            case 'zeitschalt':
+                $out = self::vars($row, 'zs_out');
+                break;
             case 'alarm':
                 $in = self::vars($row, 'al_mel');
                 $out = array_values(array_unique(array_merge(self::vars($row, 'al_licht'), self::vars($row, 'al_hoch'), self::vars($row, 'al_aus'))));
@@ -651,6 +784,24 @@ class AUTOMATKatalog
                 if (!$exists($vid)) {
                     $p[] = 'Variable #' . $vid . ' existiert nicht mehr.';
                 }
+            }
+        }
+        if ($t === 'gehen') {
+            $any = false;
+            foreach ([2, 3, 4] as $m) {
+                $any = $any || !empty($row['gc_m' . $m]);
+            }
+            if (!$any) {
+                $p[] = 'Kein Hausmodus angekreuzt, bei dem geprüft wird.';
+            }
+        }
+        if ($t === 'zeitschalt') {
+            $any = false;
+            foreach (self::WEEKDAYS as $n => $_) {
+                $any = $any || !empty($row['zs_t' . $n]);
+            }
+            if (!$any) {
+                $p[] = 'Kein Wochentag angekreuzt.';
             }
         }
         if ($t === 'taster') {
@@ -786,6 +937,39 @@ class AUTOMATKatalog
                 if ((int)($row['wa_wdh'] ?? 0) > 0) {
                     $p[] = 'Erinnerung alle ' . (int)$row['wa_wdh'] . ' min';
                 }
+                break;
+            case 'gehen':
+                $modes = [];
+                foreach ([3, 4, 2] as $m) {
+                    if (!empty($row['gc_m' . $m])) {
+                        $modes[] = self::MODES[$m];
+                    }
+                }
+                $p[] = 'bei ' . (implode('/', $modes) ?: '—');
+                $p[] = count(self::vars($row, 'gc_kon')) . ' Kontakt(e)' . (count(self::vars($row, 'gc_geraet')) > 0 ? ', ' . count(self::vars($row, 'gc_geraet')) . ' Gerät(e)' : '');
+                break;
+            case 'klingel':
+                $p[] = count(self::vars($row, 'kl_licht')) > 0 ? 'Licht ' . (int)($row['kl_dauer'] ?? 3) . ' min' : 'nur Meldung';
+                break;
+            case 'sommer':
+                $p[] = 'ab ' . self::num((float)($row['sl_min'] ?? 23)) . ' °C innen, ±' . self::num((float)($row['sl_diff'] ?? 1.5)) . ' K';
+                if ((int)($row['sl_rhinnen'] ?? 0) >= self::$minId && (int)($row['sl_rhaussen'] ?? 0) >= self::$minId) {
+                    $p[] = 'mit Taupunkt';
+                }
+                break;
+            case 'ausfall':
+                $p[] = ((int)($row['af_modus'] ?? 0) === 0 ? 'ohne Strom' : 'am Stück') . ' > ' . (int)($row['af_dauer'] ?? 120) . ' min';
+                break;
+            case 'zeitschalt':
+                $days = [];
+                foreach (self::WEEKDAYS as $n => $l) {
+                    if (!empty($row['zs_t' . $n])) {
+                        $days[] = $l;
+                    }
+                }
+                $mo = (int)($row['zs_modus'] ?? 0);
+                $p[] = ($mo !== 1 ? 'ein ' . self::hm((string)($row['zs_ein'] ?? '')) : '') . ($mo === 0 ? ', ' : '') . ($mo !== 2 ? 'aus ' . self::hm((string)($row['zs_aus'] ?? '')) : '');
+                $p[] = count($days) === 7 ? 'täglich' : (implode(' ', $days) ?: 'kein Tag');
                 break;
             case 'alarm':
                 $p[] = count(self::vars($row, 'al_mel')) . ' Melder';
