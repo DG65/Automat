@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.32 (Build 33) — 14.10.2026
+
+Store-Reifeprüfung (SUITE.md-Checkliste, Formular-Optik, Stolpersteine):
+- Alle Lesezugriffe auf Einstellungen und Speicher typsicher (während die Instanz neu lädt, liefert Symcon dort `false` — Checkliste 9c).
+- Eigene Variablen behalten ihre Position im Objektbaum; vorgegeben wird sie nur beim Anlegen (9m).
+- Variable einer fremden Instanz ohne Aktion wird nicht mehr per SetValue „geschaltet“ (änderte nur die Anzeige) — stattdessen klarer Grund im Protokoll und Meldungslog.
+- Meldewege ohne Visualisierung bzw. ohne Skript werden im Meldungslog vermerkt (vorher nur im Debug).
+- Offenes Formular wird nachgezogen: Katalog-Zeilen „gefunden/fehlt“ nach der Suche, Knopf „Ausgeblendete Vorschläge wieder anzeigen“ nach Ausblenden/Wiederholen.
+- Helligkeitswerte in den Einstellungen mit der Einheit des Sensors statt fest „lx“; Profile, die in der Darstellung stecken, werden für Einheit und Werteauswahl berücksichtigt.
+- Formular-Aufbau: berechnete Spalte „Bereich“ wird nicht gespeichert. Beispieltext ohne Namen der Entwickleranlage. README-Abzeichen mit aktueller Version.
+
 ## 0.1.31 (Build 32) — 13.10.2026
 
 Sieben neue Automatismen (Wunsch Dietmar: „alles zusammen einbauen“). **Nur am Prüfstand getestet — an echter Hardware ungeprüft** (Dietmar hat die Geräte nicht):

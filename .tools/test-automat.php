@@ -92,7 +92,7 @@ function RequestAction($id, $v): bool
 function IPS_GetObject(int $id): array
 {
     $o = $GLOBALS['OBJ'][$id];
-    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden'], 'ObjectType' => [1 => 1, 2 => 2, 3 => 3, 4 => 4][$o['kind']] ?? 0];
+    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden'], 'ObjectPosition' => $o['pos'] ?? 0, 'ObjectType' => [1 => 1, 2 => 2, 3 => 3, 4 => 4][$o['kind']] ?? 0];
 }
 function IPS_GetObjectIDByIdent(string $ident, int $parent)
 {
@@ -182,7 +182,11 @@ class IPSModule
         $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         if ($keep && $id === false) {
             $def = [false, 0, 0.0, ''][$type];
-            mkvar($GLOBALS['NEXT']++, $type, $def, $name, $this->InstanceID, false, $profile, [], $ident);
+            $id = $GLOBALS['NEXT']++;
+            mkvar($id, $type, $def, $name, $this->InstanceID, false, $profile, [], $ident);
+        }
+        if ($keep) {
+            $GLOBALS['OBJ'][$id]['pos'] = $pos; // wie Symcon im ungünstigsten Fall: Position bei jedem Aufruf
         }
     }
     public function EnableAction(string $ident): void { $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID); if ($id !== false) { $GLOBALS['OBJ'][$id]['action'] = true; } }
@@ -2045,6 +2049,53 @@ $m->props['cfg_Ways'] = '[]';
 $m->props['Automations'] = '[]';
 $m->props['cfg_ModeAuto'] = true;
 at('12:00:00');
+$m->ApplyChanges();
+
+heading('C14. Store-Reifeprüfung');
+$m->props['Automations'] = json_encode([$bl]);
+$m->ApplyChanges();
+$sid = IPS_GetObjectIDByIdent('s_aflur1', 12345);
+$GLOBALS['OBJ'][$sid]['pos'] = 99; // Nutzer sortiert im Objektbaum um
+$m->ApplyChanges();
+check('9m: Umsortierung im Objektbaum bleibt beim Übernehmen erhalten', $GLOBALS['OBJ'][$sid]['pos'] === 99);
+$srcM = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
+check('9c: alle ReadProperty*/ReadAttribute* laufen über typsichere Helfer (nur dort direkt)', substr_count($srcM, '$this->ReadProperty') === 4 && substr_count($srcM, '$this->ReadAttribute') === 3);
+$lay = json_decode($m->GetConfigurationForm(), true);
+$fl = $find($lay['elements'], 'FormLayout');
+check('3: berechnete Spalte „Bereich“ im Formular-Aufbau wird nicht gespeichert', (array_column($fl['columns'], 'save', 'name')['Panel'] ?? true) === false);
+check('12: keine Namen der Entwickleranlage in sichtbaren Texten', !preg_match('/Handy Dietmar|Svetlana|Froggit|#44712|#26093/u', $srcM));
+// B1: Variable einer fremden Instanz ohne Aktion wird nicht per SetValue „geschaltet“
+mkinst(2000, 'Fremdes Gerät');
+mkvar(2001, VARIABLETYPE_BOOLEAN, false, 'Status (nur Anzeige)', 2000, false, '~Switch');
+$sw = new ReflectionMethod('Automat', 'switchVariable');
+$m->logged = [];
+$okSw = $sw->invoke($m, 2001, true, '');
+check('Fremde Variable ohne Aktion: nicht beschrieben, Grund im Meldungslog', $okSw === false && GetValue(2001) === false && strpos(json_encode($m->logged, JSON_UNESCAPED_UNICODE), 'hat keine Aktion') !== false);
+// B4: Meldeweg ohne Ziel wird dauerhaft geloggt
+$m->props['cfg_Ways'] = json_encode([['Id' => 'x', 'Name' => 'Weg ohne Ziel', 'Typ' => 'push', 'Target' => 99999, 'To' => '', 'Std' => true, 'Quiet' => false], ['Id' => 'y', 'Name' => 'Skript fehlt', 'Typ' => 'script', 'Target' => 0, 'To' => '', 'Std' => true, 'Quiet' => false]]);
+$m->logged = [];
+$m->TestMessage();
+$lg = json_encode($m->logged, JSON_UNESCAPED_UNICODE);
+check('Meldeweg ohne Visualisierung bzw. ohne Skript: Warnung im Meldungslog', strpos($lg, 'Weg ohne Ziel') !== false && strpos($lg, 'Skript fehlt') !== false);
+$m->props['cfg_Ways'] = '[]';
+// B3: offenes Formular wird nach Ausblenden/Wiederholen und nach der Suche nachgezogen
+$m->Discover();
+$m->fieldUpdates = [];
+$m->Discover();
+check('Suche zieht die Katalog-Zeilen „gefunden / fehlt“ im offenen Formular nach', count(array_filter($m->fieldUpdates, fn($u) => strpos($u[0], 'cat_') === 0 && $u[1] === 'caption')) === count(AUTOMATKatalog::TYPES));
+$sugK = json_decode($m->attrs['Suggestions'], true);
+if (count($sugK) > 0) {
+    $m->fieldUpdates = [];
+    $m->DismissSuggestions(json_encode([$sugK[0]['key']]));
+    check('Ausblenden zeigt den Knopf „wieder anzeigen“ sofort', in_array(['RestoreSuggestionsBtn', 'visible', true], $m->fieldUpdates, true));
+    $m->fieldUpdates = [];
+    $m->RestoreSuggestions();
+    check('Wieder anzeigen blendet den Knopf sofort aus', in_array(['RestoreSuggestionsBtn', 'visible', false], $m->fieldUpdates, true));
+}
+// README-Abzeichen folgt der Version
+$libV = json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true)['version'];
+check('README: Abzeichen „Modul Version“ = library.json (' . $libV . ')', strpos(file_get_contents(dirname(__DIR__) . '/README.md'), 'Modul%20Version-' . $libV . '-blue') !== false);
+$m->props['Automations'] = '[]';
 $m->ApplyChanges();
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

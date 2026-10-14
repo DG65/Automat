@@ -167,7 +167,7 @@ class Automat extends IPSModule
         $storeID = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
         if ($storeID) {
             IPS_SetHidden($storeID, true);
-            $old = $this->ReadAttributeString('States');
+            $old = $this->aStr('States');
             if ((string)GetValue($storeID) === '' && $old !== '' && $old !== '{}') {
                 SetValueString($storeID, $old); // Übernahme aus Versionen bis 0.1.13
             }
@@ -222,7 +222,7 @@ class Automat extends IPSModule
             $this->RegisterMessage($presence, VM_UPDATE);
         }
         $isDay = $this->locationVariable('IsDay');
-        if ($isDay > 0 && ($this->ReadPropertyInteger('cfg_DayRef') === 2 || $this->ReadPropertyInteger('cfg_EveningRef') === 2)) {
+        if ($isDay > 0 && ($this->pInt('cfg_DayRef') === 2 || $this->pInt('cfg_EveningRef') === 2)) {
             $this->RegisterMessage($isDay, VM_UPDATE);
         }
         if ($this->lightVar() > 0) {
@@ -421,7 +421,7 @@ class Automat extends IPSModule
         if ($res['log'] !== null) {
             $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
         }
-        if (count($failed) > 0 && $this->ReadPropertyBoolean('cfg_NotifyFaults')) {
+        if (count($failed) > 0 && $this->pBool('cfg_NotifyFaults')) {
             $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true, null);
         }
         $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
@@ -536,7 +536,7 @@ class Automat extends IPSModule
         $rows = array_filter($this->rows(), function ($r) {
             return !empty($r['Enabled']);
         });
-        if (count($rows) === 0 && !$this->ReadPropertyBoolean('cfg_ModeAuto') && $this->ReadAttributeString('Deferred') === '[]') {
+        if (count($rows) === 0 && !$this->pBool('cfg_ModeAuto') && $this->aStr('Deferred') === '[]') {
             $this->SetTimerInterval('Tick', 0);
             return;
         }
@@ -568,8 +568,12 @@ class Automat extends IPSModule
         $ok = false;
         $error = '';
         try {
+            $parent = IPS_GetParent($vid);
             if (HasAction($vid)) {
                 $ok = (bool)RequestAction($vid, $value);
+            } elseif ($parent > 0 && $parent !== $this->InstanceID && IPS_InstanceExists($parent)) {
+                // Variable einer fremden Instanz ohne Aktion: SetValue würde nur die Anzeige ändern, nicht das Gerät.
+                $error = 'gehört zur Instanz „' . IPS_GetName($parent) . '“ und hat keine Aktion — nicht schaltbar, bitte die schaltbare Variable des Geräts wählen';
             } else {
                 $ok = (bool)SetValue($vid, $value);
             }
@@ -818,24 +822,24 @@ class Automat extends IPSModule
     private function evaluateMode(bool $presenceChanged): void
     {
         [$presence] = $this->presenceSource();
-        if (!$this->ReadPropertyBoolean('cfg_ModeAuto') && $presence === null) {
+        if (!$this->pBool('cfg_ModeAuto') && $presence === null) {
             return;
         }
         $current = (int)$this->GetValue('Hausmodus');
         $now = $this->now();
-        if ($this->ReadPropertyBoolean('cfg_ModeAuto')) {
+        if ($this->pBool('cfg_ModeAuto')) {
             $today = date('Y-m-d', $now);
             $isDayVid = $this->locationVariable('IsDay');
             // Gewählter Zeitpunkt der Location Control → für die Logik „sunrise“/„sunset“ (Ref 1 bzw. 0).
-            $dayRef = $this->ReadPropertyInteger('cfg_DayRef');
-            $eveRef = $this->ReadPropertyInteger('cfg_EveningRef');
-            $nightRef = $this->ReadPropertyInteger('cfg_NightRef');
+            $dayRef = $this->pInt('cfg_DayRef');
+            $eveRef = $this->pInt('cfg_EveningRef');
+            $nightRef = $this->pInt('cfg_NightRef');
             $target = AUTOMATLogik::autoMode($now, [
-                'dayRef' => isset(self::DAY_EVENTS[$dayRef]) ? 1 : $dayRef, 'dayFrom' => $this->ReadPropertyString('cfg_DayFrom'), 'dayOff' => $this->ReadPropertyInteger('cfg_DayOffset'),
-                'eveRef' => isset(self::EVE_EVENTS[$eveRef]) ? 0 : $eveRef, 'eveFrom' => $this->ReadPropertyString('cfg_EveningFrom'), 'eveOff' => $this->ReadPropertyInteger('cfg_EveningOffset'),
-                'night' => $this->ReadPropertyString('cfg_NightFrom'),
+                'dayRef' => isset(self::DAY_EVENTS[$dayRef]) ? 1 : $dayRef, 'dayFrom' => $this->pStr('cfg_DayFrom'), 'dayOff' => $this->pInt('cfg_DayOffset'),
+                'eveRef' => isset(self::EVE_EVENTS[$eveRef]) ? 0 : $eveRef, 'eveFrom' => $this->pStr('cfg_EveningFrom'), 'eveOff' => $this->pInt('cfg_EveningOffset'),
+                'night' => $this->pStr('cfg_NightFrom'),
                 'nightAt' => isset(self::NIGHT_EVENTS[$nightRef]) ? $this->sunOn(self::NIGHT_EVENTS[$nightRef], $today) : null,
-                'nightOff' => $this->ReadPropertyInteger('cfg_NightOffset'),
+                'nightOff' => $this->pInt('cfg_NightOffset'),
                 'sunrise' => isset(self::DAY_EVENTS[$dayRef]) ? $this->sunOn(self::DAY_EVENTS[$dayRef], $today) : null,
                 'sunset' => isset(self::EVE_EVENTS[$eveRef]) ? $this->sunOn(self::EVE_EVENTS[$eveRef], $today) : null,
                 'isDay' => $isDayVid > 0 ? (bool)GetValue($isDayVid) : null,
@@ -848,7 +852,7 @@ class Automat extends IPSModule
             }
             $target = $presence === false ? AUTOMATKatalog::MODE_AWAY : ($current === AUTOMATKatalog::MODE_AWAY ? 0 : $current);
         }
-        $last = $this->ReadAttributeInteger('LastAutoMode');
+        $last = $this->aInt('LastAutoMode');
         if ($target !== $last || ($presenceChanged && $target !== $current)) {
             $this->WriteAttributeInteger('LastAutoMode', $target);
             if ($target !== $current) {
@@ -866,7 +870,7 @@ class Automat extends IPSModule
         $presVid = $this->externalPresenceVar();
         if ($presVid > 0) {
             $p = AUTOMATLogik::isTrue(GetValue($presVid));
-            if ($this->ReadPropertyBoolean('cfg_PresenceInvert')) {
+            if ($this->pBool('cfg_PresenceInvert')) {
                 $p = !$p;
             }
             return [$p, '✏️ Anwesenheit aus der eingetragenen Variable „' . $this->varLabel($presVid) . '“: ' . ($p ? 'jemand da' : 'niemand da') . '.'];
@@ -889,7 +893,7 @@ class Automat extends IPSModule
      */
     private function externalPresenceVar(): int
     {
-        $vid = $this->ReadPropertyInteger('cfg_PresenceVar');
+        $vid = $this->pInt('cfg_PresenceVar');
         if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid) || $this->isOwnPresenceVar($vid)) {
             return 0;
         }
@@ -961,7 +965,7 @@ class Automat extends IPSModule
         }
         // Alarm (Wasser/Rauch) wartet nie auf das Ende der Ruhezeit.
         $quiet = !$urgent && $this->inQuiet($this->now());
-        $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
+        $q = json_decode($this->aStr('Deferred'), true) ?: [];
         foreach ($this->waysFor($row) as $w) {
             if ($quiet && $w['quiet']) {
                 $q[] = [$this->now(), $title, $text, $w['id']];
@@ -976,19 +980,19 @@ class Automat extends IPSModule
     /** Ruhezeit (volle Stunden, über Mitternacht möglich). */
     private function inQuiet(int $now): bool
     {
-        if (!$this->ReadPropertyBoolean('cfg_QuietEnabled')) {
+        if (!$this->pBool('cfg_QuietEnabled')) {
             return false;
         }
         $h = (int)date('G', $now);
-        $from = $this->ReadPropertyInteger('cfg_QuietFrom');
-        $to = $this->ReadPropertyInteger('cfg_QuietTo');
+        $from = $this->pInt('cfg_QuietFrom');
+        $to = $this->pInt('cfg_QuietTo');
         return $from === $to ? false : ($from < $to ? $h >= $from && $h < $to : $h >= $from || $h < $to);
     }
 
     /** Nach der Ruhezeit zurückgehaltene Meldungen über ihren Weg zustellen. */
     private function flushDeferred(): void
     {
-        $q = json_decode($this->ReadAttributeString('Deferred'), true) ?: [];
+        $q = json_decode($this->aStr('Deferred'), true) ?: [];
         if (count($q) === 0 || $this->inQuiet($this->now())) {
             return;
         }
@@ -1009,7 +1013,7 @@ class Automat extends IPSModule
      */
     private function ways(): array
     {
-        $rows = json_decode($this->ReadPropertyString('cfg_Ways'), true);
+        $rows = json_decode($this->pStr('cfg_Ways'), true);
         $out = [];
         if (is_array($rows) && count($rows) > 0) {
             $seen = [];
@@ -1026,10 +1030,10 @@ class Automat extends IPSModule
             }
             return $out;
         }
-        if ($this->ReadPropertyBoolean('cfg_NotifyPush')) {
+        if ($this->pBool('cfg_NotifyPush')) {
             $chosen = array_values(array_filter(array_map(function ($r) {
                 return (int)($r['Instance'] ?? 0);
-            }, json_decode($this->ReadPropertyString('cfg_PushTargets'), true) ?: [])));
+            }, json_decode($this->pStr('cfg_PushTargets'), true) ?: [])));
             if (count($chosen) === 0) {
                 $out[] = ['id' => 'push', 'name' => 'Push an alle Visualisierungen', 'typ' => 'push', 'target' => 0, 'to' => '', 'std' => true, 'quiet' => true];
             }
@@ -1037,8 +1041,8 @@ class Automat extends IPSModule
                 $out[] = ['id' => 'push' . ($n + 1), 'name' => 'Push an „' . (IPS_InstanceExists($vid) ? IPS_GetName($vid) : '#' . $vid) . '“', 'typ' => 'push', 'target' => $vid, 'to' => '', 'std' => true, 'quiet' => true];
             }
         }
-        if ($this->ReadPropertyBoolean('cfg_NotifyMail')) {
-            $out[] = ['id' => 'mail', 'name' => 'E-Mail', 'typ' => 'mail', 'target' => $this->ReadPropertyInteger('cfg_MailInstance'), 'to' => trim($this->ReadPropertyString('cfg_MailTo')), 'std' => true, 'quiet' => true];
+        if ($this->pBool('cfg_NotifyMail')) {
+            $out[] = ['id' => 'mail', 'name' => 'E-Mail', 'typ' => 'mail', 'target' => $this->pInt('cfg_MailInstance'), 'to' => trim($this->pStr('cfg_MailTo')), 'std' => true, 'quiet' => true];
         }
         return $out;
     }
@@ -1072,11 +1076,15 @@ class Automat extends IPSModule
             case 'script':
                 if ($w['target'] <= 0 || !IPS_ScriptExists($w['target'])) {
                     $res = '⚠️ kein Skript gewählt (oder es gibt es nicht mehr)';
+                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: ' . $res . ' — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
                     break;
                 }
                 // Das Skript bekommt Titel und Text, z. B. für Telegram, Pushover oder eine Sprachausgabe.
                 $ok = IPS_RunScriptEx($w['target'], ['TITLE' => $title, 'TEXT' => $text, 'SENDER_AUTOMAT' => (string)$this->InstanceID]);
                 $res = $ok ? '✅ Skript „' . IPS_GetName($w['target']) . '“ gestartet' : '⚠️ Skript ließ sich nicht starten';
+                if (!$ok) {
+                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: Skript #' . $w['target'] . ' ließ sich nicht starten — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
+                }
                 break;
             default:
                 $targets = $this->pushTargets($w['target']);
@@ -1098,6 +1106,9 @@ class Automat extends IPSModule
                     } else {
                         $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
                     }
+                }
+                if (count($targets) === 0) {
+                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: keine passende Visualisierung gefunden — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
                 }
                 $res = count($targets) === 0 ? '⚠️ keine passende Visualisierung gefunden' : ($sent === count($targets) ? '✅ ' : '⚠️ ') . $sent . ' von ' . count($targets) . ' Zielen';
         }
@@ -1187,7 +1198,7 @@ class Automat extends IPSModule
 
     private function addLog(string $name, string $text): void
     {
-        $log = json_decode($this->ReadAttributeString('Protocol'), true);
+        $log = json_decode($this->aStr('Protocol'), true);
         if (!is_array($log)) {
             $log = [];
         }
@@ -1198,7 +1209,7 @@ class Automat extends IPSModule
 
     private function protocolLines(int $n): array
     {
-        $log = json_decode($this->ReadAttributeString('Protocol'), true);
+        $log = json_decode($this->aStr('Protocol'), true);
         $out = [];
         foreach (array_slice(is_array($log) ? $log : [], 0, $n) as $e) {
             $out[] = date('d.m.Y H:i:s', (int)$e[0]) . ' · ' . ($e[1] !== '' ? $e[1] . ': ' : '') . $e[2];
@@ -1237,11 +1248,18 @@ class Automat extends IPSModule
         }
         unset($s);
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
-        $this->WriteAttributeString('RoleCounts', json_encode(AUTOMATErkennung::roleCounts($items)));
+        $counts = AUTOMATErkennung::roleCounts($items);
+        $this->WriteAttributeString('RoleCounts', json_encode($counts));
+        foreach (AUTOMATKatalog::TYPES as $t => $_) {
+            // Katalog-Zeilen „passende Geräte gefunden / dafür fehlt“ im offenen Formular nachziehen
+            $line = $this->catalogLine($t, $counts);
+            $this->UpdateFormField('cat_' . $t, 'caption', $line);
+            $this->UpdateFormField('cat_' . $t, 'visible', $line !== '');
+        }
         $this->WriteAttributeInteger('LastDiscoveryTs', $this->now());
 
-        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
-        $src = $this->ReadAttributeString('RoomSource');
+        $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
+        $src = $this->aStr('RoomSource');
         $this->UpdateFormField('RoomSource', 'caption', $src);
         $this->UpdateFormField('RoomSource', 'color', strpos($src, '🔗') !== false ? 0x2E8B3D : -1);
         $counts = AUTOMATErkennung::roleCounts($items);
@@ -1341,13 +1359,13 @@ class Automat extends IPSModule
 
     private function dismissed(): array
     {
-        $d = json_decode($this->ReadAttributeString('Dismissed'), true);
+        $d = json_decode($this->aStr('Dismissed'), true);
         return is_array($d) ? $d : [];
     }
 
     private function suggestions(): array
     {
-        $s = json_decode($this->ReadAttributeString('Suggestions'), true);
+        $s = json_decode($this->aStr('Suggestions'), true);
         if (!is_array($s)) {
             return [];
         }
@@ -1441,7 +1459,7 @@ class Automat extends IPSModule
 
     private function discoverHeadLine(): string
     {
-        $ts = $this->ReadAttributeInteger('LastDiscoveryTs');
+        $ts = $this->aInt('LastDiscoveryTs');
         if ($ts === 0) {
             return 'ℹ️ Noch nicht gesucht — „Jetzt Vorschläge suchen“ durchsucht den Objektbaum.';
         }
@@ -1510,7 +1528,7 @@ class Automat extends IPSModule
             $rows[] = $row;
         }
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($rows)));
-        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
+        $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
         return '✅ ' . $what . (count($newRows) === 1 ? ' steht' : ' stehen') . ' jetzt in der Liste — noch NICHT gespeichert.' . "\n"
             . 'Bitte mit ✏️ prüfen (Geräte, Zeiten) und unten „Übernehmen“ klicken.' . $note;
     }
@@ -1524,11 +1542,12 @@ class Automat extends IPSModule
         }
         $d = array_values(array_unique(array_merge($this->dismissed(), array_map('strval', $keys))));
         $this->WriteAttributeString('Dismissed', json_encode($d));
-        $sugg = array_values(array_filter(json_decode($this->ReadAttributeString('Suggestions'), true) ?: [], function ($s) use ($keys) {
+        $sugg = array_values(array_filter(json_decode($this->aStr('Suggestions'), true) ?: [], function ($s) use ($keys) {
             return !in_array($s['key'], $keys, true);
         }));
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
-        $this->refreshSuggestionsForm($this->ReadPropertyInteger('cfg_SuggestOrder'));
+        $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
+        $this->UpdateFormField('RestoreSuggestionsBtn', 'visible', true);
         return '🙈 ' . count($keys) . ' Vorschlag/Vorschläge ausgeblendet — auch bei der nächsten Suche nicht mehr. („Ausgeblendete Vorschläge wieder anzeigen“ holt sie zurück.)';
     }
 
@@ -1537,6 +1556,7 @@ class Automat extends IPSModule
     {
         $n = count($this->dismissed());
         $this->WriteAttributeString('Dismissed', '[]');
+        $this->UpdateFormField('RestoreSuggestionsBtn', 'visible', false);
         return $n > 0 ? '✅ ' . $n . ' ausgeblendete Vorschläge kommen bei der nächsten Suche wieder. ' . $this->Discover() : 'ℹ️ Es war nichts ausgeblendet.';
     }
 
@@ -1935,7 +1955,8 @@ class Automat extends IPSModule
                 return $out;
             }
         }
-        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: ($v['VariableProfile'] ?? ''));
+        $presP = (array)(($v['VariableCustomPresentation'] ?? []) ?: ($v['VariablePresentation'] ?? []));
+        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: (($v['VariableProfile'] ?? '') ?: ($presP['PROFILE'] ?? '')));
         if ($profile !== '' && IPS_VariableProfileExists($profile)) {
             foreach ((array)(IPS_GetVariableProfile($profile)['Associations'] ?? []) as $a) {
                 if (trim((string)($a['Name'] ?? '')) !== '') {
@@ -2041,7 +2062,7 @@ class Automat extends IPSModule
             ];
         }
         return [
-            'light' => $this->ReadPropertyBoolean('cfg_TileLight'),
+            'light' => $this->pBool('cfg_TileLight'),
             'now' => $this->now(),
             'mode' => (int)$this->getOwn('Hausmodus', 0),
             'modes' => array_values(AUTOMATKatalog::MODES),
@@ -2105,6 +2126,46 @@ class Automat extends IPSModule
     //  Helfer
     // =====================================================================
 
+    // =====================================================================
+    //  Typsichere Lesezugriffe (SUITE.md Store-Checkliste 9c): Während die Instanz neu lädt, liefern
+    //  ReadProperty*/ReadAttribute* false statt des Typs — mit strict_types wäre das ein TypeError.
+    // =====================================================================
+
+    private function pInt(string $name): int
+    {
+        return (int)$this->ReadPropertyInteger($name);
+    }
+
+    private function pStr(string $name): string
+    {
+        return (string)$this->ReadPropertyString($name);
+    }
+
+    private function pBool(string $name): bool
+    {
+        return (bool)$this->ReadPropertyBoolean($name);
+    }
+
+    private function pFloat(string $name): float
+    {
+        return (float)$this->ReadPropertyFloat($name);
+    }
+
+    private function aStr(string $name): string
+    {
+        return (string)$this->ReadAttributeString($name);
+    }
+
+    private function aInt(string $name): int
+    {
+        return (int)$this->ReadAttributeInteger($name);
+    }
+
+    private function aBool(string $name): bool
+    {
+        return (bool)$this->ReadAttributeBoolean($name);
+    }
+
     /** Testbar überschreibbar (Prüfstand ohne Symcon). */
     protected function now(): int
     {
@@ -2119,7 +2180,7 @@ class Automat extends IPSModule
     /** Listenzeilen mit garantierter Kennung und bekanntem Typ. */
     private function rows(): array
     {
-        $rows = json_decode((string)$this->ReadPropertyString('Automations'), true);
+        $rows = json_decode((string)$this->pStr('Automations'), true);
         if (!is_array($rows)) {
             return [];
         }
@@ -2188,13 +2249,17 @@ class Automat extends IPSModule
 
     private function attrMap(string $name): array
     {
-        $m = json_decode((string)$this->ReadAttributeString($name), true);
+        $m = json_decode((string)$this->aStr($name), true);
         return is_array($m) ? $m : [];
     }
 
     private function ensureVar(string $ident, string $name, int $type, string $profile, int $pos): void
     {
         $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
+        // Position nur beim Anlegen vorgeben — eine Umsortierung im Objektbaum bleibt erhalten (Store-Checkliste 9m).
+        if ($id) {
+            $pos = (int)(IPS_GetObject($id)['ObjectPosition'] ?? $pos);
+        }
         $this->MaintainVariable($ident, $name, $type, $profile, $pos, true);
         if ($id) {
             // MaintainVariable benennt nicht um (Pitfall 16): nur Standardnamen nachziehen, Nutzernamen bleiben.
@@ -2338,6 +2403,28 @@ class Automat extends IPSModule
     }
 
     /** Aktueller Wert einer Variable kurz als Text mit Einheit („12 lx"), null wenn unbekannt. */
+    /** Katalog: Was gibt es für diesen Typ im Haus? Leer, solange noch nicht gesucht wurde. */
+    private function catalogLine(string $type, ?array $counts): string
+    {
+        if ($counts === null) {
+            return '';
+        }
+        $def = AUTOMATKatalog::TYPES[$type];
+        if (count($def['needs']) === 0) {
+            return '      ✅ geht mit jeder Variable';
+        }
+        $missing = [];
+        $have = [];
+        foreach ($def['needs'] as $role) {
+            if ((int)($counts[$role] ?? 0) > 0) {
+                $have[] = $counts[$role] . '× ' . AUTOMATKatalog::ROLES[$role];
+            } else {
+                $missing[] = AUTOMATKatalog::ROLES[$role];
+            }
+        }
+        return count($missing) === 0 ? '      ✅ passende Geräte gefunden: ' . implode(', ', $have) : '      ⚪ dafür fehlt: ' . implode(', ', $missing) . ' (oder wurde nicht erkannt — von Hand wählbar)';
+    }
+
     private function liveText(int $vid): ?string
     {
         if (!IPS_VariableExists($vid)) {
@@ -2348,7 +2435,8 @@ class Automat extends IPSModule
             return null;
         }
         $num = rtrim(rtrim(number_format((float)$v, 1, ',', '.'), '0'), ',');
-        return $num . ' lx';
+        $unit = $this->unitOf($vid);
+        return $num . ' ' . ($unit !== '' ? $unit : 'lx');
     }
 
     /** AUTOMAT_UISetListOrder($id, $order) — Liste im offenen Formular nach Raum (0) oder Art (1) ordnen. */
@@ -2401,7 +2489,7 @@ class Automat extends IPSModule
 
     private function PurposeIntro(): ?array
     {
-        if ($this->ReadAttributeBoolean('PurposeIntroGone')) {
+        if ($this->aBool('PurposeIntroGone')) {
             return null;
         }
         return [
@@ -2417,7 +2505,7 @@ class Automat extends IPSModule
 
     private function NewsBanner(): ?array
     {
-        $seen = $this->ReadAttributeString('SeenNews') ?: '0';
+        $seen = $this->aStr('SeenNews') ?: '0';
         $pending = [];
         foreach (self::NEWS_VERSIONS as $version => $lines) {
             if (version_compare((string)$version, $seen, '>')) {
@@ -2482,7 +2570,7 @@ class Automat extends IPSModule
             ? 'ℹ️ Noch kein Automatismus — unten „Entdecken“ nutzen, im „Katalog“ einen Typ wählen oder „+“ an der Liste klicken.'
             : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' aktiv'
                 . ($problems > 0 ? ', ' . $problems . ' unvollständig (rot)' : '') . ($locked > 0 ? ', ' . $locked . ' gesperrt' : '')
-                . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->ReadPropertyBoolean('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
+                . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->pBool('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '⚙️  Automatismen',
             'items' => [
@@ -2494,7 +2582,7 @@ class Automat extends IPSModule
                 [
                     'type' => 'List', 'name' => 'Automations', 'caption' => 'Automatismen', 'rowCount' => max(12, min(25, count($rows) + 3)),
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
-                    'sort' => $this->listSort($this->ReadPropertyInteger('cfg_ListOrder')),
+                    'sort' => $this->listSort($this->pInt('cfg_ListOrder')),
                     'columns' => [
                         ['caption' => 'Aktiv', 'name' => 'Enabled', 'width' => '60px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
@@ -2527,13 +2615,13 @@ class Automat extends IPSModule
 
     private function DiscoverPanel(): array
     {
-        $src = $this->ReadAttributeString('RoomSource');
+        $src = $this->aStr('RoomSource');
         if ($src === '') {
             $src = count(@IPS_GetInstanceListByModuleID(self::RAUM_GUID) ?: []) > 0
                 ? 'ℹ️ Raumstruktur gefunden — die Räume werden bei der Suche übernommen.'
                 : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
         }
-        $order = $this->ReadPropertyInteger('cfg_SuggestOrder');
+        $order = $this->pInt('cfg_SuggestOrder');
         $n = count($this->suggestions());
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '🔎  Entdecken — Vorschläge aus deinen Geräten',
@@ -2564,7 +2652,7 @@ class Automat extends IPSModule
                     ['type' => 'Button', 'caption' => '➕ Angehakte in die Liste übernehmen', 'onClick' => self::PICKED_KEYS . ' $r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdoptMany($id, json_encode($k), json_encode($r));'],
                     ['type' => 'Button', 'caption' => '🙈 Angehakte ausblenden', 'onClick' => self::PICKED_KEYS . ' echo AUTOMAT_DismissSuggestions($id, json_encode($k));'],
                 ]],
-                ['type' => 'Button', 'caption' => 'Ausgeblendete Vorschläge wieder anzeigen', 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
+                ['type' => 'Button', 'name' => 'RestoreSuggestionsBtn', 'caption' => 'Ausgeblendete Vorschläge wieder anzeigen', 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
                 ['type' => 'Label', 'caption' => 'ℹ️ Gesucht wird nach Bewegungsmeldern, Lichtern (Schalter/Dimmer), Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von Haushaltsgeräten. ⚠️ bzw. gelb heißt: dieselben Geräte werden schon anderswo geschaltet — Details mit „Öffnen“-Knopf im Bearbeiten-Dialog nach dem Übernehmen.'],
             ],
         ];
@@ -2572,7 +2660,7 @@ class Automat extends IPSModule
 
     private function CatalogPanel(): array
     {
-        $counts = json_decode($this->ReadAttributeString('RoleCounts'), true);
+        $counts = json_decode($this->aStr('RoleCounts'), true);
         $items = [['type' => 'Label', 'caption' => 'Alle Arten von Automatismen. Ob passende Geräte da sind, steht nach „Jetzt Vorschläge suchen“ darunter.']];
         foreach (AUTOMATKatalog::CATEGORIES as $cat => $catLabel) {
             $items[] = ['type' => 'Label', 'caption' => $catLabel, 'bold' => true];
@@ -2581,19 +2669,8 @@ class Automat extends IPSModule
                     continue;
                 }
                 $items[] = ['type' => 'Label', 'caption' => $def['icon'] . ' ' . $def['label'] . ' — ' . $def['desc']];
-                if (is_array($counts)) {
-                    $missing = [];
-                    $have = [];
-                    foreach ($def['needs'] as $role) {
-                        if ((int)($counts[$role] ?? 0) > 0) {
-                            $have[] = $counts[$role] . '× ' . AUTOMATKatalog::ROLES[$role];
-                        } else {
-                            $missing[] = AUTOMATKatalog::ROLES[$role];
-                        }
-                    }
-                    $items[] = ['type' => 'Label', 'caption' => count($def['needs']) === 0 ? '      ✅ geht mit jeder Variable'
-                        : (count($missing) === 0 ? '      ✅ passende Geräte gefunden: ' . implode(', ', $have) : '      ⚪ dafür fehlt: ' . implode(', ', $missing) . ' (oder wurde nicht erkannt — von Hand wählbar)')];
-                }
+                $line = $this->catalogLine($t, is_array($counts) ? $counts : null);
+                $items[] = ['type' => 'Label', 'name' => 'cat_' . $t, 'caption' => $line, 'visible' => $line !== ''];
             }
         }
         $opts = [['caption' => '— Art wählen —', 'value' => '']];
@@ -2644,10 +2721,10 @@ class Automat extends IPSModule
     /** Helligkeitssensor, wenn er gewählt und für Tag oder Abend genutzt wird (sonst 0). */
     private function lightVar(): int
     {
-        if ($this->ReadPropertyInteger('cfg_DayRef') !== 6 && $this->ReadPropertyInteger('cfg_EveningRef') !== 6) {
+        if ($this->pInt('cfg_DayRef') !== 6 && $this->pInt('cfg_EveningRef') !== 6) {
             return 0;
         }
-        $vid = $this->ReadPropertyInteger('cfg_LightVar');
+        $vid = $this->pInt('cfg_LightVar');
         return $vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid) ? $vid : 0;
     }
 
@@ -2658,8 +2735,8 @@ class Automat extends IPSModule
         if ($vid === 0) {
             return null;
         }
-        $st = AUTOMATLogik::lightDay(json_decode($this->ReadAttributeString('LightState'), true) ?: [], (float)GetValue($vid), $now,
-            $this->ReadPropertyFloat('cfg_LightDay'), $this->ReadPropertyFloat('cfg_LightNight'), max(0, $this->ReadPropertyInteger('cfg_LightHold')) * 60);
+        $st = AUTOMATLogik::lightDay(json_decode($this->aStr('LightState'), true) ?: [], (float)GetValue($vid), $now,
+            $this->pFloat('cfg_LightDay'), $this->pFloat('cfg_LightNight'), max(0, $this->pInt('cfg_LightHold')) * 60);
         $this->WriteAttributeString('LightState', json_encode($st));
         return (bool)$st['day'];
     }
@@ -2673,7 +2750,8 @@ class Automat extends IPSModule
             $pres = $v['VariablePresentation'] ?? [];
         }
         $suffix = is_array($pres) ? (string)($pres['SUFFIX'] ?? '') : '';
-        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: ($v['VariableProfile'] ?? ''));
+        // Profil: eigenes, Standard oder in der Darstellung eingebettet (Darstellung „Profil“)
+        $profile = (string)(($v['VariableCustomProfile'] ?? '') ?: (($v['VariableProfile'] ?? '') ?: (is_array($pres) ? ($pres['PROFILE'] ?? '') : '')));
         if ($suffix === '' && $profile !== '' && IPS_VariableProfileExists($profile)) {
             $suffix = (string)(IPS_GetVariableProfile($profile)['Suffix'] ?? '');
         }
@@ -2713,7 +2791,7 @@ class Automat extends IPSModule
         $text = 'Richtwerte: Einstrahlung (W/m²) hell ab 50, dunkel unter 20 · Helligkeit (lx) hell ab 1000, dunkel unter 300. '
             . 'Manche Wetterstationen zeigen die Einstrahlung mit „lx“ an, obwohl sie W/m² liefert — maßgeblich sind die Zahlen. '
             . 'Die Haltezeit verhindert, dass eine Wolke umschaltet.';
-        $lv = $this->ReadPropertyInteger('cfg_LightVar');
+        $lv = $this->pInt('cfg_LightVar');
         if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
             return $text;
         }
@@ -2742,9 +2820,9 @@ class Automat extends IPSModule
         }
         $p = [];
         if ($needLight) {
-            $vid = $this->ReadPropertyInteger('cfg_LightVar');
+            $vid = $this->pInt('cfg_LightVar');
             if ($vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid)) {
-                $st = json_decode($this->ReadAttributeString('LightState'), true) ?: [];
+                $st = json_decode($this->aStr('LightState'), true) ?: [];
                 $p[] = 'Sensor „' . $this->varLabel($vid) . '“ gerade ' . round((float)GetValue($vid), 1) . ' ' . $this->unitOf($vid)
                     . (isset($st['day']) ? ' (' . ($st['day'] ? 'hell' : 'dunkel') . ')' : '');
             } else {
@@ -2772,9 +2850,9 @@ class Automat extends IPSModule
 
     private function ModePanel(): array
     {
-        $dayRef = $this->ReadPropertyInteger('cfg_DayRef');
-        $eveRef = $this->ReadPropertyInteger('cfg_EveningRef');
-        $nightRef = $this->ReadPropertyInteger('cfg_NightRef');
+        $dayRef = $this->pInt('cfg_DayRef');
+        $eveRef = $this->pInt('cfg_EveningRef');
+        $nightRef = $this->pInt('cfg_NightRef');
         $onRef = 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef, $cfg_NightRef);';
         $dayOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
         foreach (self::DAY_EVENTS as $v => $ident) {
@@ -2791,7 +2869,7 @@ class Automat extends IPSModule
         $eveOpts[] = ['caption' => 'wenn es dunkel wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
         $useLight = $dayRef === 6 || $eveRef === 6;
         $lightUnit = '';
-        $lv = $this->ReadPropertyInteger('cfg_LightVar');
+        $lv = $this->pInt('cfg_LightVar');
         if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
             $lightUnit = $this->unitOf($lv);
         }
@@ -2801,12 +2879,12 @@ class Automat extends IPSModule
             $nightOpts[] = $this->eventOption($v, $ident);
         }
         $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
-        $auto = $this->ReadPropertyBoolean('cfg_ModeAuto');
+        $auto = $this->pBool('cfg_ModeAuto');
         [, $presText] = $this->presenceSource();
         // Mit „Anwesenheit zusammenfassen“ ist das Feld überflüssig — nur zeigen, wenn dort eine fremde Quelle steht.
         $presField = $this->hasPresenceRow();
         $presShow = !$presField || $this->externalPresenceVar() > 0;
-        $own = $this->ReadPropertyInteger('cfg_PresenceVar');
+        $own = $this->pInt('cfg_PresenceVar');
         if ($own >= AUTOMATKatalog::$minId && IPS_VariableExists($own) && $this->isOwnPresenceVar($own)) {
             $presText .= ' Im Feld „Anwesenheits-Variable“ steht noch die Ergebnisvariable selbst — das ist nicht nötig, sie wird ohnehin genutzt.';
             $presShow = true;
@@ -2860,12 +2938,12 @@ class Automat extends IPSModule
         foreach ($ways as $w) {
             $rows[] = ['Id' => $w['id'], 'Name' => $w['name'], 'Typ' => $w['typ'], 'Target' => $w['target'], 'To' => $w['to'], 'Std' => $w['std'], 'Quiet' => $w['quiet']];
         }
-        $legacy = (json_decode($this->ReadPropertyString('cfg_Ways'), true) ?: []) === [] && count($ways) > 0;
+        $legacy = (json_decode($this->pStr('cfg_Ways'), true) ?: []) === [] && count($ways) > 0;
         return [
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🔔  Meldungen',
             'items' => [
                 ['type' => 'Label', 'caption' => '— Meldewege —', 'bold' => true],
-                ['type' => 'Label', 'caption' => 'Lege hier fest, WIE gemeldet werden kann — beliebig viele Wege, z. B. „Handy Dietmar“ (Push an ein WebFront), „Kachel Küche“ (Push an eine Kachel-Visualisierung), „E-Mail Familie“ oder „Telegram“ (ein Skript, das die Meldung weiterreicht). Welcher Automatismus welchen Weg nutzt, wählst du in seinem Dialog (✏️); ohne Haken dort gelten die Standard-Wege.'],
+                ['type' => 'Label', 'caption' => 'Lege hier fest, WIE gemeldet werden kann — beliebig viele Wege, z. B. „Mein Handy“ (Push an ein WebFront), „Kachel Küche“ (Push an eine Kachel-Visualisierung), „E-Mail Familie“ oder „Telegram“ (ein Skript, das die Meldung weiterreicht). Welcher Automatismus welchen Weg nutzt, wählst du in seinem Dialog (✏️); ohne Haken dort gelten die Standard-Wege.'],
                 [
                     'type' => 'List', 'name' => 'cfg_Ways', 'caption' => 'Meldewege', 'rowCount' => max(3, count($rows) + 1), 'add' => true, 'delete' => true,
                     'loadValuesFromConfiguration' => false, 'values' => $rows,
@@ -2926,7 +3004,7 @@ class Automat extends IPSModule
     private function formLayout(): array
     {
         $by = [];
-        foreach (json_decode($this->ReadPropertyString('FormLayout'), true) ?: [] as $r) {
+        foreach (json_decode($this->pStr('FormLayout'), true) ?: [] as $r) {
             if (is_array($r) && isset($r['Key'])) {
                 $by[(string)$r['Key']] = $r;
             }
@@ -2983,7 +3061,7 @@ class Automat extends IPSModule
                     'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false, 'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => '', 'save' => false],
                         ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
                         ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
@@ -3010,7 +3088,7 @@ class Automat extends IPSModule
 
     private function ForumHint(): ?array
     {
-        if ($this->ReadAttributeBoolean('ForumHintGone')) {
+        if ($this->aBool('ForumHintGone')) {
             return null;
         }
         return [
