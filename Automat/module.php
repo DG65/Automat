@@ -66,8 +66,15 @@ class Automat extends IPSModule
 
     // „Neu bis Version“: erst ab der ersten veröffentlichten Version gepflegt
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
-    private const NEWS_VERSIONS = [];
+    // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
+    private const NEWS_VERSIONS = [
+        '0.1.34' => [
+            '💬 Es gibt jetzt einen Forum-Thread für Fragen, Wünsche und Rückmeldungen — Link unter „💬 Rückmeldungen“ und in „📖 Dokumentation & Hilfe“.',
+            '🕒 Uhrzeiten, die Stunden entfernt liegen, stehen ohne Sekunden in den Zuständen („Rollläden schließen um 18:41 Uhr“).',
+        ],
+    ];
     private const REPO_URL    = 'https://github.com/DG65/Automat';
+    private const FORUM_URL   = 'https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647';
     private const LICENSE_URL = 'https://github.com/DG65/Automat/blob/main/LICENSE';
     private const PAYPAL_URL  = 'https://paypal.me/DietmarGureth';
 
@@ -2542,6 +2549,7 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => 'Sperre und Pause sind „hart“ (gar nichts passiert, laufende Zeiten werden abgebrochen, ein abgesenkter Heizungs-Sollwert wird zurückgestellt). Hausmodus und Bedingung sind „weich“: es wird nichts NEU eingeschaltet oder gemeldet, laufende Zeiten laufen aber zu Ende.'],
                 ['type' => 'Label', 'caption' => 'Doppelte Steuerung: Automat warnt im Dialog und bei Vorschlägen, wenn dieselben Geräte schon von einem anderen Automatismus, einem ausgelösten Ereignis oder einer anderen Instanz verwendet werden. Zwei Regler an einem Licht widersprechen sich — eine Seite abschalten.'],
                 ['type' => 'Label', 'caption' => 'Skripte: AUTOMAT_Overview(<InstanzID>) liefert den Zustand aller Automatismen als Text; IPS_RequestAction(<InstanzID>, \'Hausmodus\', 0…4) bzw. \'Pause\', true/false schaltet global.'],
+                ['type' => 'Button', 'caption' => '💬 Forum-Thread: Fragen, Wünsche, Fehler', 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -3094,7 +3102,8 @@ class Automat extends IPSModule
         return [
             'type' => 'ExpansionPanel', 'name' => 'ForumHintPanel', 'expanded' => true, 'caption' => '💬  Rückmeldungen',
             'items' => [
-                ['type' => 'Label', 'caption' => '🧪 Automat ist neu — Fragen, Wünsche nach weiteren Automatismen oder Fehler sind willkommen (GitHub; ein Forum-Thread folgt).'],
+                ['type' => 'Label', 'caption' => '🧪 Automat ist neu (Beta) — Fragen, Wünsche nach weiteren Automatismen und Fehler gerne im Forum-Thread. Besonders hilfreich sind Rückmeldungen zu Geräten, die ich selbst nicht habe (Rollläden, Taster, Wasser-/Rauchmelder, Lüftung).'],
+                ['type' => 'Button', 'caption' => '💬 Zum Forum-Thread', 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
                 ['type' => 'Button', 'caption' => 'Zum Repository', 'onClick' => "echo '" . self::REPO_URL . "';", 'link' => true],
                 ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'AUTOMAT_AckForumHint($id);'],
             ],

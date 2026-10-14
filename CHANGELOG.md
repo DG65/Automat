@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.34 (Build 35) — 14.10.2026
+
+- Forum-Thread verlinkt (Hinweis „Rückmeldungen“ und „Dokumentation & Hilfe“), README-Stand aktualisiert.
+- Erster Eintrag im „🆕 Neu bis Version“-Bereich (gepflegt ab der Store-Veröffentlichung).
+
 ## 0.1.33 (Build 34) — 14.10.2026
 
 - Zustandstexte zeigen Uhrzeiten mit Stunden Abstand ohne Sekunden („Rollläden schließen um 18:41 Uhr“ statt „18:41:36 Uhr“); kurze Countdowns behalten die Sekunden.
