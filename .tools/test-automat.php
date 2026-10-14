@@ -1612,8 +1612,7 @@ unset($rb);
 $m->props['Automations'] = json_encode($rowsBad);
 $m->fieldUpdates = [];
 $m->UIDialogType('fenster');
-$vis = array_filter($m->fieldUpdates, fn($u) => $u[1] === 'visible' && $u[2] === true && strpos($u[0], 'sec_') === 0);
-check('Typwechsel im Dialog zeigt den passenden Abschnitt', count($vis) === 1 && array_values($vis)[0][0] === 'sec_fenster');
+check('Art gewählt (neuer Automatismus): Beschreibung folgt, keine Abschnitte angesprochen', count(array_filter($m->fieldUpdates, fn($u) => strpos($u[0], 'sec_') === 0)) === 0 && count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'TypeDesc' && strpos($u[2], 'Fenster') !== false)) === 1);
 
 // Hausmodus-Automatik: Standard an, verständlicher Schalter, Zustand sichtbar
 $m2 = new AutomatTest();
@@ -1845,7 +1844,8 @@ $m->props['cfg_PresenceVar'] = 0;
 $m->ApplyChanges();
 check('Hausmodus-Panel bietet Sonnenaufgang und „Ist es Tag“', strpos($ft, 'bei Sonnenaufgang') !== false && strpos($ft, '„Ist es Tag“ (Location Control) falsch wird') !== false);
 $dlgA = json_encode(json_decode($m->UIEditForm('aanw02', 'anwesenheit'), true), JSON_UNESCAPED_UNICODE);
-check('Dialog: 8 Plätze für Anwesenheitssignale, Bewegungsmelder weiter 4', strpos($dlgA, '"an_p8"') !== false && strpos($dlgA, '"an_p9"') === false && strpos($dlgA, '"bl_mel4"') !== false && strpos($dlgA, '"bl_mel5"') === false);
+check('Dialog: 8 Plätze für Anwesenheitssignale, keine Felder anderer Arten', strpos($dlgA, '"an_p8"') !== false && strpos($dlgA, '"an_p9"') === false && strpos($dlgA, '"bl_mel1"') === false);
+check('Bewegungsmelder weiter 4 Plätze', AUTOMATKatalog::slots('bl_mel') === 4);
 fire($m, 1501, false);
 at('12:06:00');
 $m->Tick();
@@ -2113,7 +2113,7 @@ at('12:00:00');
 $m->props['Automations'] = json_encode([$rowW + ['Enabled' => true, 'wa_var' => 1701, 'wa_push' => true]]);
 $m->ApplyChanges();
 $dlgW = json_encode(json_decode($m->UIEditForm('aww1', 'waechter'), true), JSON_UNESCAPED_UNICODE);
-check('Dialog: je Meldeweg ein Haken, Namen je Typ getrennt (wa_mw_… / gf_mw_…)', strpos($dlgW, '"wa_mw_handy"') !== false && strpos($dlgW, '"gf_mw_handy"') !== false && strpos($dlgW, 'kein Haken = die Standard-Wege: Kachel') !== false);
+check('Dialog: je Meldeweg ein Haken mit Typ-Kürzel (wa_mw_…), keine fremden (gf_mw_…)', strpos($dlgW, '"wa_mw_handy"') !== false && strpos($dlgW, '"gf_mw_handy"') === false && strpos($dlgW, 'kein Haken = die Standard-Wege: Kachel') !== false);
 $names = [];
 $walkN = function ($els) use (&$walkN, &$names) {
     foreach ($els as $e) {
@@ -2364,6 +2364,32 @@ check('Klingel: Skript-Meldeweg bekommt das Kamerabild ($_IPS[\'MEDIA\'])', ($GL
 $m->props['cfg_Ways'] = '[]';
 $m->props['Automations'] = '[]';
 at('12:00:00');
+$m->ApplyChanges();
+
+heading('C16. Dialog nur mit der eigenen Art (Konsole hing beim Speichern, 14.10.2026)');
+$bloat = $bl;
+$bloat['Uid'] = 'abloat';
+$bloat['Enabled'] = true;
+foreach (AUTOMATKatalog::TYPES as $t => $_) {
+    if ($t !== 'bewegung') {
+        $bloat += AUTOMATKatalog::defaults($t); // so sahen Zeilen bis 0.1.35 aus
+    }
+}
+$bloat['Type'] = 'bewegung';
+check('Aufgeblähte Zeile (alle Arten) hat über 300 Werte', count($bloat) > 300, (string)count($bloat));
+$m->props['Automations'] = json_encode([$bloat]);
+$m->ApplyChanges();
+$clean = $m->UIEditForm('abloat', 'bewegung');
+$rw = (new ReflectionMethod('Automat', 'rows'))->invoke($m)[0];
+check('Gelesene Zeile enthält nur noch Felder der eigenen Art', count($rw) < 60 && !array_key_exists('rl_out1', $rw) && array_key_exists('bl_mel1', $rw), (string)count($rw));
+$lvB = json_decode($m->GetConfigurationForm(), true);
+$lvRow = $find($lvB['elements'], 'Automations')['values'][0];
+check('Liste im Formular liefert die bereinigte Zeile (beim nächsten Übernehmen gespeichert)', !array_key_exists('zs_t1', $lvRow) && !array_key_exists('al_mel1', $lvRow));
+check('Dialog eines bestehenden Automatismus: nur dessen Abschnitt, klein', strpos($clean, '"sec_bewegung"') !== false && strpos($clean, '"sec_rollladen"') === false && strlen($clean) < 30000, (string)strlen($clean));
+check('Art lässt sich bei bestehenden Automatismen nicht umstellen', strpos(json_encode(json_decode($clean, true)), '"name":"Type"') !== false && strpos($clean, '"enabled":false') !== false);
+$newDlg = $m->UIEditForm('', '');
+check('Neuer Automatismus über „+“: erst Art wählen, keine Abschnitte', strpos($newDlg, 'NewHint') !== false && preg_match('/"sec_(?!when)/', $newDlg) === 0 && strlen($newDlg) < 15000, (string)strlen($newDlg));
+$m->props['Automations'] = '[]';
 $m->ApplyChanges();
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.36' => [
+            '🛠 Behoben: Beim Speichern hing die Konsole. Der Bearbeiten-Dialog enthält jetzt nur noch die Einstellungen der eigenen Art (vorher die aller 20 Arten, über 350 Werte je Zeile). Neue Automatismen über „+“: erst die Art wählen, dann mit ✏️ einstellen.',
+        ],
         '0.1.35' => [
             '🚪 Gehen-Check: beim Wechsel auf „Abwesend“/„Urlaub“ EINE Meldung, was noch offen oder an ist.',
             '🛎 Türklingel, ☀️ Sommer-Lüften (mit Taupunkt), 🧊 Ausfall-Wächter (Kühlschrank, Pumpe) und 📅 Zeitschaltuhr als neue Automatismen.',
@@ -2027,7 +2030,7 @@ class Automat extends IPSModule
             $typeOpts[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
         }
         $el = [
-            ['type' => 'Select', 'name' => 'Type', 'caption' => 'Art des Automatismus', 'options' => $typeOpts, 'value' => $type, 'width' => '420px', 'onChange' => 'AUTOMAT_UIDialogType($id, $Type);'],
+            ['type' => 'Select', 'name' => 'Type', 'caption' => 'Art des Automatismus', 'options' => $typeOpts, 'value' => $type, 'width' => '420px', 'onChange' => 'AUTOMAT_UIDialogType($id, $Type);', 'enabled' => $isNew || !AUTOMATKatalog::has($type)],
             ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.'],
             ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => 'Bezeichnung (z. B. „Flurlicht“)', 'width' => '420px'],
             ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => 'Raum (optional, für Übersicht und Kachel)', 'width' => '420px'],
@@ -2045,7 +2048,13 @@ class Automat extends IPSModule
             array_splice($el, 2, 0, [['type' => 'Label', 'caption' => '⛔ ' . count($fieldProblems) . ' Feld(er) unten brauchen Aufmerksamkeit (rot markiert).', 'color' => 0xFF0000, 'bold' => true]]);
         }
         $infoHints = $saved !== null && $saved['Type'] === $type ? $this->melderHints($saved) : [];
-        foreach (AUTOMATKatalog::TYPES as $t => $def) {
+        // Nur die Felder der eigenen Art in den Dialog — der Dialog speichert jedes Feld in die Zeile, und alle
+        // 20 Arten zusammen haben die Konsole beim Speichern lahmgelegt. Neue Zeilen: erst die Art wählen.
+        $own = !$isNew && AUTOMATKatalog::has($type);
+        if (!$own) {
+            $el[] = ['type' => 'Label', 'name' => 'NewHint', 'caption' => '➡️ Art wählen und mit „OK“ bestätigen — danach die Zeile mit ✏️ öffnen, dann erscheinen die Einstellungen dieser Art. (Schneller: „📚 Katalog“ oder „🔎 Entdecken“.)', 'bold' => true];
+        }
+        foreach ($own ? [$type => AUTOMATKatalog::TYPES[$type]] : [] as $t => $def) {
             $items = [];
             foreach (AUTOMATKatalog::fields($t) as $f) {
                 foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : [], $t === $type ? $infoHints : []) as $e) {
@@ -2279,9 +2288,7 @@ class Automat extends IPSModule
     /** AUTOMAT_UIDialogType($id, $type) — im offenen Dialog den passenden Einstellungsblock zeigen. */
     public function UIDialogType(string $type): void
     {
-        foreach (AUTOMATKatalog::TYPES as $t => $_) {
-            $this->UpdateFormField('sec_' . $t, 'visible', $t === $type);
-        }
+        // Abschnitte gibt es im Dialog nur für bestehende Automatismen (Art fest) — hier nur Beschreibung und Modus-Häkchen.
         $this->UpdateFormField('TypeLabel', 'value', AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : '');
         // Bei der Szene ist der Hausmodus der Auslöser — die allgemeinen Modus-Häkchen wären dort verwirrend.
         $modeFilter = !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true);
@@ -2461,7 +2468,7 @@ class Automat extends IPSModule
                 $r['Uid'] = 'r' . $i; // Rückfall für Zeilen ohne Kennung
             }
             $r['Type'] = (string)($r['Type'] ?? '');
-            $out[] = AUTOMATKatalog::sanitize($r);
+            $out[] = AUTOMATKatalog::sanitize(AUTOMATKatalog::stripForeign($r));
         }
         return $out;
     }
@@ -2625,6 +2632,7 @@ class Automat extends IPSModule
             $p = AUTOMATKatalog::problems($r, function (int $vid) {
                 return IPS_VariableExists($vid);
             });
+            $r = AUTOMATKatalog::stripForeign($r);
             $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : '❔ Typ wählen (✏️)';
             $r['State'] = empty($r['Enabled']) ? '⚫ Nicht aktiv' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
             if (!empty($r['Dry']) && strpos($r['State'], '🧪') !== 0) {

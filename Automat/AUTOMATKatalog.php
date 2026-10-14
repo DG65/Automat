@@ -548,6 +548,41 @@ class AUTOMATKatalog
         return $row;
     }
 
+    /** Feldkürzel je Typ („zl_“, „bl_“, …) — jeder Typ hat genau eines. */
+    public static function prefix(string $type): string
+    {
+        foreach (self::fields($type) as $f) {
+            if (isset($f['n'])) {
+                return substr((string)$f['n'], 0, 3);
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Felder ANDERER Typen aus einer Zeile entfernen. Der Bearbeiten-Dialog speicherte bis 0.1.35 die Felder
+     * aller Typen in jede Zeile (bei 20 Typen über 350 Werte je Zeile) — daran hat sich die Konsole beim
+     * Speichern verschluckt (Dietmar 14.10.2026).
+     */
+    public static function stripForeign(array $row): array
+    {
+        $own = self::prefix((string)($row['Type'] ?? ''));
+        static $all = null;
+        if ($all === null) {
+            $all = [];
+            foreach (self::TYPES as $t => $_) {
+                $all[] = self::prefix($t);
+            }
+        }
+        foreach (array_keys($row) as $k) {
+            $p = substr((string)$k, 0, 3);
+            if ($p !== $own && in_array($p, $all, true) && preg_match('/^[a-z]{2}_/', (string)$k)) {
+                unset($row[$k]);
+            }
+        }
+        return $row;
+    }
+
     /** Alle Variablenfelder einer Zeile bereinigen: Werte unter MIN_ID werden 0 („nicht gewählt“). */
     public static function sanitize(array $row): array
     {

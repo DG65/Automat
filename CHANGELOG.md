@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.36 (Build 37) — 14.10.2026
+
+- **Behoben: Konsole hing beim Speichern** (Dietmar, live). Der Bearbeiten-Dialog enthielt die Felder aller 20 Arten (rund 100 KB), und Symcon speichert jedes Dialogfeld in die Listenzeile — über 350 Werte je Zeile. Jetzt: bestehende Automatismen zeigen nur die eigene Art (Art nicht mehr umstellbar), neue über „+“ erst die Art-Auswahl (danach mit ✏️ einstellen). Felder fremder Arten werden beim Lesen entfernt; beim nächsten „Übernehmen“ wird die Liste klein gespeichert.
+
 ## 0.1.35 (Build 36) — 14.10.2026
 
 Wunsch Dietmar („alles auf einmal“). Neu und **nur am Prüfstand getestet**:

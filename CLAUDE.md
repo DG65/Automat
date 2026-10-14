@@ -13,7 +13,7 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
 - Echo-Erkennung (`Sent`/`consumeEcho`) ist der Kern von „Handbedienung hat Vorrang": jeder Schaltbefehl geht über
   `switchVariable()`. Prüfstand C2 enthält den Fall, der ohne Echo-Erkennung kaputt geht (Vorwarnung).
 - Formular: Liste mit `loadValuesFromConfiguration:false` und eingespeisten Werten; Bearbeiten-Dialog als PHP-Code
-  (`AUTOMAT_UIEditForm`), alle Typen im Dialog, sichtbar nur der gewählte. „Übernehmen"-Buttons schreiben nur per
+  (`AUTOMAT_UIEditForm`), im Dialog NUR die eigene Art (ab 0.1.36 — alle 20 Arten zusammen ließen die Konsole beim Speichern hängen, weil Symcon jedes Dialogfeld in die Zeile schreibt); neue Zeilen über „+“ wählen erst die Art. „Übernehmen"-Buttons schreiben nur per
   `UpdateFormField` in die offene Liste (Store-Regel 1). Ob die Liste im `onClick` als `foreach`-fähige Zeilen
   ankommt, ist NICHT live geprüft — `insertRow()` fällt sonst auf den gespeicherten Stand zurück und sagt das.
 - „Neu bis Version" erst ab der ersten veröffentlichten Version (`NEWS_VERSIONS` bleibt bis dahin leer).
