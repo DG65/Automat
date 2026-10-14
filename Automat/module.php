@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.39' => [
+            '☀️ Ein Helligkeitssensor für alles: Der Sensor unter „🏠 Hausmodus“ (mit Schwellen und Haltezeit) gilt jetzt auch für Rollläden „wenn es dunkel wird“ und die Dämmerungsschaltung — kein zweites Eintragen mehr. Die Dämmerungsschaltung kann weiterhin einen eigenen Sensor nutzen (z. B. Raumsensor).',
+        ],
         '0.1.38' => [
             '🧹 Der Bearbeiten-Dialog zeigt nur noch die Felder, die zur Auswahl passen — z. B. beim Rollladen „Öffnen bei Tag“ ohne Uhrzeit und Versatz. Umstellen blendet sofort passend ein und aus (Rollladen, Dämmerung, Aufwachlicht, Szene, Taster, Zeitschaltuhr, Wächter).',
         ],
@@ -574,6 +577,8 @@ class Automat extends IPSModule
             }
         }
         if ($row['Type'] === 'daemmerung' || $row['Type'] === 'rollladen') {
+            $ld = $this->lightDayNow($ctx['now']);
+            $ctx['dark'] = $ld === null ? null : !$ld;
             $today = date('Y-m-d', $ctx['now']);
             foreach ([-1, 0, 1, 2] as $n) {
                 $d = AUTOMATLogik::addDays($today, $n);
@@ -3249,23 +3254,16 @@ class Automat extends IPSModule
         $this->UpdateFormField('cfg_EveningOffset', 'visible', isset(self::EVE_EVENTS[$eve]));
         $this->UpdateFormField('cfg_NightFrom', 'visible', !isset(self::NIGHT_EVENTS[$night]));
         $this->UpdateFormField('cfg_NightOffset', 'visible', isset(self::NIGHT_EVENTS[$night]));
-        foreach (['LightHead', 'cfg_LightVar', 'cfg_LightDay', 'cfg_LightNight', 'cfg_LightHold', 'LightHint'] as $f) {
-            $this->UpdateFormField($f, 'visible', $day === 6 || $eve === 6);
-        }
-        if ($day === 6 || $eve === 6) {
-            $this->UpdateFormField('LightHint', 'caption', $this->lightHint());
-        }
+        // Der Helligkeitssensor ist zentral (auch für Rollläden und Dämmerung) und bleibt deshalb immer sichtbar.
         $line = $this->locationLine($day, $eve, $night);
         $this->UpdateFormField('LocationInfo', 'caption', $line);
         $this->UpdateFormField('LocationInfo', 'visible', $line !== '');
     }
 
     /** Helligkeitssensor, wenn er gewählt und für Tag oder Abend genutzt wird (sonst 0). */
+    /** Zentraler Helligkeitssensor („🏠 Hausmodus“) — für Hausmodus, Rollläden und Dämmerung (0 = keiner). */
     private function lightVar(): int
     {
-        if ($this->pInt('cfg_DayRef') !== 6 && $this->pInt('cfg_EveningRef') !== 6) {
-            return 0;
-        }
         $vid = $this->pInt('cfg_LightVar');
         return $vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid) ? $vid : 0;
     }
@@ -3409,7 +3407,7 @@ class Automat extends IPSModule
         $eveOpts[] = ['caption' => 'zur Uhrzeit', 'value' => 1];
         $eveOpts[] = ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2];
         $eveOpts[] = ['caption' => 'wenn es dunkel wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
-        $useLight = $dayRef === 6 || $eveRef === 6;
+        $useLight = true; // zentraler Sensor: immer zeigen
         $lightUnit = '';
         $lv = $this->pInt('cfg_LightVar');
         if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
@@ -3444,7 +3442,7 @@ class Automat extends IPSModule
                 ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $eveOpts],
                 ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend beginnt um', 'visible' => $eveRef === 1],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::EVE_EVENTS[$eveRef])],
-                ['type' => 'Label', 'name' => 'LightHead', 'caption' => '— Helligkeitssensor —', 'bold' => true, 'visible' => $useLight],
+                ['type' => 'Label', 'name' => 'LightHead', 'caption' => '— Helligkeit draußen (für Hausmodus, Rollläden „wenn es dunkel wird“ und Dämmerung) —', 'bold' => true, 'visible' => $useLight],
                 ['type' => 'SelectVariable', 'name' => 'cfg_LightVar', 'caption' => 'Helligkeits- oder Einstrahlungssensor (z. B. Wetterstation, Globalstrahlung)', 'width' => '520px', 'visible' => $useLight],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_LightDay', 'caption' => 'Hell ab', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
                 ['type' => 'NumberSpinner', 'name' => 'cfg_LightNight', 'caption' => 'Dunkel unter', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],

@@ -162,7 +162,7 @@ class AUTOMATKatalog
     public const SZ_ACTIONS = [0 => 'ausschalten', 1 => 'einschalten', 2 => 'auf einen Wert setzen'];
     public const TG_ACTIONS = [0 => 'nichts', 1 => 'umschalten (an ↔ aus)', 2 => 'einschalten', 3 => 'ausschalten', 4 => 'auf einen Wert setzen', 5 => 'Hausmodus setzen (Wert 0 Tag … 4 Urlaub)'];
     public const RL_UP = [0 => 'zur Uhrzeit', 1 => 'bei Sonnenaufgang (± Versatz)', 2 => 'wenn der Hausmodus auf „Tag“ wechselt'];
-    public const RL_DOWN = [0 => 'zur Uhrzeit', 1 => 'bei Sonnenuntergang (± Versatz)', 2 => 'wenn es dunkel wird (Helligkeitssensor)', 3 => 'wenn der Hausmodus auf „Nacht“ wechselt'];
+    public const RL_DOWN = [0 => 'zur Uhrzeit', 1 => 'bei Sonnenuntergang (± Versatz)', 2 => 'wenn es dunkel wird (Helligkeitssensor unter „🏠 Hausmodus“)', 3 => 'wenn der Hausmodus auf „Nacht“ wechselt'];
     public const WL_DIR = [0 => 'Aufwachen: langsam heller bis zur Weckzeit', 1 => 'Einschlafen: langsam dunkler bis aus'];
     public const WL_START = [0 => 'zur Uhrzeit', 1 => 'Weckzeit aus einer Variable (Zeitstempel oder „HH:MM“)', 2 => 'wenn der Hausmodus auf „Nacht“ wechselt (Einschlafen)'];
     /** Typen, bei denen der Hausmodus selbst Auslöser ist oder die immer gelten müssen — ohne die allgemeinen Modus-Häkchen. */
@@ -273,8 +273,8 @@ class AUTOMATKatalog
                     ['n' => 'dz_auszeit', 'k' => 'time', 'c' => 'Ausschaltzeit', 'd' => self::time(23, 0), 'when' => [['dz_aus', [0]]]],
                     ['n' => 'dz_ausversatz', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['dz_aus', [1]]]],
                     ['k' => 'info', 'c' => 'Helligkeit und Zufall'],
-                    ['n' => 'dz_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (nur für „Dunkelheit“/„Helligkeit“)', 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
-                    ['n' => 'dz_luxschwelle', 'k' => 'float', 'c' => 'Helligkeitsschwelle', 'd' => 20.0, 'suffix' => ' lx', 'min' => 0, 'max' => 100000, 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
+                    ['n' => 'dz_lux', 'k' => 'var', 'c' => 'Eigener Helligkeitssensor (optional — leer = der zentrale unter „🏠 Hausmodus“; eigener z. B. für einen Raumsensor)', 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
+                    ['n' => 'dz_luxschwelle', 'k' => 'float', 'c' => 'Schwelle für den eigenen Sensor', 'd' => 20.0, 'suffix' => ' lx', 'min' => 0, 'max' => 100000, 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
                     ['n' => 'dz_zufall', 'k' => 'int', 'c' => 'Zufallsversatz je Tag (±)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 120],
                     ['n' => 'dz_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
                 ];
@@ -418,8 +418,6 @@ class AUTOMATKatalog
                     ['n' => 'rl_downref', 'k' => 'select', 'c' => 'Schließen', 'd' => 1, 'options' => self::RL_DOWN],
                     ['n' => 'rl_downzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(21, 0), 'when' => [['rl_downref', [0]]]],
                     ['n' => 'rl_downoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['rl_downref', [1]]]],
-                    ['n' => 'rl_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (bei „wenn es dunkel wird“)', 'when' => [['rl_downref', [2]]]],
-                    ['n' => 'rl_luxschwelle', 'k' => 'float', 'c' => 'Dunkel unter', 'd' => 20.0, 'min' => 0, 'max' => 100000, 'when' => [['rl_downref', [2]]]],
                     ['n' => 'rl_spaet', 'k' => 'time', 'c' => 'Spätestens', 'd' => self::time(22, 30)],
                     ['k' => 'info', 'c' => 'Aussperrschutz'],
                     ['n' => 'rl_tuer', 'k' => 'vars', 'c' => 'Tür-/Fensterkontakt (offen = Rollladen bleibt oben, schließt, sobald zu)'],
@@ -784,9 +782,6 @@ class AUTOMATKatalog
             case 'rollladen':
                 $out = self::vars($row, 'rl_out');
                 $in = self::vars($row, 'rl_tuer');
-                if ((int)($row['rl_lux'] ?? 0) >= self::$minId) {
-                    $read[] = (int)$row['rl_lux'];
-                }
                 break;
             case 'standby':
                 foreach (['sb_power' => 'in', 'sb_out' => 'out'] as $f => $k) {
@@ -891,9 +886,6 @@ class AUTOMATKatalog
         if ($t === 'wecklicht' && (int)($row['wl_start'] ?? 0) === 1 && (int)($row['wl_wecker'] ?? 0) < self::$minId) {
             $p[] = 'Weckzeit-Variable ist nicht gewählt.';
         }
-        if ($t === 'rollladen' && (int)($row['rl_downref'] ?? 1) === 2 && (int)($row['rl_lux'] ?? 0) < self::$minId) {
-            $p[] = 'Helligkeitssensor ist nicht gewählt (Schließen „wenn es dunkel wird“).';
-        }
         if ($t === 'szene') {
             $any = false;
             foreach (self::MODES as $m => $_) {
@@ -904,7 +896,7 @@ class AUTOMATKatalog
             }
         }
         if ($t === 'daemmerung') {
-            $needLux = (int)($row['dz_ein'] ?? 0) === 2 || (int)($row['dz_aus'] ?? 0) === 2;
+            $needLux = false; // ohne eigenen Sensor gilt der zentrale unter „🏠 Hausmodus“ (ab 0.1.39)
             if ($needLux && (int)($row['dz_lux'] ?? 0) < self::$minId) {
                 $p[] = 'Für „Dunkelheit“/„Helligkeit“ fehlt der Helligkeitssensor.';
             }

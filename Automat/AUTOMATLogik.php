@@ -781,6 +781,10 @@ class AUTOMATLogik
         $luxVid = (int)($row['dz_lux'] ?? 0);
         $lux = $luxVid > 0 && array_key_exists($luxVid, $ctx['val'] ?? []) ? (float)$ctx['val'][$luxVid] : null;
         $schwelle = (float)($row['dz_luxschwelle'] ?? 20);
+        if ($luxVid <= 0 && ($ctx['dark'] ?? null) !== null) {
+            // Kein eigener Sensor: zentrales hell/dunkel (Schwellen und Haltezeit unter „🏠 Hausmodus“)
+            $lux = $ctx['dark'] ? -1.0 : 1.0e9;
+        }
         $hi = $schwelle * 1.25 + 5; // Hysterese gegen Flackern in der Dämmerung
 
         if (($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $outs, true)
@@ -1928,10 +1932,8 @@ class AUTOMATLogik
         $latest = self::timeOn((string)($row['rl_spaet'] ?? AUTOMATKatalog::time(22, 30)), $today);
         $downTs = $downRef === 1 && $sun['ss'] !== null ? (int)$sun['ss'] + (int)($row['rl_downoff'] ?? 0) * 60 : self::timeOn((string)($row['rl_downzeit'] ?? AUTOMATKatalog::time(21, 0)), $today);
         if ($downRef === 2) {
-            $luxVid = (int)($row['rl_lux'] ?? 0);
-            $lux = array_key_exists($luxVid, $ctx['val'] ?? []) ? (float)$ctx['val'][$luxVid] : null;
-            // Nur nachmittags — morgens ist es auch dunkel.
-            $downReady = ($now >= $noon + 7200 && $lux !== null && $lux < (float)($row['rl_luxschwelle'] ?? 20)) || $now >= $latest;
+            // Zentraler Helligkeitssensor („🏠 Hausmodus“: Schwellen und Haltezeit dort). Nur nachmittags — morgens ist es auch dunkel.
+            $downReady = ($now >= $noon + 7200 && ($ctx['dark'] ?? null) === true) || $now >= $latest;
         } elseif ($downRef === 3) {
             $downReady = ($now >= $noon && $mode === AUTOMATKatalog::MODE_NIGHT) || $now >= $latest;
         } else {
@@ -1988,7 +1990,8 @@ class AUTOMATLogik
         } elseif ($st['down'] === $today) {
             $res['status'] = '⬇️ Zu seit heute Abend — öffnet morgen früh';
         } elseif ($st['up'] === $today) {
-            $res['status'] = '⬆️ Offen' . (in_array($downRef, [0, 1], true) ? ' — schließt um ' . self::fmtClock(min($downTs, $latest), $now) : ' — schließt bei ' . ($downRef === 2 ? 'Dunkelheit' : '„Nacht“') . ', spätestens ' . date('H:i', $latest) . ' Uhr');
+            $res['status'] = '⬆️ Offen' . (in_array($downRef, [0, 1], true) ? ' — schließt um ' . self::fmtClock(min($downTs, $latest), $now) : ' — schließt bei ' . ($downRef === 2 ? 'Dunkelheit' : '„Nacht“') . ', spätestens ' . date('H:i', $latest) . ' Uhr')
+                . ($downRef === 2 && ($ctx['dark'] ?? null) === null ? ' (⚠️ kein Helligkeitssensor unter „🏠 Hausmodus“ — nur „spätestens“ gilt)' : '');
             $res['due'] = in_array($downRef, [0, 1], true) ? min($downTs, $latest) : $now + 60;
         } else {
             $res['status'] = '⬇️ Zu — öffnet ' . ($upRef === 2 ? 'bei „Tag“, frühestens ' . date('H:i', $earliest) . ' Uhr' : 'um ' . self::fmtClock($upAt, $now));

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.39 (Build 40) — 15.10.2026
+
+- Zentraler Helligkeitssensor: Der Sensor unter „🏠 Hausmodus“ (Schwellen, Haltezeit) gilt auch für Rollläden „wenn es dunkel wird“ (eigene Sensorfelder dort entfallen) und für die Dämmerungsschaltung, wenn sie keinen eigenen Sensor hat. Der Bereich ist immer sichtbar. Rückmeldung Dietmar („Wie oft muss man sagen, wann es dunkel wird?“).
+
 ## 0.1.38 (Build 39) — 14.10.2026
 
 - Bearbeiten-Dialog: Felder erscheinen nur, wenn sie zur Auswahl passen (Katalog-Angabe `when`), beim Öffnen und sofort beim Umstellen. Rollladen (Uhrzeit/Versatz/Helligkeitssensor), Dämmerung, Aufwachlicht, Szene, Taster, Zeitschaltuhr, Wächter. Rückmeldung Dietmar.
