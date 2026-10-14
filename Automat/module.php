@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.38' => [
+            '🧹 Der Bearbeiten-Dialog zeigt nur noch die Felder, die zur Auswahl passen — z. B. beim Rollladen „Öffnen bei Tag“ ohne Uhrzeit und Versatz. Umstellen blendet sofort passend ein und aus (Rollladen, Dämmerung, Aufwachlicht, Szene, Taster, Zeitschaltuhr, Wächter).',
+        ],
         '0.1.37' => [
             '🔍 Filter über der Liste der Automatismen: Suchtext, Raum, Funktion/Art und Zustand (auffällig, läuft, aktiv, nicht aktiv, gesperrt, Probelauf). Ausgefilterte bleiben beim „Übernehmen“ erhalten.',
             '🔍 Filter beim Entdecken: Suchtext, Raum und Art der Vorschläge.',
@@ -2266,7 +2269,12 @@ class Automat extends IPSModule
     private function fieldElements(array $f, array $problems, array $hints): array
     {
         $els = [];
+        $type = (string)($this->editRow['Type'] ?? '');
+        $show = $type === '' || AUTOMATKatalog::visibleWhen($f, $this->editRow, $type);
         foreach ($this->fieldInputs($f) as $e) {
+            if (!$show && isset($e['name'])) {
+                $e['visible'] = false; // nur bei passender Auswahl zeigen (z. B. Uhrzeit nur bei „zur Uhrzeit“)
+            }
             $els[] = $e;
             if (isset($e['name'], $hints[$e['name']])) {
                 // Hinweis aus dem beobachteten Verhalten (z. B. Impuls-Melder, verlorene Meldungen)
@@ -2338,7 +2346,16 @@ class Automat extends IPSModule
                 foreach ($f['options'] as $v => $c) {
                     $opts[] = ['caption' => $c, 'value' => $v];
                 }
-                return [$base + ['type' => 'Select', 'value' => $f['d'], 'options' => $opts, 'width' => '420px']];
+                $sel = $base + ['type' => 'Select', 'value' => $f['d'], 'options' => $opts, 'width' => '420px'];
+                $type = (string)($this->editRow['Type'] ?? '');
+                $ctl = $type !== '' ? AUTOMATKatalog::controllers($type) : [];
+                if (in_array($f['n'], $ctl, true)) {
+                    $pairs = array_map(function ($c) {
+                        return "'" . $c . "' => (int)\$" . $c;
+                    }, $ctl);
+                    $sel['onChange'] = 'AUTOMAT_UIDeps($id, \'' . $type . '\', json_encode([' . implode(', ', $pairs) . ']));';
+                }
+                return [$sel];
             case 'time':
                 return [$base + ['type' => 'SelectTime', 'value' => $f['d']]];
             case 'text':
@@ -2355,6 +2372,27 @@ class Automat extends IPSModule
     }
 
     /** AUTOMAT_UIVarChanged($id, $field, $vid) — roten Hinweis unter einem Variablenfeld im offenen Dialog nachführen. */
+    /** AUTOMAT_UIDeps($id, $type, $valuesJson) — im Dialog nur die Felder zeigen, die zur Auswahl passen. */
+    public function UIDeps(string $type, string $valuesJson): void
+    {
+        if (!AUTOMATKatalog::has($type)) {
+            return;
+        }
+        $values = json_decode($valuesJson, true) ?: [];
+        foreach (AUTOMATKatalog::fields($type) as $f) {
+            if (!isset($f['when'], $f['n'])) {
+                continue;
+            }
+            $vis = AUTOMATKatalog::visibleWhen($f, $values, $type);
+            $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
+                return $f['n'] . $i;
+            }, range(1, AUTOMATKatalog::slots($f['n']))) : [$f['n']];
+            foreach ($names as $n) {
+                $this->UpdateFormField($n, 'visible', $vis);
+            }
+        }
+    }
+
     /** AUTOMAT_UIPickValue($id, $to, $opField, $value, $op) — gewählten Wert ins Vergleichsfeld; „ist an/aus“ wird dabei zu „ist gleich“. */
     public function UIPickValue(string $to, string $opField, string $value, int $op): void
     {
@@ -2364,6 +2402,7 @@ class Automat extends IPSModule
         $this->UpdateFormField($to, 'value', $value);
         if ($op === 4 || $op === 5) {
             $this->UpdateFormField($opField, 'value', 0);
+            $this->UpdateFormField($to, 'visible', true); // „ist gleich“ braucht das Vergleichsfeld
         }
     }
 

@@ -2058,7 +2058,7 @@ $m->UIVarChanged('wa_var', 1704);
 check('Messwert ohne feste Werte: Auswahl ausgeblendet, Feld zum Eintippen bleibt', in_array(['wa_pick', 'visible', false], $m->fieldUpdates, true));
 $m->fieldUpdates = [];
 $m->UIPickValue('wa_wert', 'wa_op', 'false', 4);
-check('Wert gewählt: steht im Vergleichsfeld, „ist an / wahr“ wird zu „ist gleich“', $m->fieldUpdates === [['wa_wert', 'value', 'false'], ['wa_op', 'value', 0]], json_encode($m->fieldUpdates));
+check('Wert gewählt: steht im Vergleichsfeld, „ist an / wahr“ wird zu „ist gleich“ (Feld wird sichtbar)', $m->fieldUpdates === [['wa_wert', 'value', 'false'], ['wa_op', 'value', 0], ['wa_wert', 'visible', true]], json_encode($m->fieldUpdates));
 $GLOBALS['PUSH'] = [];
 at('12:00:00');
 fire($m, 1701, false);
@@ -2455,6 +2455,44 @@ check('Entdecken: Filter nach Art „Bewegungslicht“', count($sv) > 0 && count
 $m->fieldUpdates = [];
 $m->Discover();
 check('Neue Suche setzt die Vorschlags-Filter zurück', in_array(['sg_text', 'value', ''], $m->fieldUpdates, true) && in_array(['sg_type', 'value', ''], $m->fieldUpdates, true));
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+
+heading('C18. Dialog zeigt nur die Felder, die zur Auswahl passen');
+$rlD = AUTOMATKatalog::defaults('rollladen') + ['Uid' => 'arold1', 'Name' => 'Rollläden', 'Enabled' => true];
+$rlD['rl_out1'] = 1081;
+$rlD['rl_upref'] = 2;
+$rlD['rl_downref'] = 3;
+$m->props['Automations'] = json_encode([$rlD]);
+$m->ApplyChanges();
+$dlgR = json_decode($m->UIEditForm('arold1', 'rollladen'), true);
+$byName = [];
+$walkV = function ($els) use (&$walkV, &$byName) {
+    foreach ($els as $e) {
+        if (isset($e['name'])) {
+            $byName[$e['name']] = $e;
+        }
+        if (isset($e['items'])) {
+            $walkV($e['items']);
+        }
+    }
+};
+$walkV($dlgR);
+$vis = fn(string $n) => ($byName[$n]['visible'] ?? true) !== false;
+check('„Öffnen bei Tag“: keine Uhrzeit, kein Versatz; „frühestens“ bleibt', !$vis('rl_upzeit') && !$vis('rl_upoff') && $vis('rl_frueh') && $vis('rl_fruehwe'));
+check('„Schließen bei Nacht“: keine Uhrzeit, kein Versatz, kein Helligkeitssensor; „spätestens“ bleibt', !$vis('rl_downzeit') && !$vis('rl_downoff') && !$vis('rl_lux') && !$vis('rl_luxschwelle') && $vis('rl_spaet'));
+$oc = (string)($byName['rl_upref']['onChange'] ?? '');
+check('Auswahl ruft beim Umstellen die Feldsteuerung auf (gültiges PHP)', strpos($oc, 'AUTOMAT_UIDeps($id, \'rollladen\'') === 0 && strpos($oc, "'rl_downref' => (int)\$rl_downref") !== false);
+$tmpf = sys_get_temp_dir() . '/automat_oc.php';
+file_put_contents($tmpf, '<?php ' . $oc);
+exec('php -l ' . escapeshellarg($tmpf) . ' 2>&1', $lintOut, $lintRc);
+check('… und der erzeugte onChange-Code ist syntaktisch korrekt', $lintRc === 0, implode(' ', $lintOut));
+$m->fieldUpdates = [];
+$m->UIDeps('rollladen', json_encode(['rl_upref' => 0, 'rl_downref' => 2]));
+check('Umgestellt auf „zur Uhrzeit“ / „wenn es dunkel wird“: Uhrzeit und Sensor erscheinen sofort', in_array(['rl_upzeit', 'visible', true], $m->fieldUpdates, true) && in_array(['rl_upoff', 'visible', false], $m->fieldUpdates, true) && in_array(['rl_lux', 'visible', true], $m->fieldUpdates, true) && in_array(['rl_downzeit', 'visible', false], $m->fieldUpdates, true));
+check('Dämmerung: Sensor bei „Dunkelheit“ ODER „Helligkeit“', AUTOMATKatalog::visibleWhen(AUTOMATKatalog::fields('daemmerung')[array_search('dz_lux', array_column(AUTOMATKatalog::fields('daemmerung'), 'n'))], ['dz_ein' => 0, 'dz_aus' => 2], 'daemmerung') === true);
+$tgF = array_values(array_filter(AUTOMATKatalog::fields('taster'), fn($f) => ($f['n'] ?? '') === 'tg_kziel'))[0];
+check('Taster: Ziel nur bei Schalt-Aktionen, nicht bei „Hausmodus setzen“', AUTOMATKatalog::visibleWhen($tgF, ['tg_kakt' => 5], 'taster') === false && AUTOMATKatalog::visibleWhen($tgF, ['tg_kakt' => 1], 'taster') === true);
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
 

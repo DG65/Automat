@@ -266,15 +266,15 @@ class AUTOMATKatalog
                     ['n' => 'dz_out', 'k' => 'vars', 'c' => 'Licht / Ausgang', 'req' => true],
                     ['k' => 'info', 'c' => 'Einschalten'],
                     ['n' => 'dz_ein', 'k' => 'select', 'c' => 'Einschalten bei', 'd' => 0, 'options' => self::DZ_ON],
-                    ['n' => 'dz_einversatz', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
-                    ['n' => 'dz_einzeit', 'k' => 'time', 'c' => 'Einschaltzeit', 'd' => self::time(18, 0)],
+                    ['n' => 'dz_einversatz', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['dz_ein', [0]]]],
+                    ['n' => 'dz_einzeit', 'k' => 'time', 'c' => 'Einschaltzeit', 'd' => self::time(18, 0), 'when' => [['dz_ein', [1]]]],
                     ['k' => 'info', 'c' => 'Ausschalten'],
                     ['n' => 'dz_aus', 'k' => 'select', 'c' => 'Ausschalten bei', 'd' => 0, 'options' => self::DZ_OFF],
-                    ['n' => 'dz_auszeit', 'k' => 'time', 'c' => 'Ausschaltzeit', 'd' => self::time(23, 0)],
-                    ['n' => 'dz_ausversatz', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
+                    ['n' => 'dz_auszeit', 'k' => 'time', 'c' => 'Ausschaltzeit', 'd' => self::time(23, 0), 'when' => [['dz_aus', [0]]]],
+                    ['n' => 'dz_ausversatz', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['dz_aus', [1]]]],
                     ['k' => 'info', 'c' => 'Helligkeit und Zufall'],
-                    ['n' => 'dz_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (nur für „Dunkelheit“/„Helligkeit“)'],
-                    ['n' => 'dz_luxschwelle', 'k' => 'float', 'c' => 'Helligkeitsschwelle', 'd' => 20.0, 'suffix' => ' lx', 'min' => 0, 'max' => 100000],
+                    ['n' => 'dz_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (nur für „Dunkelheit“/„Helligkeit“)', 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
+                    ['n' => 'dz_luxschwelle', 'k' => 'float', 'c' => 'Helligkeitsschwelle', 'd' => 20.0, 'suffix' => ' lx', 'min' => 0, 'max' => 100000, 'when' => [['dz_ein', [2]], ['dz_aus', [2]]]],
                     ['n' => 'dz_zufall', 'k' => 'int', 'c' => 'Zufallsversatz je Tag (±)', 'd' => 0, 'suffix' => ' min', 'min' => 0, 'max' => 120],
                     ['n' => 'dz_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
                 ];
@@ -294,7 +294,7 @@ class AUTOMATKatalog
                     ['k' => 'info', 'c' => 'Was wird überwacht?'],
                     ['n' => 'wa_var', 'k' => 'var', 'c' => 'Variable', 'req' => true],
                     ['n' => 'wa_op', 'k' => 'select', 'c' => 'Melden, wenn der Wert', 'd' => 4, 'options' => self::WA_OPS],
-                    ['n' => 'wa_wert', 'k' => 'text', 'c' => 'Vergleichswert (für gleich/ungleich/größer/kleiner)', 'd' => ''],
+                    ['n' => 'wa_wert', 'k' => 'text', 'c' => 'Vergleichswert (für gleich/ungleich/größer/kleiner)', 'd' => '', 'when' => [['wa_op', [0, 1, 2, 3]]]],
                     ['n' => 'wa_pick', 'k' => 'pick', 'c' => '… oder aus den möglichen Werten der Variable wählen', 'src' => 'wa_var', 'to' => 'wa_wert', 'op' => 'wa_op', 'd' => ''],
                     ['n' => 'wa_dauer', 'k' => 'int', 'c' => '… und zwar länger als', 'd' => 15, 'suffix' => ' min', 'min' => 0, 'max' => 10080],
                     ['k' => 'info', 'c' => 'Meldung'],
@@ -376,10 +376,10 @@ class AUTOMATKatalog
                     ['k' => 'info', 'c' => 'Was?'],
                     ['n' => 'zs_out', 'k' => 'vars', 'max' => 8, 'c' => 'Gerät / Licht', 'req' => true],
                     ['n' => 'zs_modus', 'k' => 'select', 'c' => 'Schalten', 'd' => 0, 'options' => self::ZS_MODES],
-                    ['n' => 'zs_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
+                    ['n' => 'zs_wert', 'k' => 'int', 'c' => 'Helligkeit bei Dimmern', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100, 'when' => [['zs_modus', [0, 2]]]],
                     ['k' => 'info', 'c' => 'Wann?'],
-                    ['n' => 'zs_ein', 'k' => 'time', 'c' => 'Einschalten um', 'd' => self::time(7, 0)],
-                    ['n' => 'zs_aus', 'k' => 'time', 'c' => 'Ausschalten um (früher als „ein“ = am nächsten Tag)', 'd' => self::time(8, 0)],
+                    ['n' => 'zs_ein', 'k' => 'time', 'c' => 'Einschalten um', 'd' => self::time(7, 0), 'when' => [['zs_modus', [0, 2]]]],
+                    ['n' => 'zs_aus', 'k' => 'time', 'c' => 'Ausschalten um (früher als „ein“ = am nächsten Tag)', 'd' => self::time(8, 0), 'when' => [['zs_modus', [0, 1]]]],
                 ];
                 foreach (self::WEEKDAYS as $n => $l) {
                     $o[] = ['n' => 'zs_t' . $n, 'k' => 'bool', 'c' => $l, 'd' => true];
@@ -410,16 +410,16 @@ class AUTOMATKatalog
                     ['n' => 'rl_zu', 'k' => 'float', 'c' => 'Wert für „zu“', 'd' => 100.0, 'min' => 0, 'max' => 255],
                     ['k' => 'info', 'c' => 'Morgens öffnen'],
                     ['n' => 'rl_upref', 'k' => 'select', 'c' => 'Öffnen', 'd' => 1, 'options' => self::RL_UP],
-                    ['n' => 'rl_upzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(7, 0)],
-                    ['n' => 'rl_upoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
+                    ['n' => 'rl_upzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(7, 0), 'when' => [['rl_upref', [0]]]],
+                    ['n' => 'rl_upoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenaufgang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['rl_upref', [1]]]],
                     ['n' => 'rl_frueh', 'k' => 'time', 'c' => 'Werktags frühestens', 'd' => self::time(6, 30)],
                     ['n' => 'rl_fruehwe', 'k' => 'time', 'c' => 'Am Wochenende frühestens', 'd' => self::time(8, 0)],
                     ['k' => 'info', 'c' => 'Abends schließen'],
                     ['n' => 'rl_downref', 'k' => 'select', 'c' => 'Schließen', 'd' => 1, 'options' => self::RL_DOWN],
-                    ['n' => 'rl_downzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(21, 0)],
-                    ['n' => 'rl_downoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240],
-                    ['n' => 'rl_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (bei „wenn es dunkel wird“)'],
-                    ['n' => 'rl_luxschwelle', 'k' => 'float', 'c' => 'Dunkel unter', 'd' => 20.0, 'min' => 0, 'max' => 100000],
+                    ['n' => 'rl_downzeit', 'k' => 'time', 'c' => 'Uhrzeit (bei „zur Uhrzeit“)', 'd' => self::time(21, 0), 'when' => [['rl_downref', [0]]]],
+                    ['n' => 'rl_downoff', 'k' => 'int', 'c' => 'Versatz zum Sonnenuntergang (− = früher)', 'd' => 0, 'suffix' => ' min', 'min' => -240, 'max' => 240, 'when' => [['rl_downref', [1]]]],
+                    ['n' => 'rl_lux', 'k' => 'var', 'c' => 'Helligkeitssensor (bei „wenn es dunkel wird“)', 'when' => [['rl_downref', [2]]]],
+                    ['n' => 'rl_luxschwelle', 'k' => 'float', 'c' => 'Dunkel unter', 'd' => 20.0, 'min' => 0, 'max' => 100000, 'when' => [['rl_downref', [2]]]],
                     ['n' => 'rl_spaet', 'k' => 'time', 'c' => 'Spätestens', 'd' => self::time(22, 30)],
                     ['k' => 'info', 'c' => 'Aussperrschutz'],
                     ['n' => 'rl_tuer', 'k' => 'vars', 'c' => 'Tür-/Fensterkontakt (offen = Rollladen bleibt oben, schließt, sobald zu)'],
@@ -473,8 +473,8 @@ class AUTOMATKatalog
                     $o[] = ['k' => 'info', 'c' => ucfirst($label) . ' drücken'];
                     $o[] = ['n' => 'tg_' . $p . 'wert', 'k' => 'text', 'c' => 'Wert der Taster-Variable bei „' . $label . '“', 'd' => $def];
                     $o[] = ['n' => 'tg_' . $p . 'akt', 'k' => 'select', 'c' => 'Aktion', 'd' => $p === 'k' ? 1 : 0, 'options' => self::TG_ACTIONS];
-                    $o[] = ['n' => 'tg_' . $p . 'ziel', 'k' => 'var', 'c' => 'Ziel (Licht, Gerät …; bei „Hausmodus setzen“ leer)'];
-                    $o[] = ['n' => 'tg_' . $p . 'zwert', 'k' => 'float', 'c' => 'Wert (bei „auf Wert setzen“ bzw. Hausmodus 0–4)', 'd' => 0.0, 'min' => -1000, 'max' => 100000];
+                    $o[] = ['n' => 'tg_' . $p . 'ziel', 'k' => 'var', 'c' => 'Ziel (Licht, Gerät …)', 'when' => [['tg_' . $p . 'akt', [1, 2, 3, 4]]]];
+                    $o[] = ['n' => 'tg_' . $p . 'zwert', 'k' => 'float', 'c' => 'Wert (bei „auf Wert setzen“; bei „Hausmodus“ 0 Tag … 4 Urlaub)', 'd' => 0.0, 'min' => -1000, 'max' => 100000, 'when' => [['tg_' . $p . 'akt', [4, 5]]]];
                 }
                 return $o;
             case 'wecklicht':
@@ -484,12 +484,12 @@ class AUTOMATKatalog
                     ['n' => 'wl_richtung', 'k' => 'select', 'c' => 'Art', 'd' => 0, 'options' => self::WL_DIR],
                     ['k' => 'info', 'c' => 'Wann?'],
                     ['n' => 'wl_start', 'k' => 'select', 'c' => 'Start', 'd' => 0, 'options' => self::WL_START],
-                    ['n' => 'wl_zeit', 'k' => 'time', 'c' => 'Uhrzeit (Aufwachen: wann es hell sein soll; Einschlafen: Beginn)', 'd' => self::time(6, 30)],
-                    ['n' => 'wl_wecker', 'k' => 'var', 'c' => 'Weckzeit-Variable (bei „Weckzeit aus einer Variable“)'],
+                    ['n' => 'wl_zeit', 'k' => 'time', 'c' => 'Uhrzeit (Aufwachen: wann es hell sein soll; Einschlafen: Beginn)', 'd' => self::time(6, 30), 'when' => [['wl_start', [0]]]],
+                    ['n' => 'wl_wecker', 'k' => 'var', 'c' => 'Weckzeit-Variable (bei „Weckzeit aus einer Variable“)', 'when' => [['wl_start', [1]]]],
                     ['n' => 'wl_we', 'k' => 'bool', 'c' => 'Auch am Wochenende', 'd' => false],
                     ['k' => 'info', 'c' => 'Verlauf'],
                     ['n' => 'wl_dauer', 'k' => 'int', 'c' => 'Dauer der Rampe', 'd' => 20, 'suffix' => ' min', 'min' => 1, 'max' => 120],
-                    ['n' => 'wl_ziel', 'k' => 'int', 'c' => 'Helligkeit am Ende des Aufwachens', 'd' => 80, 'suffix' => ' %', 'min' => 1, 'max' => 100],
+                    ['n' => 'wl_ziel', 'k' => 'int', 'c' => 'Helligkeit am Ende des Aufwachens', 'd' => 80, 'suffix' => ' %', 'min' => 1, 'max' => 100, 'when' => [['wl_richtung', [0]]]],
                 ];
             case 'szene':
                 return [
@@ -503,8 +503,8 @@ class AUTOMATKatalog
                     ['k' => 'info', 'c' => 'Was?'],
                     ['n' => 'sz_out', 'k' => 'vars', 'max' => 16, 'c' => 'Gerät', 'req' => true],
                     ['n' => 'sz_aktion', 'k' => 'select', 'c' => 'Diese Geräte', 'd' => 0, 'options' => self::SZ_ACTIONS],
-                    ['n' => 'sz_hell', 'k' => 'int', 'c' => 'Helligkeit bei „einschalten“ (Dimmer)', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100],
-                    ['n' => 'sz_wert', 'k' => 'float', 'c' => 'Wert bei „auf einen Wert setzen“ (z. B. 17 °C, Rollladen 100 %)', 'd' => 0.0, 'min' => -1000, 'max' => 100000],
+                    ['n' => 'sz_hell', 'k' => 'int', 'c' => 'Helligkeit bei „einschalten“ (Dimmer)', 'd' => 100, 'suffix' => ' %', 'min' => 1, 'max' => 100, 'when' => [['sz_aktion', [1]]]],
+                    ['n' => 'sz_wert', 'k' => 'float', 'c' => 'Wert bei „auf einen Wert setzen“ (z. B. 17 °C, Rollladen 100 %)', 'd' => 0.0, 'min' => -1000, 'max' => 100000, 'when' => [['sz_aktion', [2]]]],
                     ['k' => 'info', 'c' => 'Meldung'],
                     ['n' => 'sz_push', 'k' => 'bool', 'c' => 'Melden, was geschaltet wurde (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
@@ -546,6 +546,42 @@ class AUTOMATKatalog
             }
         }
         return $row;
+    }
+
+    /**
+     * Ist ein Feld bei diesen Auswahlwerten sichtbar? 'when' => [[Auswahlfeld, [Werte]], …] — eine erfüllte
+     * Bedingung genügt (z. B. Helligkeitssensor bei „Dunkelheit“ ODER „Helligkeit über Schwelle“).
+     */
+    public static function visibleWhen(array $f, array $values, string $type): bool
+    {
+        if (!isset($f['when'])) {
+            return true;
+        }
+        $defs = [];
+        foreach (self::fields($type) as $g) {
+            if (isset($g['n'])) {
+                $defs[$g['n']] = $g['d'] ?? null;
+            }
+        }
+        foreach ($f['when'] as [$field, $vals]) {
+            $v = array_key_exists($field, $values) ? $values[$field] : ($defs[$field] ?? null);
+            if (in_array((int)$v, $vals, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Auswahlfelder eines Typs, von denen andere Felder abhängen. */
+    public static function controllers(string $type): array
+    {
+        $c = [];
+        foreach (self::fields($type) as $f) {
+            foreach ($f['when'] ?? [] as [$field, $_]) {
+                $c[$field] = true;
+            }
+        }
+        return array_keys($c);
     }
 
     /** Feldkürzel je Typ („zl_“, „bl_“, …) — jeder Typ hat genau eines. */

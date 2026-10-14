@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.38 (Build 39) — 14.10.2026
+
+- Bearbeiten-Dialog: Felder erscheinen nur, wenn sie zur Auswahl passen (Katalog-Angabe `when`), beim Öffnen und sofort beim Umstellen. Rollladen (Uhrzeit/Versatz/Helligkeitssensor), Dämmerung, Aufwachlicht, Szene, Taster, Zeitschaltuhr, Wächter. Rückmeldung Dietmar.
+
 ## 0.1.37 (Build 38) — 14.10.2026
 
 - Filter für „⚙️ Automatismen“ (Suchtext, Raum, Funktion/Art, Zustand) und „🔎 Entdecken“ (Suchtext, Raum, Art). Wunsch Dietmar.
