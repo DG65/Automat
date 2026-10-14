@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.33 (Build 34) — 14.10.2026
+
+- Zustandstexte zeigen Uhrzeiten mit Stunden Abstand ohne Sekunden („Rollläden schließen um 18:41 Uhr“ statt „18:41:36 Uhr“); kurze Countdowns behalten die Sekunden.
+
 ## 0.1.32 (Build 33) — 14.10.2026
 
 Store-Reifeprüfung (SUITE.md-Checkliste, Formular-Optik, Stolpersteine):

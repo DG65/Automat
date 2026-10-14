@@ -1039,6 +1039,8 @@ check('Nach 10 min: aus', cmdMap($r) === ['970=0'] && $st['ph'] === 'idle');
 check('Weckzeit aus Variable: Zeitstempel und „HH:MM“', AUTOMATLogik::wakeTime(ts('2026-10-20 05:45'), '2026-10-13') === ts('2026-10-13 05:45') && AUTOMATLogik::wakeTime('6:05', '2026-10-13') === ts('2026-10-13 06:05') && AUTOMATLogik::wakeTime('', '2026-10-13') === null);
 at('12:00:00');
 
+check('Uhrzeit: bei Stunden Abstand ohne Sekunden, bei Minuten mit', AUTOMATLogik::fmtClock(ts('2026-10-13 18:41:36'), ts('2026-10-13 11:47:00')) === '18:41 Uhr (in 6 h 54 min)' && AUTOMATLogik::fmtClock(ts('2026-10-13 12:03:20'), ts('2026-10-13 12:00:00')) === '12:03:20 Uhr (in 3:20 min)');
+
 heading('A9. Leere Auswahlfelder (Wert 1 statt 0) und fehlende Variablen');
 AUTOMATKatalog::$minId = 10000;
 $bad = AUTOMATKatalog::defaults('bewegung');

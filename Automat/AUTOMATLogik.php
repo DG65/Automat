@@ -206,7 +206,8 @@ class AUTOMATLogik
         $txt = $rest >= 3600 ? floor($rest / 3600) . ' h ' . sprintf('%02d', floor(($rest % 3600) / 60)) . ' min'
             : ($rest >= 60 ? floor($rest / 60) . ':' . sprintf('%02d', $rest % 60) . ' min' : $rest . ' s');
         $day = date('Y-m-d', $ts) === date('Y-m-d', $now) ? '' : date('d.m.Y ', $ts);
-        return $day . date('H:i:s', $ts) . ' Uhr (in ' . $txt . ')';
+        // Sekunden nur bei kurzen Zeiten (Treppenlicht); bei Stunden Abstand stören sie („schließt um 18:41:36“)
+        return $day . date($rest >= 3600 ? 'H:i' : 'H:i:s', $ts) . ' Uhr (in ' . $txt . ')';
     }
 
     /** Restzeit kurz: „45 s", „1:35 min", „2 h 05 min"; '' wenn vorbei. */
