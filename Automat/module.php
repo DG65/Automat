@@ -69,6 +69,10 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.37' => [
+            '🔍 Filter über der Liste der Automatismen: Suchtext, Raum, Funktion/Art und Zustand (auffällig, läuft, aktiv, nicht aktiv, gesperrt, Probelauf). Ausgefilterte bleiben beim „Übernehmen“ erhalten.',
+            '🔍 Filter beim Entdecken: Suchtext, Raum und Art der Vorschläge.',
+        ],
         '0.1.36' => [
             '🛠 Behoben: Beim Speichern hing die Konsole. Der Bearbeiten-Dialog enthält jetzt nur noch die Einstellungen der eigenen Art (vorher die aller 20 Arten, über 350 Werte je Zeile). Neue Automatismen über „+“: erst die Art wählen, dann mit ✏️ einstellen.',
         ],
@@ -110,6 +114,8 @@ class Automat extends IPSModule
         parent::Create();
 
         $this->RegisterPropertyString('Automations', '[]');
+        // Beim Filtern ausgeblendete Automatismen — unsichtbare Liste, wird mitgespeichert (sonst wären sie gelöscht).
+        $this->RegisterPropertyString('AutomationsHidden', '[]');
         // Standard an (Dietmar 13.10.2026): bestimmt nur, welcher Hausmodus gilt — schaltet selbst nichts.
         $this->RegisterPropertyBoolean('cfg_ModeAuto', true);
         $this->RegisterPropertyInteger('cfg_DayRef', 0);
@@ -1520,6 +1526,159 @@ class Automat extends IPSModule
         $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine());
         $this->UpdateFormField('SuggestList', 'values', json_encode($this->suggestionRows()));
         $this->UpdateFormField('SuggestList', 'rowCount', max(5, min(15, count($this->suggestions()))));
+        // neue Suche: Filter zurücksetzen und ihre Auswahl an die gefundenen Räume/Arten anpassen
+        [$ro, $to] = $this->suggestFilterOptions();
+        $this->UpdateFormField('sg_text', 'value', '');
+        $this->UpdateFormField('sg_room', 'options', json_encode($ro));
+        $this->UpdateFormField('sg_room', 'value', '');
+        $this->UpdateFormField('sg_type', 'options', json_encode($to));
+        $this->UpdateFormField('sg_type', 'value', '');
+    }
+
+    /**
+     * AUTOMAT_UIFilterList($id, $rowsJson, $text, $room, $cat, $state) — Liste im offenen Formular filtern.
+     * Passende Zeilen stehen in der sichtbaren Liste, die übrigen in der unsichtbaren „AutomationsHidden“; beide
+     * werden mit „Übernehmen“ gespeichert, beim Lesen zusammengeführt — Filtern löscht also nie etwas.
+     */
+    public function UIFilterList(string $rowsJson, string $text, string $room, string $cat, string $state): void
+    {
+        $rows = [];
+        $seen = [];
+        foreach (json_decode($rowsJson, true) ?: [] as $r) {
+            if (!is_array($r) || !array_key_exists('Type', $r)) {
+                continue;
+            }
+            $uid = (string)($r['Uid'] ?? '');
+            if ($uid !== '' && isset($seen[$uid])) {
+                continue;
+            }
+            $seen[$uid] = true;
+            foreach (['State', 'Settings', 'SortRoom', 'SortType', 'rowColor', 'Mark'] as $k) {
+                unset($r[$k]); // Anzeigespalten nicht in die unsichtbare Liste tragen
+            }
+            $rows[] = $r;
+        }
+        if (count($rows) === 0) {
+            return; // Liste nicht lesbar — lieber nichts tun als Zeilen verschieben
+        }
+        $show = [];
+        $hide = [];
+        foreach ($rows as $r) {
+            if ($this->rowMatches($r, $text, $room, $cat, $state)) {
+                $show[] = $r;
+            } else {
+                $hide[] = $r;
+            }
+        }
+        $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($show)));
+        $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_values($hide)));
+        $active = trim($text) !== '' || $room !== '' || $cat !== '' || $state !== '';
+        $this->UpdateFormField('FilterInfo', 'caption', '🔎 Zeigt ' . count($show) . ' von ' . count($rows) . ' Automatismen — die übrigen sind nur ausgeblendet und bleiben beim „Übernehmen“ erhalten.');
+        $this->UpdateFormField('FilterInfo', 'visible', $active);
+    }
+
+    /** Passt eine Zeile zum Filter? (Suchtext über Name, Raum, Art, Zustand; Raum gleich inkl. Kurz-/Langform.) */
+    private function rowMatches(array $r, string $text, string $room, string $cat, string $state): bool
+    {
+        $type = (string)($r['Type'] ?? '');
+        $status = $this->attrMap('Status')[(string)($r['Uid'] ?? '')] ?? '';
+        if ($room !== '' && !($room === '-' ? trim((string)($r['Room'] ?? '')) === '' : AUTOMATErkennung::sameRoom((string)($r['Room'] ?? ''), $room))) {
+            return false;
+        }
+        if ($cat !== '') {
+            $c = AUTOMATKatalog::TYPES[$type]['cat'] ?? '';
+            if (strpos($cat, 'cat:') === 0 ? $c !== substr($cat, 4) : $type !== $cat) {
+                return false;
+            }
+        }
+        if ($state !== '') {
+            $tileState = $this->tileState($r, (string)$status, (bool)$this->getOwn('l_' . ($r['Uid'] ?? ''), false), isset($this->attrMap('End')[(string)($r['Uid'] ?? '')]));
+            $ok = ['warn' => $tileState === 'warn', 'run' => $tileState === 'run', 'on' => !empty($r['Enabled']),
+                'off' => empty($r['Enabled']), 'locked' => $tileState === 'locked', 'dry' => !empty($r['Dry'])][$state] ?? true;
+            if (!$ok) {
+                return false;
+            }
+        }
+        $q = mb_strtolower(trim($text));
+        if ($q !== '') {
+            $hay = mb_strtolower(($r['Name'] ?? '') . ' ' . ($r['Room'] ?? '') . ' ' . (AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : '') . ' ' . $status);
+            if (mb_strpos($hay, $q) === false) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function filterRoomOptions(array $rows): array
+    {
+        $rooms = [];
+        foreach ($rows as $r) {
+            $x = trim((string)($r['Room'] ?? ''));
+            $rooms[$x === '' ? '-' : $x] = true;
+        }
+        ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
+        $o = [['caption' => 'alle Räume', 'value' => '']];
+        foreach (array_keys($rooms) as $x) {
+            $o[] = ['caption' => $x === '-' ? 'ohne Raum' : (string)$x, 'value' => (string)$x];
+        }
+        return $o;
+    }
+
+    private function filterCatOptions(): array
+    {
+        $o = [['caption' => 'alle', 'value' => '']];
+        foreach (AUTOMATKatalog::CATEGORIES as $k => $label) {
+            $o[] = ['caption' => $label, 'value' => 'cat:' . $k];
+            foreach (AUTOMATKatalog::TYPES as $t => $def) {
+                if ($def['cat'] === $k) {
+                    $o[] = ['caption' => '      ' . $def['icon'] . ' ' . $def['label'], 'value' => $t];
+                }
+            }
+        }
+        return $o;
+    }
+
+    /** AUTOMAT_UIFilterSuggestions($id, $text, $room, $type) — Vorschlagsliste im offenen Formular filtern. */
+    public function UIFilterSuggestions(string $text, string $room, string $type): void
+    {
+        $all = $this->suggestionRows();
+        $q = mb_strtolower(trim($text));
+        $show = array_values(array_filter($all, function ($r) use ($q, $room, $type) {
+            $s = $this->suggestions()[array_search($r['Key'], array_column($this->suggestions(), 'key'), true)] ?? [];
+            if ($room !== '' && !($room === '-' ? trim((string)($s['room'] ?? '')) === '' : AUTOMATErkennung::sameRoom((string)($s['room'] ?? ''), $room))) {
+                return false;
+            }
+            if ($type !== '' && ($s['type'] ?? '') !== $type) {
+                return false;
+            }
+            return $q === '' || mb_strpos(mb_strtolower($r['Room'] . ' ' . $r['TypeLabel'] . ' ' . $r['Title'] . ' ' . $r['Why']), $q) !== false;
+        }));
+        $this->UpdateFormField('SuggestList', 'values', json_encode($show));
+        $this->UpdateFormField('SuggestList', 'rowCount', max(5, min(15, count($show))));
+        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine() . (count($show) < count($all) ? ' Gefiltert: ' . count($show) . ' angezeigt.' : ''));
+    }
+
+    private function suggestFilterOptions(): array
+    {
+        $rooms = [];
+        $types = [];
+        foreach ($this->suggestions() as $s) {
+            $x = trim((string)$s['room']);
+            $rooms[$x === '' ? '-' : $x] = true;
+            $types[(string)$s['type']] = true;
+        }
+        ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
+        $ro = [['caption' => 'alle Räume', 'value' => '']];
+        foreach (array_keys($rooms) as $x) {
+            $ro[] = ['caption' => $x === '-' ? 'ohne Raum' : (string)$x, 'value' => (string)$x];
+        }
+        $to = [['caption' => 'alle Arten', 'value' => '']];
+        foreach (AUTOMATKatalog::TYPES as $t => $def) {
+            if (isset($types[$t])) {
+                $to[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
+            }
+        }
+        return [$ro, $to];
     }
 
     /** AUTOMAT_UISetSuggestOrder($id, $order) — Vorschläge nach Raum (0) oder Funktion (1) ordnen. */
@@ -1844,7 +2003,7 @@ class Automat extends IPSModule
         $out = [];
         // Andere Automatismen dieser und anderer Automat-Instanzen
         foreach (IPS_GetInstanceListByModuleID(self::MODULE_GUID) as $iid) {
-            $list = $iid === $this->InstanceID ? $this->rows() : (json_decode((string)@IPS_GetProperty($iid, 'Automations'), true) ?: []);
+            $list = $iid === $this->InstanceID ? $this->rows() : array_merge(json_decode((string)@IPS_GetProperty($iid, 'Automations'), true) ?: [], json_decode((string)@IPS_GetProperty($iid, 'AutomationsHidden'), true) ?: []);
             foreach ($list as $r) {
                 if ($iid === $this->InstanceID && ($r['Uid'] ?? '') === $ownUid) {
                     continue;
@@ -2456,7 +2615,19 @@ class Automat extends IPSModule
     {
         $rows = json_decode((string)$this->pStr('Automations'), true);
         if (!is_array($rows)) {
-            return [];
+            $rows = [];
+        }
+        // Ausgefilterte Zeilen (unsichtbare Liste) dazu — ohne Doppelte (die sichtbare Liste gewinnt)
+        $seen = [];
+        foreach ($rows as $r) {
+            if (is_array($r) && isset($r['Uid'])) {
+                $seen[(string)$r['Uid']] = true;
+            }
+        }
+        foreach (json_decode((string)$this->pStr('AutomationsHidden'), true) ?: [] as $r) {
+            if (is_array($r) && !isset($seen[(string)($r['Uid'] ?? '')])) {
+                $rows[] = $r;
+            }
         }
         $out = [];
         foreach (array_values($rows) as $i => $r) {
@@ -2493,7 +2664,7 @@ class Automat extends IPSModule
     {
         $used = array_flip(array_map(function ($r) {
             return (string)($r['Uid'] ?? '');
-        }, $rows));
+        }, array_merge($rows, $this->rows()))); // auch gespeicherte/ausgefilterte Zeilen
         // Immer mit „a“ beginnend — kollidiert so nie mit den Rückfall-Kennungen „r<Index>“.
         do {
             $uid = 'a' . substr(bin2hex(random_bytes(4)), 0, 5);
@@ -2877,6 +3048,29 @@ class Automat extends IPSModule
                     ['caption' => 'Raum, darin nach Art', 'value' => 0],
                     ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
                 ]],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'ValidationTextBox', 'name' => 'flt_text', 'caption' => '🔍 Suchen (Name, Raum, Art, Zustand)', 'width' => '260px', 'value' => '', 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_room', 'caption' => 'Raum', 'width' => '170px', 'value' => '', 'options' => $this->filterRoomOptions($rows), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_cat', 'caption' => 'Funktion / Art', 'width' => '230px', 'value' => '', 'options' => $this->filterCatOptions(), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_state', 'caption' => 'Zustand', 'width' => '190px', 'value' => '', 'options' => [
+                        ['caption' => 'alle', 'value' => ''],
+                        ['caption' => '⚠️ auffällig / unvollständig', 'value' => 'warn'],
+                        ['caption' => '▶️ läuft gerade', 'value' => 'run'],
+                        ['caption' => '✅ aktiv', 'value' => 'on'],
+                        ['caption' => '⚫ nicht aktiv', 'value' => 'off'],
+                        ['caption' => '🔒 gesperrt', 'value' => 'locked'],
+                        ['caption' => '🧪 Probelauf', 'value' => 'dry'],
+                    ], 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                ]],
+                ['type' => 'Label', 'name' => 'FilterInfo', 'caption' => '', 'visible' => false],
+                [
+                    'type' => 'List', 'name' => 'AutomationsHidden', 'caption' => 'ausgefiltert', 'visible' => false, 'rowCount' => 1, 'add' => false, 'delete' => false,
+                    'loadValuesFromConfiguration' => false, 'values' => [],
+                    'columns' => [
+                        ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true],
+                    ],
+                ],
                 [
                     'type' => 'List', 'name' => 'Automations', 'caption' => 'Automatismen', 'rowCount' => max(12, min(25, count($rows) + 3)),
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
@@ -2925,6 +3119,7 @@ class Automat extends IPSModule
                 : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
         }
         $order = $this->pInt('cfg_SuggestOrder');
+        [$sgRooms, $sgTypes] = $this->suggestFilterOptions();
         $n = count($this->suggestions());
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '🔎  Entdecken — Vorschläge aus deinen Geräten',
@@ -2935,6 +3130,11 @@ class Automat extends IPSModule
                 ['type' => 'Select', 'name' => 'cfg_SuggestOrder', 'caption' => 'Ordnen nach', 'width' => '320px', 'onChange' => 'AUTOMAT_UISetSuggestOrder($id, $cfg_SuggestOrder);', 'options' => [
                     ['caption' => 'Raum, darin nach Art', 'value' => 0],
                     ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
+                ]],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'ValidationTextBox', 'name' => 'sg_text', 'caption' => '🔍 Suchen', 'width' => '260px', 'value' => '', 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
+                    ['type' => 'Select', 'name' => 'sg_room', 'caption' => 'Raum', 'width' => '170px', 'value' => '', 'options' => $sgRooms, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
+                    ['type' => 'Select', 'name' => 'sg_type', 'caption' => 'Art', 'width' => '260px', 'value' => '', 'options' => $sgTypes, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
                 ]],
                 [
                     'type' => 'List', 'name' => 'SuggestList', 'caption' => 'Vorschläge (gelb = dieselben Geräte werden schon anderswo geschaltet)', 'rowCount' => max(5, min(15, $n)),

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.37 (Build 38) — 14.10.2026
+
+- Filter für „⚙️ Automatismen“ (Suchtext, Raum, Funktion/Art, Zustand) und „🔎 Entdecken“ (Suchtext, Raum, Art). Wunsch Dietmar.
+- Ausgefilterte Automatismen stehen in einer unsichtbaren zweiten Liste (`AutomationsHidden`), die mit „Übernehmen“ gespeichert und beim Lesen zusammengeführt wird — Symcon speichert sonst nur, was in der Liste steht, ausgefilterte wären gelöscht.
+
 ## 0.1.36 (Build 37) — 14.10.2026
 
 - **Behoben: Konsole hing beim Speichern** (Dietmar, live). Der Bearbeiten-Dialog enthielt die Felder aller 20 Arten (rund 100 KB), und Symcon speichert jedes Dialogfeld in die Listenzeile — über 350 Werte je Zeile. Jetzt: bestehende Automatismen zeigen nur die eigene Art (Art nicht mehr umstellbar), neue über „+“ erst die Art-Auswahl (danach mit ✏️ einstellen). Felder fremder Arten werden beim Lesen entfernt; beim nächsten „Übernehmen“ wird die Liste klein gespeichert.
