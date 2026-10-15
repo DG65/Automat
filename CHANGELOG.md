@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.40 (Build 41) — 15.10.2026
+
+- Dialog: Mehrfachfelder (Melder, Lichter, Kontakte, Rollläden, Anwesenheitssignale …) zeigen nur die belegten Plätze und einen freien; wird er gefüllt, erscheint der nächste, geleerte freie Plätze verschwinden wieder. Rückmeldung Dietmar.
+
 ## 0.1.39 (Build 40) — 15.10.2026
 
 - Zentraler Helligkeitssensor: Der Sensor unter „🏠 Hausmodus“ (Schwellen, Haltezeit) gilt auch für Rollläden „wenn es dunkel wird“ (eigene Sensorfelder dort entfallen) und für die Dämmerungsschaltung, wenn sie keinen eigenen Sensor hat. Der Bereich ist immer sichtbar. Rückmeldung Dietmar („Wie oft muss man sagen, wann es dunkel wird?“).

@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.40' => [
+            '➕ Übersichtlichere Dialoge: Bei Meldern, Lichtern, Kontakten usw. stehen nur noch die belegten Plätze und EIN freier da. Füllt man ihn, erscheint der nächste.',
+        ],
         '0.1.39' => [
             '☀️ Ein Helligkeitssensor für alles: Der Sensor unter „🏠 Hausmodus“ (mit Schwellen und Haltezeit) gilt jetzt auch für Rollläden „wenn es dunkel wird“ und die Dämmerungsschaltung — kein zweites Eintragen mehr. Die Dämmerungsschaltung kann weiterhin einen eigenen Sensor nutzen (z. B. Raumsensor).',
         ],
@@ -2332,10 +2335,21 @@ class Automat extends IPSModule
         $base = ['name' => $f['n'], 'caption' => $f['c']];
         switch ($k) {
             case 'vars':
+                // Nur gefüllte Plätze plus EIN leerer — füllt man ihn, erscheint der nächste (Dietmar 15.10.2026).
+                $max = (int)($f['max'] ?? AUTOMATKatalog::SLOTS);
+                $vals = [];
+                for ($i = 1; $i <= $max; $i++) {
+                    $vals[$i] = (int)($this->editRow[$f['n'] . $i] ?? 0);
+                }
+                $shown = self::slotVisibility($vals);
+                $all = implode(', ', array_map(function ($i) use ($f) {
+                    return '(int)$' . $f['n'] . $i;
+                }, range(1, $max)));
                 $o = [];
-                for ($i = 1; $i <= ($f['max'] ?? AUTOMATKatalog::SLOTS); $i++) {
-                    $o[] = ['type' => 'SelectVariable', 'name' => $f['n'] . $i, 'caption' => $f['c'] . ' ' . $i . ($i > 1 || empty($f['req']) ? ' (optional)' : ''), 'value' => 0, 'width' => '520px',
-                        'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . $i . '\', (int)$' . $f['n'] . $i . ');'];
+                for ($i = 1; $i <= $max; $i++) {
+                    $o[] = ['type' => 'SelectVariable', 'name' => $f['n'] . $i, 'caption' => $f['c'] . ($max > 1 ? ' ' . $i : '') . ($i > 1 || empty($f['req']) ? ' (optional)' : ''), 'value' => 0, 'width' => '520px',
+                        'visible' => $shown[$i],
+                        'onChange' => 'AUTOMAT_UIVarsChanged($id, \'' . $f['n'] . '\', ' . $i . ', json_encode([' . $all . ']));'];
                 }
                 return $o;
             case 'var':
@@ -2464,6 +2478,38 @@ class Automat extends IPSModule
             $opts[] = ['caption' => $cap . (mb_strpos(mb_strtolower($cap), mb_strtolower($raw)) !== false ? '' : ' (' . $raw . ')'), 'value' => $val];
         }
         return $opts;
+    }
+
+    /** Sichtbare Plätze eines Mehrfachfelds: alle gefüllten und der erste leere. $vals: [Platz => Variablen-ID]. */
+    private static function slotVisibility(array $vals): array
+    {
+        $out = [];
+        $firstEmpty = null;
+        foreach ($vals as $i => $v) {
+            $filled = (int)$v >= AUTOMATKatalog::$minId;
+            if (!$filled && $firstEmpty === null) {
+                $firstEmpty = $i;
+            }
+            $out[$i] = $filled;
+        }
+        if ($firstEmpty !== null) {
+            $out[$firstEmpty] = true;
+        }
+        return $out;
+    }
+
+    /** AUTOMAT_UIVarsChanged($id, $base, $index, $valsJson) — Platz geändert: prüfen wie ein Einzelfeld, dann Plätze ein-/ausblenden. */
+    public function UIVarsChanged(string $base, int $index, string $valsJson): void
+    {
+        $list = array_values(json_decode($valsJson, true) ?: []);
+        $vals = [];
+        foreach ($list as $k => $v) {
+            $vals[$k + 1] = (int)$v < AUTOMATKatalog::$minId ? 0 : (int)$v; // geleert: Symcon liefert teils 1
+        }
+        $this->UIVarChanged($base . $index, (int)($list[$index - 1] ?? 0));
+        foreach (self::slotVisibility($vals) as $i => $vis) {
+            $this->UpdateFormField($base . $i, 'visible', $vis);
+        }
     }
 
     public function UIVarChanged(string $field, int $vid): void
