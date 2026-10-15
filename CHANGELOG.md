@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.42 (Build 43) — 15.10.2026
+
+- Mehrfachfelder ohne feste Obergrenze: Der Dialog bietet hinter dem letzten belegten Platz immer `SPARE` (8) freie Plätze an; die Katalog-Anzahl ist nur noch der Startwert. Lesen (`vars`, `sanitize`, `fieldProblems`, Duplizieren, Melder-Hinweise) richtet sich nach den Plätzen der Zeile (`slotsIn`). Sind alle belegt, erscheint ein Hinweis. „Entdecken“ übernimmt alle gefundenen Geräte (vorher abgeschnitten). Rückmeldung Dietmar (Gehen-Check: nur 8 Geräte).
+
 ## 0.1.41 (Build 42) — 15.10.2026
 
 - Fehlerbehebung Datenverlust: Die unsichtbare Liste `AutomationsHidden` (ab 0.1.37) speicherte in Symcon nur ihre Spalten (Kennung, Art) — ausgefilterte Automatismen verloren beim „Übernehmen“ mit aktivem Filter alle Einstellungen. Jetzt steckt die ganze Zeile als JSON in der Spalte `Data`; beim Lesen und erneuten Filtern wird sie ausgepackt. Altbestand ohne `Data` bleibt als leere Zeile sichtbar. Prüfstand bildet das echte Speicherverhalten nach. Fund Dietmar (filtern + duplizieren).

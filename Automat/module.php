@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.42' => [
+            '➕ Keine feste Obergrenze mehr bei Meldern, Lichtern, Kontakten, Geräten usw.: Hinter dem letzten belegten Platz gibt es immer weitere freie. Sind alle belegt, nach „Übernehmen“ den Dialog neu öffnen. „Entdecken“ übernimmt jetzt alle gefundenen Geräte.',
+        ],
         '0.1.41' => [
             '🛠 Wichtige Korrektur: Wer mit aktivem Filter „Übernehmen“ gedrückt hat, verlor die Einstellungen der ausgeblendeten Automatismen (sie standen danach leer in der Liste). Ausgeblendete werden jetzt vollständig gespeichert. Bereits leer gewordene Automatismen bitte neu einstellen — die tägliche Symcon-Sicherung enthält den alten Stand.',
         ],
@@ -838,7 +841,7 @@ class Automat extends IPSModule
             return $out;
         }
         $impulse = [];
-        for ($i = 1; $i <= AUTOMATKatalog::slots('bl_mel'); $i++) {
+        for ($i = 1; $i <= AUTOMATKatalog::slotsIn($row, 'bl_mel'); $i++) {
             $vid = (int)($row['bl_mel' . $i] ?? 0);
             if ($vid < AUTOMATKatalog::$minId || !IPS_VariableExists($vid)) {
                 continue;
@@ -1839,7 +1842,7 @@ class Automat extends IPSModule
                     }
                     $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
                         return $f['n'] . $i;
-                    }, range(1, AUTOMATKatalog::slots($f['n']))) : [$f['n']];
+                    }, range(1, AUTOMATKatalog::slotsIn($r, $f['n']))) : [$f['n']];
                     foreach ($names as $n) {
                         $vid = (int)($r[$n] ?? 0);
                         if ($vid < AUTOMATKatalog::$minId) {
@@ -2358,7 +2361,9 @@ class Automat extends IPSModule
         switch ($k) {
             case 'vars':
                 // Nur gefüllte Plätze plus EIN leerer — füllt man ihn, erscheint der nächste (Dietmar 15.10.2026).
-                $max = (int)($f['max'] ?? AUTOMATKatalog::SLOTS);
+                // Keine feste Obergrenze: immer SPARE freie Plätze hinter dem letzten belegten; sind auch die voll,
+                // gibt es nach „Übernehmen“ und erneutem Öffnen weitere.
+                $max = max(AUTOMATKatalog::slots($f['n']), AUTOMATKatalog::lastFilled($this->editRow, $f['n'])) + AUTOMATKatalog::SPARE;
                 $vals = [];
                 for ($i = 1; $i <= $max; $i++) {
                     $vals[$i] = (int)($this->editRow[$f['n'] . $i] ?? 0);
@@ -2373,6 +2378,9 @@ class Automat extends IPSModule
                         'visible' => $shown[$i],
                         'onChange' => 'AUTOMAT_UIVarsChanged($id, \'' . $f['n'] . '\', ' . $i . ', json_encode([' . $all . ']));'];
                 }
+                $o[] = ['type' => 'Label', 'name' => 'more_' . $f['n'], 'visible' => !in_array(false, $vals === [] ? [false] : array_map(function ($v) {
+                    return $v >= AUTOMATKatalog::$minId;
+                }, $vals), true), 'caption' => '➕ Alle Plätze belegt — nach „Übernehmen“ und erneutem Öffnen gibt es weitere.'];
                 return $o;
             case 'var':
                 return [$base + ['type' => 'SelectVariable', 'value' => 0, 'width' => '520px', 'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . '\', (int)$' . $f['n'] . ');']];
@@ -2532,6 +2540,7 @@ class Automat extends IPSModule
         foreach (self::slotVisibility($vals) as $i => $vis) {
             $this->UpdateFormField($base . $i, 'visible', $vis);
         }
+        $this->UpdateFormField('more_' . $base, 'visible', count($vals) > 0 && !in_array(0, $vals, true));
     }
 
     public function UIVarChanged(string $field, int $vid): void

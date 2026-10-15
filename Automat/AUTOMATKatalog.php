@@ -18,6 +18,8 @@ class AUTOMATKatalog
 {
     /** Anzahl Variablen-Plätze je Mehrfach-Feld (Melder, Ausgänge, Kontakte, …). */
     public const SLOTS = 4;
+    /** Freie Plätze über den belegten hinaus — Mehrfachfelder haben damit keine feste Obergrenze (Dietmar 15.10.2026). */
+    public const SPARE = 8;
 
     /**
      * Kleinste echte Objekt-ID in Symcon (IDs sind fünfstellig, 10000–59999). Kleinere Werte in einem
@@ -627,7 +629,7 @@ class AUTOMATKatalog
                 }
                 $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
                     return $f['n'] . $i;
-                }, range(1, $f['max'] ?? self::SLOTS)) : [$f['n']];
+                }, range(1, self::slotsIn($row, $f['n']))) : [$f['n']];
                 foreach ($names as $n) {
                     if (array_key_exists($n, $row) && (int)$row[$n] < self::$minId) {
                         $row[$n] = 0;
@@ -652,7 +654,7 @@ class AUTOMATKatalog
             }
             $names = $f['k'] === 'vars' ? array_map(function ($i) use ($f) {
                 return $f['n'] . $i;
-            }, range(1, $f['max'] ?? self::SLOTS)) : [$f['n']];
+            }, range(1, self::slotsIn($row, $f['n']))) : [$f['n']];
             $any = false;
             foreach ($names as $n) {
                 $v = (int)($row[$n] ?? 0);
@@ -693,11 +695,40 @@ class AUTOMATKatalog
         return $map[$name] ?? self::SLOTS;
     }
 
+    /**
+     * Plätze eines Mehrfach-Felds in DIESER Zeile: mindestens die Katalog-Anzahl, sonst so viele, wie die Zeile
+     * trägt — die Obergrenze ist nur der Startwert, der Dialog bietet immer weitere freie Plätze an.
+     */
+    public static function slotsIn(array $row, string $name): int
+    {
+        $n = self::slots($name);
+        $len = strlen($name);
+        foreach ($row as $k => $_) {
+            $k = (string)$k;
+            if (strncmp($k, $name, $len) === 0 && ctype_digit($rest = substr($k, $len))) {
+                $n = max($n, (int)$rest);
+            }
+        }
+        return $n;
+    }
+
+    /** Höchster belegter Platz eines Mehrfach-Felds (0 = keiner). */
+    public static function lastFilled(array $row, string $name): int
+    {
+        $last = 0;
+        for ($i = 1; $i <= self::slotsIn($row, $name); $i++) {
+            if ((int)($row[$name . $i] ?? 0) >= self::$minId) {
+                $last = $i;
+            }
+        }
+        return $last;
+    }
+
     /** Variablen eines Mehrfach-Felds (0 und doppelte entfernt). */
     public static function vars(array $row, string $name): array
     {
         $out = [];
-        for ($i = 1; $i <= self::slots($name); $i++) {
+        for ($i = 1; $i <= self::slotsIn($row, $name); $i++) {
             $v = (int)($row[$name . $i] ?? 0);
             if ($v >= self::$minId && !in_array($v, $out, true)) {
                 $out[] = $v;

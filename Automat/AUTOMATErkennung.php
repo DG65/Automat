@@ -323,7 +323,7 @@ class AUTOMATErkennung
         };
         $fill = function (array &$row, string $field, array $vids) {
             $i = 1;
-            foreach (array_slice($vids, 0, AUTOMATKatalog::slots($field)) as $vid) {
+            foreach ($vids as $vid) { // keine Obergrenze: der Dialog bietet immer weitere Plätze an
                 $row[$field . $i++] = $vid;
             }
         };
@@ -393,8 +393,8 @@ class AUTOMATErkennung
             $fill($row, 'an_p', array_column($pres, 'vid'));
             $names = array_map(function ($it) {
                 return trim((string)$it['inst']) ?: (string)$it['name'];
-            }, array_slice($pres, 0, AUTOMATKatalog::slots('an_p')));
-            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column(array_slice($pres, 0, AUTOMATKatalog::slots('an_p')), 'vid'));
+            }, $pres);
+            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column($pres, 'vid'));
         }
 
         // Zentral-Aus: beim Gehen/Schlafen alle gefundenen Lichter aus (ein Vorschlag fürs ganze Haus)
@@ -405,12 +405,11 @@ class AUTOMATErkennung
             usort($lights, function ($a, $b) {
                 return strcmp((string)($a['room'] ?? '') . $a['inst'], (string)($b['room'] ?? '') . $b['inst']);
             });
-            $max = AUTOMATKatalog::slots('sz_out');
             $row = AUTOMATKatalog::defaults('szene');
             $row['Name'] = 'Alles aus beim Gehen und nachts';
             $row['Room'] = '';
             $fill($row, 'sz_out', array_column($lights, 'vid'));
-            $add('szene', '', 'Zentral-Aus nach Hausmodus', $row, count($lights) . ' Licht(er) gefunden' . (count($lights) > $max ? ' (die ersten ' . $max . ' übernommen)' : '') . ' — bei „Nacht“, „Abwesend“ und „Urlaub“ aus; bitte im Dialog prüfen, was davon wirklich aus soll', array_column(array_slice($lights, 0, $max), 'vid'));
+            $add('szene', '', 'Zentral-Aus nach Hausmodus', $row, count($lights) . ' Licht(er) gefunden — bei „Nacht“, „Abwesend“ und „Urlaub“ aus; bitte im Dialog prüfen, was davon wirklich aus soll', array_column($lights, 'vid'));
         }
 
         $byR = function (string $role) use ($items): array {
@@ -434,7 +433,7 @@ class AUTOMATErkennung
             $row['Name'] = 'Wasser-/Rauchalarm';
             $row['Room'] = '';
             $fill($row, 'al_mel', array_column($al, 'vid'));
-            $add('alarm', '', 'Wasser-/Rauchmelder-Reaktion', $row, count($al) . ' Melder gefunden (' . $labels($al, 4) . ') — im Dialog eintragen, was bei Alarm passieren soll (Licht, Rollläden, Ventil)', array_column(array_slice($al, 0, AUTOMATKatalog::slots('al_mel')), 'vid'));
+            $add('alarm', '', 'Wasser-/Rauchmelder-Reaktion', $row, count($al) . ' Melder gefunden (' . $labels($al, 4) . ') — im Dialog eintragen, was bei Alarm passieren soll (Licht, Rollläden, Ventil)', array_column($al, 'vid'));
         }
         // Rollläden: ein Vorschlag mit allen
         $rl = $byR('shutter');
@@ -443,7 +442,7 @@ class AUTOMATErkennung
             $row['Name'] = 'Rollläden morgens auf, abends zu';
             $row['Room'] = '';
             $fill($row, 'rl_out', array_column($rl, 'vid'));
-            $add('rollladen', '', 'Rollladen nach Zeit/Sonne', $row, count($rl) . ' Rollladen gefunden (' . $labels($rl, 4) . ') — Sonnenauf-/-untergang, werktags frühestens 6:30, am Wochenende 8:00', array_column(array_slice($rl, 0, AUTOMATKatalog::slots('rl_out')), 'vid'));
+            $add('rollladen', '', 'Rollladen nach Zeit/Sonne', $row, count($rl) . ' Rollladen gefunden (' . $labels($rl, 4) . ') — Sonnenauf-/-untergang, werktags frühestens 6:30, am Wochenende 8:00', array_column($rl, 'vid'));
         }
         // Heizung nach Hausmodus: alle Sollwerte
         $hz = $byR('setpoint');
@@ -452,7 +451,7 @@ class AUTOMATErkennung
             $row['Name'] = 'Heizung absenken bei Abwesenheit';
             $row['Room'] = '';
             $fill($row, 'hz_soll', array_column($hz, 'vid'));
-            $add('heizung', '', 'Heizung nach Hausmodus', $row, count($hz) . ' Heizungs-Sollwert(e) gefunden (' . $labels($hz, 4) . ') — bei „Abwesend“ 17 °C, bei „Urlaub“ 15 °C', array_column(array_slice($hz, 0, AUTOMATKatalog::slots('hz_soll')), 'vid'));
+            $add('heizung', '', 'Heizung nach Hausmodus', $row, count($hz) . ' Heizungs-Sollwert(e) gefunden (' . $labels($hz, 4) . ') — bei „Abwesend“ 17 °C, bei „Urlaub“ 15 °C', array_column($hz, 'vid'));
         }
         // Lüften: je Raum der erste Feuchte-/CO₂-Messwert
         $seenAir = [];
@@ -485,7 +484,7 @@ class AUTOMATErkennung
                 }
             }
             $fill($row, 'gc_kon', array_column($gk, 'vid'));
-            $add('gehen', '', 'Gehen-Check', $row, count($gk) . ' Fenster-/Türkontakt(e) gefunden (' . $labels($gk, 4) . ') — beim Wechsel auf „Abwesend“/„Urlaub“ meldet er, was noch offen ist', array_column(array_slice($gk, 0, AUTOMATKatalog::slots('gc_kon')), 'vid'));
+            $add('gehen', '', 'Gehen-Check', $row, count($gk) . ' Fenster-/Türkontakt(e) gefunden (' . $labels($gk, 4) . ') — beim Wechsel auf „Abwesend“/„Urlaub“ meldet er, was noch offen ist', array_column($gk, 'vid'));
         }
         // Türklingel
         foreach (array_slice($byR('bell'), 0, 2) as $it) {
