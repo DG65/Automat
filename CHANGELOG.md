@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.41 (Build 42) — 15.10.2026
+
+- Fehlerbehebung Datenverlust: Die unsichtbare Liste `AutomationsHidden` (ab 0.1.37) speicherte in Symcon nur ihre Spalten (Kennung, Art) — ausgefilterte Automatismen verloren beim „Übernehmen“ mit aktivem Filter alle Einstellungen. Jetzt steckt die ganze Zeile als JSON in der Spalte `Data`; beim Lesen und erneuten Filtern wird sie ausgepackt. Altbestand ohne `Data` bleibt als leere Zeile sichtbar. Prüfstand bildet das echte Speicherverhalten nach. Fund Dietmar (filtern + duplizieren).
+
 ## 0.1.40 (Build 41) — 15.10.2026
 
 - Dialog: Mehrfachfelder (Melder, Lichter, Kontakte, Rollläden, Anwesenheitssignale …) zeigen nur die belegten Plätze und einen freien; wird er gefüllt, erscheint der nächste, geleerte freie Plätze verschwinden wieder. Rückmeldung Dietmar.

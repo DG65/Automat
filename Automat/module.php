@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.41' => [
+            '🛠 Wichtige Korrektur: Wer mit aktivem Filter „Übernehmen“ gedrückt hat, verlor die Einstellungen der ausgeblendeten Automatismen (sie standen danach leer in der Liste). Ausgeblendete werden jetzt vollständig gespeichert. Bereits leer gewordene Automatismen bitte neu einstellen — die tägliche Symcon-Sicherung enthält den alten Stand.',
+        ],
         '0.1.40' => [
             '➕ Übersichtlichere Dialoge: Bei Meldern, Lichtern, Kontakten usw. stehen nur noch die belegten Plätze und EIN freier da. Füllt man ihn, erscheint der nächste.',
         ],
@@ -1556,6 +1559,7 @@ class Automat extends IPSModule
         $rows = [];
         $seen = [];
         foreach (json_decode($rowsJson, true) ?: [] as $r) {
+            $r = self::unwrapHidden($r);
             if (!is_array($r) || !array_key_exists('Type', $r)) {
                 continue;
             }
@@ -1582,10 +1586,28 @@ class Automat extends IPSModule
             }
         }
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($show)));
-        $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_values($hide)));
+        $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_map(function ($r) {
+            return ['Uid' => (string)($r['Uid'] ?? ''), 'Type' => (string)($r['Type'] ?? ''), 'Data' => json_encode($r)];
+        }, array_values($hide))));
         $active = trim($text) !== '' || $room !== '' || $cat !== '' || $state !== '';
         $this->UpdateFormField('FilterInfo', 'caption', '🔎 Zeigt ' . count($show) . ' von ' . count($rows) . ' Automatismen — die übrigen sind nur ausgeblendet und bleiben beim „Übernehmen“ erhalten.');
         $this->UpdateFormField('FilterInfo', 'visible', $active);
+    }
+
+    /**
+     * Zeile aus der unsichtbaren Liste: vollständig aus „Data“; Altbestand (0.1.39/0.1.40) ohne „Data“ bleibt als
+     * leere Zeile mit Kennung und Art stehen, damit man sieht, welcher Automatismus neu eingestellt werden muss.
+     */
+    private static function unwrapHidden($h)
+    {
+        if (!is_array($h)) {
+            return null;
+        }
+        if (isset($h['Data'])) {
+            $r = json_decode((string)$h['Data'], true);
+            return is_array($r) ? $r : null;
+        }
+        return $h;
     }
 
     /** Passt eine Zeile zum Filter? (Suchtext über Name, Raum, Art, Zustand; Raum gleich inkl. Kurz-/Langform.) */
@@ -2714,8 +2736,11 @@ class Automat extends IPSModule
                 $seen[(string)$r['Uid']] = true;
             }
         }
-        foreach (json_decode((string)$this->pStr('AutomationsHidden'), true) ?: [] as $r) {
-            if (is_array($r) && !isset($seen[(string)($r['Uid'] ?? '')])) {
+        foreach (json_decode((string)$this->pStr('AutomationsHidden'), true) ?: [] as $h) {
+            // Die ganze Zeile steckt als JSON in der Spalte „Data“ — Symcon speichert in dieser unsichtbaren
+            // Liste nur die Spalten (Fund 15.10.2026: ohne „Data“ blieben nur Kennung und Art übrig).
+            $r = self::unwrapHidden($h);
+            if (is_array($r) && (string)($r['Uid'] ?? '') !== '' && !isset($seen[(string)($r['Uid'] ?? '')])) {
                 $rows[] = $r;
             }
         }
@@ -3159,6 +3184,7 @@ class Automat extends IPSModule
                     'columns' => [
                         ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true],
                         ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => 'Daten', 'name' => 'Data', 'width' => '80px', 'add' => '', 'save' => true],
                     ],
                 ],
                 [

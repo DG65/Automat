@@ -2439,32 +2439,42 @@ $m->UIFilterList(json_encode($allRows), 'flur', '', '', '');
 $shown = $getUpd('Automations');
 $hidden = $getUpd('AutomationsHidden');
 check('Suchtext „flur“: Flur-Automatismen sichtbar, Bad ausgefiltert', array_column($shown, 'Uid') === ['afl001', 'afl003'] && array_column($hidden, 'Uid') === ['afl002'], json_encode([array_column($shown, 'Uid'), array_column($hidden, 'Uid')]));
-check('Ausgefilterte Zeile behält alle Einstellungen (keine Anzeigespalten)', ($hidden[0]['fo_kon1'] ?? 0) === 1031 && !array_key_exists('State', $hidden[0]));
+check('Ausgefilterte Zeile steckt vollständig in der Spalte „Data“ (ohne Anzeigespalten)', (json_decode($hidden[0]['Data'] ?? '{}', true)['fo_kon1'] ?? 0) === 1031 && !array_key_exists('State', json_decode($hidden[0]['Data'] ?? '{}', true)));
 check('Hinweis „zeigt 2 von 3 — die übrigen bleiben erhalten“', in_array(['FilterInfo', 'visible', true], $m->fieldUpdates, true) && strpos(json_encode($m->fieldUpdates, JSON_UNESCAPED_UNICODE), 'Zeigt 2 von 3') !== false);
-// So speichert Symcon beim „Übernehmen“ mit aktivem Filter: beide Listen getrennt
+// So speichert Symcon beim „Übernehmen“ mit aktivem Filter: beide Listen getrennt — und in der unsichtbaren
+// Liste NUR deren Spalten (live gesehen 15.10.2026: alles andere war weg).
+$colsOnly = array_map(fn($r) => array_intersect_key($r, ['Uid' => 1, 'Type' => 1, 'Data' => 1]), $hidden);
 $m->props['Automations'] = json_encode($shown);
-$m->props['AutomationsHidden'] = json_encode($hidden);
+$m->props['AutomationsHidden'] = json_encode($colsOnly);
 $m->ApplyChanges();
 $rowsAfter = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
-check('Nach dem Speichern mit Filter: alle 3 Automatismen da (nichts gelöscht)', count($rowsAfter) === 3 && in_array('afl002', array_column($rowsAfter, 'Uid'), true));
+check('Nach dem Speichern mit Filter: alle 3 Automatismen da, MIT ihren Einstellungen', count($rowsAfter) === 3 && in_array('afl002', array_column($rowsAfter, 'Uid'), true) && (array_column($rowsAfter, null, 'Uid')['afl002']['fo_kon1'] ?? 0) === 1031 && (array_column($rowsAfter, null, 'Uid')['afl002']['Name'] ?? '') === ($fB['Name'] ?? ''));
 check('… und arbeiten weiter (Nachrichten auch für den ausgefilterten registriert)', isset($m->messages[1031]));
 $lvF2 = json_decode($m->GetConfigurationForm(), true);
 check('Formular neu geöffnet: alle 3 sichtbar, unsichtbare Liste leer', count($find($lvF2['elements'], 'Automations')['values']) === 3 && $find($lvF2['elements'], 'AutomationsHidden')['values'] === []);
 $m->fieldUpdates = [];
-$m->UIFilterList(json_encode(array_merge($shown, $hidden)), '', '', '', 'off');
+$hidRows = $hidden; // so reicht das onChange die unsichtbare Liste weiter: mit Spalte „Data“
+$m->UIFilterList(json_encode(array_merge($shown, $hidRows)), '', '', '', 'off');
 check('Zustand „nicht aktiv“: nur das Treppenlicht', array_column($getUpd('Automations'), 'Uid') === ['afl003']);
 $m->fieldUpdates = [];
-$m->UIFilterList(json_encode(array_merge($shown, $hidden)), '', '', 'cat:klima', '');
+$m->UIFilterList(json_encode(array_merge($shown, $hidRows)), '', '', 'cat:klima', '');
 check('Funktion „Klima“: nur Fenster offen', array_column($getUpd('Automations'), 'Uid') === ['afl002']);
+check('… und die zurückgeholte Zeile hat ihre Einstellungen (aus „Data“ ausgepackt)', ($getUpd('Automations')[0]['fo_kon1'] ?? 0) === 1031);
 $m->fieldUpdates = [];
-$m->UIFilterList(json_encode(array_merge($shown, $hidden)), '', 'Bad', '', '');
+$m->UIFilterList(json_encode(array_merge($shown, $hidRows)), '', 'Bad', '', '');
 check('Raum „Bad“', array_column($getUpd('Automations'), 'Uid') === ['afl002']);
 $m->fieldUpdates = [];
-$m->UIFilterList(json_encode(array_merge($shown, $hidden)), '', '', '', '');
+$m->UIFilterList(json_encode(array_merge($shown, $hidRows)), '', '', '', '');
 check('Filter leeren: alle sichtbar, nichts ausgefiltert, Hinweis weg', count($getUpd('Automations')) === 3 && $getUpd('AutomationsHidden') === [] && in_array(['FilterInfo', 'visible', false], $m->fieldUpdates, true));
 $m->fieldUpdates = [];
 $m->UIFilterList('kaputt', 'x', '', '', '');
 check('Unlesbare Liste: nichts wird verschoben', $m->fieldUpdates === []);
+// Altbestand aus 0.1.39/0.1.40: unsichtbare Zeilen nur mit Kennung und Art — nicht stillschweigend verschwinden lassen
+$m->props['Automations'] = json_encode([$fA]);
+$m->props['AutomationsHidden'] = json_encode([['Uid' => 'afl002', 'Type' => 'fenster']]);
+$m->ApplyChanges();
+$rowsOld = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
+check('Altbestand ohne „Data“: Zeile bleibt (leer) sichtbar statt zu verschwinden', in_array('afl002', array_column($rowsOld, 'Uid'), true));
 // Entdecken
 $m->props['Automations'] = '[]';
 $m->props['AutomationsHidden'] = '[]';
