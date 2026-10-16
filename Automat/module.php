@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.45' => [
+            '🕒 Bewegungslicht: Der lernende Nachlauf wird höchstens das Vierfache des eingestellten Werts (30 s → höchstens 2 min). Als „zu früh ausgeschaltet“ zählt nur noch, wer innerhalb der eingestellten Nachlaufzeit zurückkommt. Wer den Nachlauf ändert, verwirft das Gelernte. Das Protokoll nennt den gelernten Wert. Beim Update beginnt das Lernen bei allen Bewegungslichtern neu.',
+        ],
         '0.1.44' => [
             '🛠 Bewegungslicht: Licht ging tagsüber an, obwohl es hell genug war. Nach jedem automatischen Ausschalten wurde der Helligkeitssensor bis zum nächsten Einschalten übergangen statt nur in den ersten drei Minuten (gegen Restlicht). Behoben.',
         ],
@@ -864,7 +867,7 @@ class Automat extends IPSModule
         $eff = AUTOMATLogik::effectiveNachlauf($row, is_array($stt) ? $stt : []);
         $fo = count((array)($stt['fo'] ?? []));
         if ($fo > 0 || $eff > max(1, (int)($row['bl_nachlauf'] ?? 120))) {
-            $out['bl_nachlauf'] = '🕒 Gelernt: ' . AUTOMATKatalog::dur($eff) . ($fo > 0 ? ' — ' . $fo . '× zu früh ausgeschaltet in den letzten 7 Tagen' : '') . '. Der Wert hier ist der Grundwert, zu dem Automat zurückkehrt.';
+            $out['bl_nachlauf'] = '🕒 Gelernt: ' . AUTOMATKatalog::dur($eff) . ($fo > 0 ? ' — ' . $fo . '× zu früh ausgeschaltet in den letzten 7 Tagen' : '') . '. Der Wert hier ist der Grundwert, zu dem Automat zurückkehrt; gelernt wird höchstens das ' . AUTOMATLogik::LEARN_FACTOR_MAX . '-Fache (' . AUTOMATKatalog::dur(AUTOMATLogik::learnCap($row)) . '). Wert ändern verwirft das Gelernte.';
         }
         if (count($impulse) > 0) {
             $out['bl_impuls'] = 'ℹ️ ' . implode(', ', $impulse) . ' sendet offenbar nie „aus“ (nur „Bewegung“) — diesen Schalter einschalten, dann beginnt der Nachlauf bei jeder Meldung.';

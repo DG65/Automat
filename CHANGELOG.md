@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.45 (Build 46) — 16.10.2026
+
+- Bewegungslicht, lernender Nachlauf: Obergrenze `LEARN_FACTOR_MAX` (4 × Grundwert, nie über „höchstens“); Fehlabschaltung nur bei Wieder-An innerhalb des eingestellten Nachlaufs (mind. 30 s, höchstens 3 min, `falseOffWindow()`) statt pauschal 3 min; geänderter Grundwert verwirft das Gelernte (`learnBase`); Protokoll „Licht geht um … aus“ nennt gelernten und eingestellten Wert. Beim Update beginnt das Lernen neu (Zustände ohne `learnBase`). Live gefunden bei Dietmar: Flur mit 30 s hatte sich in zwei Tagen über 8 „Fehlabschaltungen“ auf 12:57 min hochgelernt.
+
 ## 0.1.44 (Build 45) — 16.10.2026
 
 - Fehlerbehebung Bewegungslicht: Die Ausnahme „kurz nach dem eigenen Ausschalten zählt die Helligkeit nicht“ galt ohne Zeitgrenze — `offAt` blieb nach jedem automatischen Aus bis zum nächsten Einschalten stehen, die Helligkeitsschwelle wurde so lange nie geprüft. Jetzt nur im Fehlabschaltungs-Fenster (`FALSE_OFF_WINDOW`, 3 min). Live gefunden bei Dietmar: Flur bei 66 lx (Schwelle 6 lx) und Küche bei 539 lx (Schwelle 31 lx) mittags eingeschaltet.

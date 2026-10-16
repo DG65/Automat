@@ -427,6 +427,7 @@ class AUTOMATLogik
 
     /** Zeitfenster nach einem automatischen Ausschalten, in dem Wieder-Einschalten als Fehlabschaltung gilt. */
     public const FALSE_OFF_WINDOW = 180;
+    public const LEARN_FACTOR_MAX = 4;
 
     /** Aktive „weitere Anzeichen für Anwesenheit“ (Namen); Zahlen zählen über der Schwelle, sonst „an“. */
     private static function activeHints(array $row, array $ctx): array
@@ -453,8 +454,27 @@ class AUTOMATLogik
         if (!($row['bl_lernen'] ?? true)) {
             return $base;
         }
-        $max = max($base, (int)($row['bl_nachlaufmax'] ?? 1800));
-        return min($max, max($base, (int)($st['learnN'] ?? 0)));
+        return min(self::learnCap($row), max($base, (int)($st['learnN'] ?? 0)));
+    }
+
+    /**
+     * Obergrenze des gelernten Nachlaufs: höchstens das Vierfache des eingestellten Werts (und nie über „höchstens“).
+     * Ohne diese Grenze schaukelte sich ein Flur mit 30 s in zwei Tagen auf 13 min hoch (Dietmar 16.10.2026).
+     */
+    public static function learnCap(array $row): int
+    {
+        $base = max(1, (int)($row['bl_nachlauf'] ?? 120));
+        return max($base, min(max($base, (int)($row['bl_nachlaufmax'] ?? 1800)), $base * self::LEARN_FACTOR_MAX));
+    }
+
+    /**
+     * Wie lange nach dem automatischen Aus ein Wieder-An als Fehlabschaltung zählt: so lange wie der eingestellte
+     * Nachlauf, mindestens 30 s, höchstens FALSE_OFF_WINDOW. Wer im Flur nach zwei Minuten zurückkommt, ist ein neuer
+     * Gang, keine Fehlabschaltung.
+     */
+    public static function falseOffWindow(array $row): int
+    {
+        return max(30, min(self::FALSE_OFF_WINDOW, (int)($row['bl_nachlauf'] ?? 120)));
     }
 
     private static function bewegung(array $row, array $st, array $ev, array $ctx, array $res): array
@@ -465,10 +485,17 @@ class AUTOMATLogik
         $outs = AUTOMATKatalog::vars($row, 'bl_out');
         $base = max(1, (int)($row['bl_nachlauf'] ?? 120));
         $learnOn = (bool)($row['bl_lernen'] ?? true);
-        $maxN = max($base, (int)($row['bl_nachlaufmax'] ?? 1800));
+        $maxN = self::learnCap($row);
+        $window = self::falseOffWindow($row);
         $impuls = !empty($row['bl_impuls']);
         $handPause = max(0, (int)($row['bl_handpause'] ?? 0)) * 60;
         $st += ['ph' => 'aus', 'until' => 0, 'fl' => 0, 'hu' => 0, 'learnN' => 0, 'offAt' => 0, 'fo' => [], 'lastDecay' => 0];
+        // Eingestellten Nachlauf geändert: Gelerntes verwerfen — der neue Wert gilt ab sofort.
+        if ((int)($st['learnBase'] ?? 0) !== $base) {
+            $st['learnN'] = 0;
+            $st['fo'] = [];
+            $st['learnBase'] = $base;
+        }
         // Gelernten Nachlauf langsam zurückführen: je Tag ohne Fehlabschaltung 10 % Richtung Grundwert.
         if ($learnOn && (int)$st['learnN'] > $base) {
             if ((int)$st['lastDecay'] === 0) {
@@ -513,17 +540,18 @@ class AUTOMATLogik
         $hintNames = self::activeHints($row, $ctx);
 
         // Wieder an kurz nach automatischem Aus = Fehlabschaltung → Nachlauf verlängern.
-        $noteReOn = function (string $how) use (&$st, &$res, $now, $learnOn, $maxN, $base, &$nach) {
-            if ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > self::FALSE_OFF_WINDOW) {
+        $noteReOn = function (string $how) use (&$st, &$res, $now, $learnOn, $maxN, $base, &$nach, $window) {
+            if ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > $window) {
                 $st['offAt'] = 0;
                 return;
             }
             $gap = $now - (int)$st['offAt'];
             $st['offAt'] = 0;
             $st['fo'][] = $now;
-            $txt = 'Fehlabschaltung: Licht ' . $how . ' ' . self::fmtDuration(max(60, $gap)) . ' nach dem automatischen Ausschalten wieder an.';
+            $txt = 'Fehlabschaltung: Licht ' . $how . ' ' . AUTOMATKatalog::dur($gap) . ' nach dem automatischen Ausschalten wieder an.';
             if ($learnOn) {
                 $old = self::effectiveNachlauf(['bl_nachlauf' => $base, 'bl_nachlaufmax' => $maxN, 'bl_lernen' => true], $st);
+                // Höchstwert = $maxN (schon auf das Vierfache des Grundwerts begrenzt)
                 $st['learnN'] = min($maxN, max($base, (int)round($old * 1.5)));
                 $st['lastDecay'] = $now;
                 $nach = $st['learnN'];
@@ -557,7 +585,7 @@ class AUTOMATLogik
                         $luxMax = (float)($row['bl_luxschwelle'] ?? 30);
                         if ($soft !== '') {
                             $res['log'] = 'Bewegung — nicht eingeschaltet: ' . $soft . '.';
-                        } elseif ($luxVal !== null && $luxVal >= $luxMax && ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > self::FALSE_OFF_WINDOW)) {
+                        } elseif ($luxVal !== null && $luxVal >= $luxMax && ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > $window)) {
                             // Helligkeit zählt nur in den ersten Minuten nach dem eigenen Ausschalten nicht — vorher galt
                             // das ab dem letzten automatischen Aus für immer (Licht ging mittags bei 70–540 lx an, Dietmar 16.10.2026).
                             $res['log'] = 'Bewegung — nicht eingeschaltet: hell genug (' . self::fmtNum($luxVal) . ' lx ≥ ' . self::fmtNum($luxMax) . ' lx).';
@@ -582,7 +610,8 @@ class AUTOMATLogik
                 }
             } elseif (in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0 && count($hintNames) === 0) {
                 $st['until'] = $now + $nach;
-                $res['log'] = 'Keine Bewegung mehr — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+                $res['log'] = 'Keine Bewegung mehr — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus'
+                    . ($nach > $base ? ' (gelernter Nachlauf ' . AUTOMATKatalog::dur($nach) . ', eingestellt ' . AUTOMATKatalog::dur($base) . ').' : '.');
             }
         } elseif ($k === 'output' && empty($ev['own']) && in_array($vid, $outs, true)) {
             if (self::isTrue($ev['v'] ?? false)) {
