@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.44 (Build 45) — 16.10.2026
+
+- Fehlerbehebung Bewegungslicht: Die Ausnahme „kurz nach dem eigenen Ausschalten zählt die Helligkeit nicht“ galt ohne Zeitgrenze — `offAt` blieb nach jedem automatischen Aus bis zum nächsten Einschalten stehen, die Helligkeitsschwelle wurde so lange nie geprüft. Jetzt nur im Fehlabschaltungs-Fenster (`FALSE_OFF_WINDOW`, 3 min). Live gefunden bei Dietmar: Flur bei 66 lx (Schwelle 6 lx) und Küche bei 539 lx (Schwelle 31 lx) mittags eingeschaltet.
+
 ## 0.1.43 (Build 44) — 16.10.2026
 
 - Kachel: Symbol größer und links über beide Zeilen, Name und Zustand brechen um (vorher mit „…“ abgeschnitten), Spalten mindestens 270 px, Sperr-/Dauerlicht-Knöpfe etwas größer. Rückmeldung Dietmar.

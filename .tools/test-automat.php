@@ -475,6 +475,14 @@ $st['ph'] = 'aus';
 $st['act'] = [300 => false, 301 => false];
 $r = step($bn, $st, ['k' => 'trigger', 'vid' => 301, 'v' => true], ['val' => [100 => false, 400 => 5.0] + $v]);
 check('Wieder an nach 10 min ist keine Fehlabschaltung', $st['learnN'] === 400 && strpos((string)$r['log'], 'Fehlabschaltung') === false);
+// Live 16.10.2026: Nach einem automatischen Aus blieb offAt stehen, bis das Licht wieder anging — bis dahin galt
+// die Helligkeit nie (Flur mittags bei 66 lx an, Schwelle 6 lx). Sie zählt nur im Fehlabschaltungs-Fenster nicht.
+$sh = ['ph' => 'aus', 'offAt' => $GLOBALS['CLOCK'] - 3 * 3600, 'act' => [300 => false, 301 => false]];
+$r = step($bn, $sh, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => [100 => false, 300 => true, 301 => false, 400 => 66.0]]);
+check('Stunden nach dem automatischen Aus: hell genug → bleibt aus', $r['cmd'] === [] && strpos((string)$r['log'], 'hell genug') !== false, (string)$r['log']);
+$sh = ['ph' => 'aus', 'offAt' => $GLOBALS['CLOCK'] - 60, 'act' => [300 => false, 301 => false]];
+$r = step($bn, $sh, ['k' => 'trigger', 'vid' => 300, 'v' => true], ['val' => [100 => false, 300 => true, 301 => false, 400 => 66.0]]);
+check('… eine Minute nach dem Aus: Restlicht zählt nicht, wieder an', cmdMap($r) === ['100=true']);
 $GLOBALS['CLOCK'] = strtotime('+1 day', $GLOBALS['CLOCK']) + 60;
 step($bn, $st, ['k' => 'tick'], ['val' => [100 => true] + $v]);
 $GLOBALS['CLOCK'] = strtotime('+1 day', $GLOBALS['CLOCK']) + 60;

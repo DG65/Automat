@@ -557,7 +557,9 @@ class AUTOMATLogik
                         $luxMax = (float)($row['bl_luxschwelle'] ?? 30);
                         if ($soft !== '') {
                             $res['log'] = 'Bewegung — nicht eingeschaltet: ' . $soft . '.';
-                        } elseif ($luxVal !== null && $luxVal >= $luxMax && (int)$st['offAt'] <= 0) {
+                        } elseif ($luxVal !== null && $luxVal >= $luxMax && ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > self::FALSE_OFF_WINDOW)) {
+                            // Helligkeit zählt nur in den ersten Minuten nach dem eigenen Ausschalten nicht — vorher galt
+                            // das ab dem letzten automatischen Aus für immer (Licht ging mittags bei 70–540 lx an, Dietmar 16.10.2026).
                             $res['log'] = 'Bewegung — nicht eingeschaltet: hell genug (' . self::fmtNum($luxVal) . ' lx ≥ ' . self::fmtNum($luxMax) . ' lx).';
                         } elseif (self::anyOn($outs, $ctx)) {
                             $res['log'] = 'Bewegung — Licht war schon an (von Hand oder anderer Steuerung), wird nicht übernommen.';

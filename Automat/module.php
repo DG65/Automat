@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.44' => [
+            '🛠 Bewegungslicht: Licht ging tagsüber an, obwohl es hell genug war. Nach jedem automatischen Ausschalten wurde der Helligkeitssensor bis zum nächsten Einschalten übergangen statt nur in den ersten drei Minuten (gegen Restlicht). Behoben.',
+        ],
         '0.1.43' => [
             '🖼 Kachel: größere Symbole, Name und Zustand brechen um statt abgeschnitten zu werden.',
         ],
