@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.43 (Build 44) — 16.10.2026
+
+- Kachel: Symbol größer und links über beide Zeilen, Name und Zustand brechen um (vorher mit „…“ abgeschnitten), Spalten mindestens 270 px, Sperr-/Dauerlicht-Knöpfe etwas größer. Rückmeldung Dietmar.
+
 ## 0.1.42 (Build 43) — 15.10.2026
 
 - Mehrfachfelder ohne feste Obergrenze: Der Dialog bietet hinter dem letzten belegten Platz immer `SPARE` (8) freie Plätze an; die Katalog-Anzahl ist nur noch der Startwert. Lesen (`vars`, `sanitize`, `fieldProblems`, Duplizieren, Melder-Hinweise) richtet sich nach den Plätzen der Zeile (`slotsIn`). Sind alle belegt, erscheint ein Hinweis. „Entdecken“ übernimmt alle gefundenen Geräte (vorher abgeschnitten). Rückmeldung Dietmar (Gehen-Check: nur 8 Geräte).

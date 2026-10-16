@@ -60,7 +60,7 @@
     /* Liste: mehrspaltig, kompakt */
     /* Gruppen als Kästen nebeneinander (ein Raum mit einem Automatismus belegt keine ganze Zeile);
        ohne Gruppierung stehen die Automatismen direkt im Raster. */
-    .au-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 8px; align-items: start; }
+    .au-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 6px 8px; align-items: start; }
     .au-box { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .au-group {
         display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
@@ -77,19 +77,21 @@
     .au-item.s-warn { border-left-color: var(--au-warn); }
     .au-item.s-off { opacity: .5; }
     .au-item.s-locked { opacity: .75; }
-    .au-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
-    .au-ico { width: 1.3em; text-align: center; flex: none; }
-    .au-name { flex: 1; min-width: 0; font-weight: 600; font-size: .9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Symbol links über beide Zeilen, Text bricht um statt abgeschnitten zu werden (Dietmar 16.10.2026) */
+    .au-item { display: grid; grid-template-columns: 1.9em 1fr; column-gap: 7px; align-items: start; }
+    .au-ico { grid-row: 1 / span 2; font-size: 1.45em; line-height: 1.25; text-align: center; }
+    .au-top { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+    .au-name { flex: 1; min-width: 0; font-weight: 600; font-size: .9em; line-height: 1.3; overflow-wrap: anywhere; padding-top: 2px; }
     .au-btn {
         flex: none; background: transparent; border: 1px solid transparent; border-radius: 6px;
-        padding: 0 4px; font-size: .85em; line-height: 1.5; opacity: .55;
+        padding: 0 4px; font-size: 1em; line-height: 1.4; opacity: .55;
     }
     .au-btn:hover { background: var(--au-el2); opacity: 1; }
     .au-btn.on { opacity: 1; border-color: var(--au-warn); }
     .au-btn.perm.on { border-color: var(--au-primary); }
     .au-status {
-        font-size: .78em; opacity: .85; margin: 1px 0 0 calc(1.3em + 6px);
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        grid-column: 2; font-size: .8em; line-height: 1.35; opacity: .85; margin: 1px 0 0;
+        overflow-wrap: anywhere;
     }
     .au-meta { opacity: .6; }
     .au-count { color: var(--au-primary); font-variant-numeric: tabular-nums; }
@@ -227,8 +229,8 @@
 
     function auCard(it) {
         var box = auEl('div', 'au-item s-' + it.state);
+        box.appendChild(auEl('span', 'au-ico', it.icon));
         var top = auEl('div', 'au-top');
-        top.appendChild(auEl('span', 'au-ico', it.icon));
         var nm = auEl('span', 'au-name', it.name);
         nm.title = it.name + ' — ' + it.type + (it.room ? ' · ' + it.room : '');
         top.appendChild(nm);

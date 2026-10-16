@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.43' => [
+            '🖼 Kachel: größere Symbole, Name und Zustand brechen um statt abgeschnitten zu werden.',
+        ],
         '0.1.42' => [
             '➕ Keine feste Obergrenze mehr bei Meldern, Lichtern, Kontakten, Geräten usw.: Hinter dem letzten belegten Platz gibt es immer weitere freie. Sind alle belegt, nach „Übernehmen“ den Dialog neu öffnen. „Entdecken“ übernimmt jetzt alle gefundenen Geräte.',
         ],
