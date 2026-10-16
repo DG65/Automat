@@ -1754,7 +1754,7 @@ check('Kachel-Daten: flache Liste mit Raum, Funktion und Zustand, Hausmodus, Pro
     && count(array_diff(['uid', 'name', 'icon', 'type', 'cat', 'room', 'status', 'due', 'enabled', 'locked', 'permanent', 'state'], array_keys($payload['items'][0]))) === 0);
 $states = array_column($payload['items'], 'state', 'uid');
 check('Kachel-Zustände sind bekannt (warn/run/idle/locked/off)', count(array_diff($states, ['warn', 'run', 'idle', 'locked', 'off'])) === 0, json_encode($states));
-check('Kachel hat Suche, Filter, Gruppieren und Sortieren', strpos($html, 'id = \'au-q\'') !== false && strpos($html, "['warn', 'Auffällig']") !== false && strpos($html, "['cat', 'nach Funktion']") !== false && strpos($html, "['state', 'Zustand']") !== false && strpos($html, 'minmax(240px, 1fr)') !== false);
+check('Kachel hat Suche, Filter, Gruppieren und Sortieren', strpos($html, 'id = \'au-q\'') !== false && strpos($html, "['warn', 'Auffällig']") !== false && strpos($html, "['cat', 'nach Funktion']") !== false && strpos($html, "['state', 'Zustand']") !== false && strpos($html, 'minmax(270px, 1fr)') !== false);
 $m->tileUpdates = [];
 $m->RequestAction('tile', json_encode(['a' => 'lock', 'uid' => 'abad01', 'v' => true]));
 check('Kachel sperrt einen Automatismus', GetValue(IPS_GetObjectIDByIdent('l_abad01', 12345)) === true && count($m->tileUpdates) >= 1);
