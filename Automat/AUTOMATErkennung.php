@@ -103,7 +103,10 @@ class AUTOMATErkennung
         if ($type === 0 && !$action && (preg_match('/motion|presence|occupancy/', $profile) || preg_match(self::MOTION_WORDS, $text))) {
             return 'motion';
         }
-        if (($type === 0 || $type === 1) && !$action
+        // Riegel/Schnappverschluss eines Türschlosses sagen „verriegelt“, nicht „offen“ — kein Fenster-/Türkontakt
+        // (live 17.10.2026: „Türschloß (Status Türriegel)“ ließ „Fenster offen Windfang“ dauerhaft absenken).
+        $lockPart = preg_match('/riegel|schnapp|latch|bolt|verriegel/iu', $text) || preg_match('/^DoorLock(Bolt|Latch)/i', (string)($v['ident'] ?? ''));
+        if (($type === 0 || $type === 1) && !$action && !$lockPart
             && (preg_match('/window|door|contact|fenster/', $profile) || preg_match(self::CONTACT_WORDS, $text))) {
             return 'contact';
         }

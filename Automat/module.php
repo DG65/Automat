@@ -323,7 +323,10 @@ class Automat extends IPSModule
         }
         $vid = (int)$SenderID;
         $value = $Data[0] ?? null;
-        if ($vid > 0 && $vid === $this->externalPresenceVar()) {
+        // $Data[1] = Wert hat sich geändert. Viele Geräte melden denselben Wert regelmäßig erneut (Abfrage,
+        // Funkqualität) — das ist weder Handbedienung noch ein neuer Anwesenheitswechsel.
+        $changed = !array_key_exists(1, $Data) || (bool)$Data[1];
+        if ($vid > 0 && $vid === $this->externalPresenceVar() && $changed) {
             $this->evaluateMode(true);
         }
         if ($vid === $this->locationVariable('IsDay') || ($vid > 0 && $vid === $this->lightVar())) {
@@ -347,7 +350,7 @@ class Automat extends IPSModule
                 $this->process($row, ['k' => 'trigger', 'vid' => $vid, 'v' => $value]);
                 $touched = true;
             }
-            if (in_array($vid, $vars['out'], true)) {
+            if ($changed && in_array($vid, $vars['out'], true)) {
                 // Schaltet eine Szene ein Gerät, das auch ein anderer Automatismus steuert, ist das für diesen
                 // weder eigenes Echo noch Handbedienung, sondern „zentral“ (keine Handpause).
                 $other = $central !== '' && ($row['Uid'] ?? '') !== $origin;
@@ -416,8 +419,49 @@ class Automat extends IPSModule
         $this->refreshTile();
     }
 
-    /** Eine Zeile mit einem Ereignis durch die Logik schicken und das Ergebnis umsetzen. */
+    /**
+     * Eine Zeile mit einem Ereignis durch die Logik schicken und das Ergebnis umsetzen. Lesen → Rechnen → Speichern
+     * läuft unter einer Sperre: Timer und Gerätemeldungen laufen in Symcon parallel, sonst überschreibt einer den
+     * gerade gespeicherten Zustand des anderen. Geschaltet wird erst danach (die Rückmeldung des Geräts läuft
+     * wieder hier durch und darf nicht auf die eigene Sperre warten).
+     */
     private function process(array $row, array $ev): void
+    {
+        try {
+            $this->lockEnter();
+            try {
+                $res = $this->evaluateRow($row, $ev);
+            } finally {
+                $this->lockLeave();
+            }
+            if ($res !== null) {
+                $this->applyResult($row, $res);
+            }
+        } catch (Throwable $e) {
+            // Ein Fehler in einem Automatismus darf die anderen im selben Durchlauf nicht aufhalten.
+            $this->LogMessage('Automatismus „' . $this->rowName($row) . '“: Fehler — ' . $e->getMessage(), KL_ERROR);
+        }
+    }
+
+    /** Sperre für Lese-/Schreibabschnitte der Attribute (nicht verschachteln, nie während eines Schaltbefehls halten). */
+    private int $lockDepth = 0;
+
+    private function lockEnter(): void
+    {
+        if ($this->lockDepth++ === 0 && function_exists('IPS_SemaphoreEnter')) {
+            IPS_SemaphoreEnter('AUTOMAT_' . $this->InstanceID, 5000);
+        }
+    }
+
+    private function lockLeave(): void
+    {
+        if (--$this->lockDepth === 0 && function_exists('IPS_SemaphoreLeave')) {
+            IPS_SemaphoreLeave('AUTOMAT_' . $this->InstanceID);
+        }
+    }
+
+    /** Teil 1 von process(): unter der Sperre rechnen und Zustand speichern. null = nichts weiter zu tun. */
+    private function evaluateRow(array $row, array $ev): ?array
     {
         $uid = $row['Uid'];
         $states = $this->statesMap();
@@ -430,7 +474,7 @@ class Automat extends IPSModule
             $this->WriteAttributeString('Due', json_encode($due));
             $this->setEnd($uid, null);
             $this->setVarIfChanged('s_' . $uid, $status[$uid]);
-            return;
+            return null;
         }
         $problems = AUTOMATKatalog::problems($row, function (int $vid) {
             return IPS_VariableExists($vid);
@@ -442,7 +486,7 @@ class Automat extends IPSModule
             $this->WriteAttributeString('Due', json_encode($due));
             $this->setEnd($uid, null);
             $this->setVarIfChanged('s_' . $uid, $status[$uid]);
-            return;
+            return null;
         }
 
         $ctx = $this->context($row);
@@ -451,7 +495,7 @@ class Automat extends IPSModule
             $res = AUTOMATLogik::step($row, $st, $ev, $ctx);
         } catch (Throwable $e) {
             $this->LogMessage('Automatismus „' . $this->rowName($row) . '“: Fehler in der Auswertung — ' . $e->getMessage(), KL_ERROR);
-            return;
+            return null;
         }
         $states[$uid] = $res['st'];
         $status[$uid] = $res['status'];
@@ -463,7 +507,13 @@ class Automat extends IPSModule
         $this->statesWrite($states);
         $this->WriteAttributeString('Status', json_encode($status));
         $this->WriteAttributeString('Due', json_encode($due));
+        return $res;
+    }
 
+    /** Teil 2 von process(): schalten, melden, anzeigen (ohne Sperre). */
+    private function applyResult(array $row, array $res): void
+    {
+        $uid = $row['Uid'];
         $dry = !empty($row['Dry']);
         $failed = [];
         if ($dry) {
@@ -663,9 +713,21 @@ class Automat extends IPSModule
             return false;
         }
         $value = $this->castForVariable($vid, $value);
-        $sent = $this->attrMap('Sent');
-        $sent[$vid] = [$value, $this->now(), $origin];
-        $this->WriteAttributeString('Sent', json_encode($sent));
+        // Alle Befehle der letzten ECHO_S Sekunden je Variable merken (nicht nur den letzten): bei der Vorwarnung
+        // gehen „aus“ und eine Sekunde später „an“ raus — kommt das „aus“-Echo erst danach, wäre es sonst fremd.
+        $this->lockEnter();
+        try {
+            $sent = $this->sentMap();
+            $now = $this->now();
+            $list = array_values(array_filter($sent[$vid] ?? [], function ($e) use ($now) {
+                return $now - (int)$e[1] <= self::ECHO_S;
+            }));
+            $list[] = [$value, $now, $origin, GetValue($vid)];
+            $sent[$vid] = array_slice($list, -6);
+            $this->WriteAttributeString('Sent', json_encode($sent));
+        } finally {
+            $this->lockLeave();
+        }
         $ok = false;
         $error = '';
         try {
@@ -688,25 +750,60 @@ class Automat extends IPSModule
         return $ok;
     }
 
-    /** War diese Wertänderung das Echo eines eigenen Befehls? (verbraucht den Eintrag; $origin = schaltende Szene) */
+    /** Gesendete Befehle je Variable: [[Wert, Zeit, Szene, Wert vor dem Befehl], …] (ältere Form [Wert, Zeit, Szene] wird umgewandelt). */
+    private function sentMap(): array
+    {
+        $out = [];
+        foreach ($this->attrMap('Sent') as $vid => $e) {
+            if (!is_array($e) || count($e) === 0) {
+                continue;
+            }
+            $out[(int)$vid] = is_array($e[0] ?? null) ? $e : [$e];
+        }
+        return $out;
+    }
+
+    /**
+     * War diese Wertänderung das Echo eines eigenen Befehls? Passt sie zu irgendeinem Befehl der letzten ECHO_S
+     * Sekunden — auch als Zwischenwert auf dem Weg dorthin (Dimmer 40 → 20 → 0, Rollladen unterwegs). Die Einträge
+     * bleiben bis zum Ablauf stehen: Geräte, die erst den eigenen und dann den bestätigten Wert melden, liefern sonst
+     * eine „Handbedienung“. $origin = schaltende Szene.
+     */
     private function consumeEcho(int $vid, $value, string &$origin = ''): bool
     {
         $origin = '';
-        $sent = $this->attrMap('Sent');
-        if (!isset($sent[$vid])) {
+        $this->lockEnter();
+        try {
+            $sent = $this->sentMap();
+            if (!isset($sent[$vid])) {
+                return false;
+            }
+            $now = $this->now();
+            $list = array_values(array_filter($sent[$vid], function ($e) use ($now) {
+                return $now - (int)$e[1] <= self::ECHO_S;
+            }));
+            if (count($list) !== count($sent[$vid])) {
+                if (count($list) > 0) {
+                    $sent[$vid] = $list;
+                } else {
+                    unset($sent[$vid]);
+                }
+                $this->WriteAttributeString('Sent', json_encode($sent));
+            }
+            foreach (array_reverse($list) as $e) {
+                $want = $e[0];
+                $from = $e[3] ?? null;
+                $between = is_numeric($value) && !is_bool($value) && is_numeric($want) && !is_bool($want) && is_numeric($from) && !is_bool($from)
+                    && (float)$value >= min((float)$from, (float)$want) - 0.01 && (float)$value <= max((float)$from, (float)$want) + 0.01;
+                if ($this->sameValue($value, $want, $vid) || $between) {
+                    $origin = (string)($e[2] ?? '');
+                    return true;
+                }
+            }
             return false;
+        } finally {
+            $this->lockLeave();
         }
-        $want = $sent[$vid][0];
-        $ts = $sent[$vid][1];
-        $origin = (string)($sent[$vid][2] ?? '');
-        $now = $this->now();
-        $fresh = $now - (int)$ts <= self::ECHO_S;
-        $same = $this->sameValue($value, $want);
-        if (!$fresh || $same) {
-            unset($sent[$vid]);
-            $this->WriteAttributeString('Sent', json_encode($sent));
-        }
-        return $fresh && $same;
     }
 
     // =====================================================================
@@ -1066,16 +1163,27 @@ class Automat extends IPSModule
         }
         // Alarm (Wasser/Rauch) wartet nie auf das Ende der Ruhezeit.
         $quiet = !$urgent && $this->inQuiet($this->now());
-        $q = json_decode($this->aStr('Deferred'), true) ?: [];
+        $hold = [];
         foreach ($this->waysFor($row) as $w) {
             if ($quiet && $w['quiet']) {
-                $q[] = [$this->now(), $title, $text, $w['id'], $media];
+                $hold[] = [$this->now(), $title, $text, $w['id'], $media];
                 $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten für „' . $w['name'] . '“: ' . $title, 0);
                 continue;
             }
             $this->deliverWay($w, $title, $text, $media);
         }
-        $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
+        if (count($hold) > 0) {
+            $this->lockEnter();
+            try {
+                $q = array_merge(json_decode($this->aStr('Deferred'), true) ?: [], $hold);
+                if (count($q) > 50) {
+                    $this->LogMessage('Ruhezeit: mehr als 50 zurückgehaltene Meldungen — die ältesten ' . (count($q) - 50) . ' entfallen.', KL_WARNING);
+                }
+                $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
+            } finally {
+                $this->lockLeave();
+            }
+        }
     }
 
     /** Ruhezeit (volle Stunden, über Mitternacht möglich). */
@@ -1093,16 +1201,27 @@ class Automat extends IPSModule
     /** Nach der Ruhezeit zurückgehaltene Meldungen über ihren Weg zustellen. */
     private function flushDeferred(): void
     {
-        $q = json_decode($this->aStr('Deferred'), true) ?: [];
-        if (count($q) === 0 || $this->inQuiet($this->now())) {
+        if ($this->inQuiet($this->now())) {
             return;
         }
-        $this->WriteAttributeString('Deferred', '[]');
+        $this->lockEnter();
+        try {
+            $q = json_decode($this->aStr('Deferred'), true) ?: [];
+            if (count($q) > 0) {
+                $this->WriteAttributeString('Deferred', '[]');
+            }
+        } finally {
+            $this->lockLeave();
+        }
         $ways = array_column($this->ways(), null, 'id');
         foreach ($q as $e) {
             $w = $ways[(string)($e[3] ?? '')] ?? null;
             foreach ($w !== null ? [$w] : $this->waysFor(null) as $way) {
-                $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)', (int)($e[4] ?? 0));
+                try {
+                    $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)', (int)($e[4] ?? 0));
+                } catch (Throwable $ex) {
+                    $this->LogMessage('Zurückgehaltene Meldung nicht zugestellt: ' . $ex->getMessage(), KL_WARNING);
+                }
             }
         }
     }
@@ -2941,13 +3060,19 @@ class Automat extends IPSModule
         return (string)$value;
     }
 
-    private function sameValue($a, $b): bool
+    private function sameValue($a, $b, int $vid = 0): bool
     {
         if (is_bool($a) || is_bool($b)) {
             return AUTOMATLogik::isTrue($a) === AUTOMATLogik::isTrue($b);
         }
         if (is_numeric($a) && is_numeric($b)) {
-            return abs((float)$a - (float)$b) <= max(0.02, abs((float)$b) * 0.02);
+            // Toleranz am Wertebereich messen (Dimmer 0–99 meldet 4 statt 5), bei Ganzzahlen mindestens 1
+            $range = $vid > 0 && IPS_VariableExists($vid) ? $this->dimMax($vid) : 0.0;
+            $tol = max(0.02, abs((float)$b) * 0.02, $range > 0 ? $range * 0.02 : 0.0);
+            if ($vid > 0 && IPS_VariableExists($vid) && (int)IPS_GetVariable($vid)['VariableType'] === VARIABLETYPE_INTEGER) {
+                $tol = max($tol, 1.0);
+            }
+            return abs((float)$a - (float)$b) <= $tol;
         }
         return (string)$a === (string)$b;
     }

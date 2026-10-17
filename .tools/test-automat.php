@@ -68,6 +68,9 @@ function mkvar(int $id, int $type, $value, string $name, int $parent, bool $acti
     $GLOBALS['OBJ'][$id] = ['kind' => 2, 'name' => $name, 'parent' => $parent, 'ident' => $ident, 'hidden' => false, 'type' => $type, 'value' => $value, 'action' => $action, 'profile' => $profile, 'pres' => $pres];
 }
 function IPS_GetKernelRunlevel(): int { return KR_READY; }
+// Sperren wie Symcon; der Prüfstand merkt sich, ob je verschachtelt gesperrt wurde (wäre live eine Selbstblockade)
+function IPS_SemaphoreEnter(string $n, int $ms): bool { $GLOBALS['SEM'][$n] = ($GLOBALS['SEM'][$n] ?? 0) + 1; $GLOBALS['SEMMAX'] = max($GLOBALS['SEMMAX'] ?? 0, $GLOBALS['SEM'][$n]); return true; }
+function IPS_SemaphoreLeave(string $n): bool { $GLOBALS['SEM'][$n] = ($GLOBALS['SEM'][$n] ?? 0) - 1; return true; }
 function IPS_InstanceExists($id): bool { return isset($GLOBALS['OBJ'][(int)$id]) && $GLOBALS['OBJ'][(int)$id]['kind'] === 1; }
 function IPS_VariableExists($id): bool { return isset($GLOBALS['OBJ'][(int)$id]) && $GLOBALS['OBJ'][(int)$id]['kind'] === 2; }
 function IPS_GetVariable($id): array
@@ -85,6 +88,8 @@ function RequestAction($id, $v): bool
     if (!empty($GLOBALS['FAIL_RA'])) {
         return false;
     }
+    // Alten Wert merken: die spätere Gerätemeldung (fire) meldet die Änderung von diesem Wert aus
+    $GLOBALS['PENDING'][(int)$id] = $GLOBALS['OBJ'][(int)$id]['value'] ?? null;
     $GLOBALS['OBJ'][(int)$id]['value'] = $v;
     $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'RequestAction'];
     return true;
@@ -1335,6 +1340,10 @@ $cases = [
     ['temp', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Außentemperatur', 'inst' => 'Wetterstation']],
     ['', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Vorlauftemperatur', 'inst' => 'Heizung']],
     ['', ['type' => 2, 'profile' => '~Temperature', 'name' => 'Außentemperatur (Gleitender MW 1 Stunde)', 'inst' => 'Wetterstation']],
+    // Live 17.10.2026: Riegel/Schnappverschluss eines Matter-Schlosses sind keine Tür-/Fensterkontakte
+    ['', ['type' => 0, 'profile' => '~Lock.Reversed', 'name' => 'Status Türriegel', 'inst' => 'Türschloß', 'ident' => 'DoorLockBoltState']],
+    ['', ['type' => 0, 'profile' => '~Lock', 'name' => 'Status Schnappverschluss', 'inst' => 'Türschloß', 'ident' => 'DoorLockLatchState']],
+    ['contact', ['type' => 0, 'name' => 'Windfang Haustür', 'inst' => 'Windfang Haustür', 'ident' => 'BooleanState_State']],
 ];
 foreach ($cases as [$want, $a]) {
     $got = AUTOMATErkennung::role($it($a));
@@ -1488,7 +1497,8 @@ check('Hausmodus-Profil mit 5 Modi', count($GLOBALS['PROFILES']['AUTOMAT.Hausmod
 check('Statusvariable zeigt Bereitschaft', strpos((string)GetValue(IPS_GetObjectIDByIdent('s_aflur1', 12345)), 'bereit') !== false, (string)GetValue(IPS_GetObjectIDByIdent('s_aflur1', 12345)));
 
 heading('C2. Ablauf über Nachrichten und Timer');
-function fire(Automat $m, int $vid, $v): void { $GLOBALS['OBJ'][$vid]['value'] = $v; $m->MessageSink($GLOBALS['CLOCK'], $vid, VM_UPDATE, [$v, true, null, $GLOBALS['CLOCK']]); }
+// Wie Symcon: [Wert, geändert, alter Wert, Zeit] — „geändert“ nur, wenn sich der Wert wirklich ändert
+function fire(Automat $m, int $vid, $v): void { $old = array_key_exists($vid, $GLOBALS['PENDING'] ?? []) ? $GLOBALS['PENDING'][$vid] : ($GLOBALS['OBJ'][$vid]['value'] ?? null); unset($GLOBALS['PENDING'][$vid]); $GLOBALS['OBJ'][$vid]['value'] = $v; $m->MessageSink($GLOBALS['CLOCK'], $vid, VM_UPDATE, [$v, $old !== $v, $old, $GLOBALS['CLOCK']]); }
 $GLOBALS['WRITES'] = [];
 fire($m, 1011, true);
 check('Bewegung → RequestAction auf das Licht', count($GLOBALS['WRITES']) === 1 && $GLOBALS['WRITES'][0][1] === 1001 && $GLOBALS['WRITES'][0][2] === true && $GLOBALS['WRITES'][0][3] === 'RequestAction');
@@ -2610,6 +2620,25 @@ check('Rollladen schließt nach dem zentralen Sensor, auch wenn der Hausmodus ih
 $m->props['cfg_LightVar'] = 0;
 $m->props['Automations'] = '[]';
 $m->ApplyChanges();
+
+heading('C40. Gerüst: Echo-Erkennung und Sperre (Prüfbericht 17.10.2026)');
+mkvar(1201, VARIABLETYPE_INTEGER, 100, 'Helligkeit', 1000, true, '~Intensity.100');
+$GLOBALS['PROFILES']['~Intensity.100'] = ['MaxValue' => 100, 'Suffix' => '%', 'Assoc' => []];
+$sw = new ReflectionMethod('Automat', 'switchVariable');
+$ce = new ReflectionMethod('Automat', 'consumeEcho');
+$ceCall = function (int $vid, $v) use ($ce, $m) { $o = ''; $args = [$vid, $v, &$o]; return $ce->invokeArgs($m, $args); };
+at('20:00:00');
+$sw->invoke($m, 1001, false, '');
+$sw->invoke($m, 1001, true, '');
+check('Vorwarnung: „aus“-Echo kommt erst nach dem „an“-Befehl — trotzdem eigenes Echo', $ceCall(1001, false) === true && $ceCall(1001, true) === true);
+$sw->invoke($m, 1201, 0, '');
+check('Dimmer fährt 100 → 0 und meldet 40 unterwegs: eigenes Echo, keine Handbedienung', $ceCall(1201, 40) === true && $ceCall(1201, 0) === true);
+check('… derselbe Wert nochmals bestätigt (Gerät meldet erst eigenen, dann echten Wert): weiter eigenes Echo', $ceCall(1201, 0) === true);
+$sw->invoke($m, 1201, 5, '');
+check('Ganzzahl-Dimmer meldet 4 statt 5: eigenes Echo', $ceCall(1201, 4) === true);
+$GLOBALS['CLOCK'] += 20;
+check('Nach Ablauf (15 s) ist eine Änderung wieder Handbedienung', $ceCall(1201, 60) === false);
+check('Nie verschachtelt gesperrt, am Ende alles freigegeben', ($GLOBALS['SEMMAX'] ?? 0) === 1 && array_sum($GLOBALS['SEM'] ?? []) === 0, json_encode([$GLOBALS['SEMMAX'] ?? null, $GLOBALS['SEM'] ?? null]));
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
 check('Kein IPS_LogMessage in module.php (Store-Review Punkt 15)', strpos($src, 'IPS_LogMessage') === false);
