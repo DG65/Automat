@@ -1722,6 +1722,19 @@ class AUTOMATLogik
             return $res;
         }
         $active = $p >= $schwelle;
+        // Eingefrorener Messwert (Zwischenstecker offline): der letzte Wert bliebe sonst ewig „läuft“ — genau dann
+        // wäre der Ausfall unbemerkt. Ab 6 h ohne neue Meldung (mindestens die eingestellte Dauer) wird gewarnt.
+        $upd = $ctx['upd'][$vid] ?? null;
+        $stale = $upd !== null && $now - (int)$upd >= max($dauer, 6 * 3600);
+        if ($stale && empty($st['staleTold'])) {
+            $st['staleTold'] = true;
+            $res['log'] = $name . ': Messwert seit ' . self::fmtDuration($now - (int)$upd) . ' nicht aktualisiert — Messsteckdose offline?';
+            if (!empty($row['af_push'])) {
+                $res['msg'][] = ['🧊 ' . $name, $res['log'] . ' Der Wächter sieht so keinen Ausfall. Bitte nachsehen.'];
+            }
+        } elseif (!$stale) {
+            $st['staleTold'] = false;
+        }
         // „since“: Beginn der beobachteten Phase (ohne Strom bzw. Lauf am Stück)
         $watching = $runMode ? $active : !$active;
         if ($watching) {
@@ -1764,6 +1777,9 @@ class AUTOMATLogik
                 $res['due'] = (int)$st['since'] + $dauer;
             }
             $warn = $longest > $dauer ? ' — ⚠️ Grenze liegt unter dem bisher längsten Wert, Fehlalarme möglich' : '';
+            if ($stale) {
+                $warn .= ' — ⚠️ Messwert seit ' . self::fmtDuration($now - (int)$upd) . ' nicht aktualisiert';
+            }
             $res['status'] = '✅ ' . ($active ? 'Läuft (' . self::fmtNum($p) . ' W)' : 'Aus (' . self::fmtNum($p) . ' W)') . $norm . $warn;
         }
         return $res;

@@ -135,6 +135,12 @@ class AUTOMATErkennung
      * Meldet ein Kontakt „wahr“ = geschlossen? Aus den Darstellungs-Optionen
      * (Beschriftung „Geschlossen“ am Wert true) oder ~Window.Reversed.
      */
+    /** Suchmuster für Fenster-/Türkontakte (Namen). */
+    public static function contactPattern(): string
+    {
+        return self::CONTACT_WORDS;
+    }
+
     public static function contactInverted(array $v): bool
     {
         // Matter-Kontaktsensor (Cluster „Boolean State“): wahr = Kontakt = GESCHLOSSEN. Ohne Profil und Darstellung

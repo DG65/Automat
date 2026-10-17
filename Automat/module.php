@@ -248,6 +248,23 @@ class Automat extends IPSModule
             }
         }
 
+        // Zeilen ohne Kennung (z. B. über „+“, falls Symcon den Dialogwert nicht übernimmt) bekommen einmal eine
+        // feste — sonst hinge die Kennung am Listenplatz und Sperre/Zustand wechselten beim Löschen davor.
+        $vis = json_decode((string)$this->pStr('Automations'), true);
+        if (is_array($vis) && function_exists('IPS_SetProperty')) {
+            $fixed = false;
+            foreach ($vis as $i => $vr) {
+                if (is_array($vr) && preg_replace('/[^a-z0-9]/', '', strtolower((string)($vr['Uid'] ?? ''))) === '') {
+                    $vis[$i]['Uid'] = $this->newUid($vis);
+                    $fixed = true;
+                }
+            }
+            if ($fixed) {
+                IPS_SetProperty($this->InstanceID, 'Automations', json_encode(array_values($vis)));
+                IPS_ApplyChanges($this->InstanceID);
+                return;
+            }
+        }
         $rows = $this->rows();
         $keep = [];
         $enabled = 0;
@@ -447,6 +464,7 @@ class Automat extends IPSModule
         foreach ($this->rows() as $row) {
             $this->process($row, ['k' => 'tick']);
         }
+        $this->checkUnanswered();
         $this->flushDeferred();
         $this->reschedule();
         $this->refreshTile();
@@ -721,6 +739,12 @@ class Automat extends IPSModule
                 }
             }
         }
+        if ($row['Type'] === 'ausfall') {
+            $av = (int)($row['af_var'] ?? 0);
+            if (IPS_VariableExists($av)) {
+                $ctx['upd'][$av] = (int)(IPS_GetVariable($av)['VariableUpdated'] ?? 0) ?: null;
+            }
+        }
         if ($row['Type'] === 'gehen') {
             foreach (AUTOMATKatalog::vars($row, 'gc_geraet') as $gv) {
                 $ctx['switchable'][$gv] = IPS_VariableExists($gv) && HasAction($gv);
@@ -815,6 +839,13 @@ class Automat extends IPSModule
                 $next = min($next, $now + self::REST_TICK_S);
             }
         }
+        // Offene Schaltbefehle: kurz nach Ablauf der Echo-Zeit nachkontrollieren
+        foreach ($this->sentMap() as $list) {
+            $last = end($list);
+            if (is_array($last)) {
+                $next = min($next, max($now + 1, (int)$last[1] + self::ECHO_S + 6));
+            }
+        }
         $this->SetTimerInterval('Tick', max(1, $next - $now) * 1000);
     }
 
@@ -861,6 +892,49 @@ class Automat extends IPSModule
             $this->LogMessage('Schalten fehlgeschlagen: ' . $this->varLabel($vid) . ' → ' . AUTOMATLogik::fmtNum($value) . ($error !== '' ? ' (' . $error . ')' : ''), KL_WARNING);
         }
         return $ok;
+    }
+
+    /**
+     * Nachkontrolle für alle Schaltbefehle: hat ein Gerät 20 s nach dem Befehl seinen Wert nicht geändert
+     * (RequestAction meldete Erfolg, das Gerät tat nichts), steht das im Protokoll und — wenn gewünscht — als
+     * Störung in den Meldungen. Rollläden fahren länger und haben ihre eigene Nachkontrolle.
+     */
+    private function checkUnanswered(): void
+    {
+        $now = $this->now();
+        $bad = [];
+        $this->lockEnter();
+        try {
+            $sent = $this->sentMap();
+            $changed = false;
+            foreach ($sent as $vid => $list) {
+                $last = end($list);
+                if (!is_array($last) || $now - (int)$last[1] < self::ECHO_S + 5) {
+                    continue;
+                }
+                unset($sent[$vid]);
+                $changed = true;
+                if (!IPS_VariableExists((int)$vid) || preg_match('/shutter|jalousie|rollladen|rolladen|blind/i', (string)$this->varInfo((int)$vid)['profile'])) {
+                    continue;
+                }
+                $cur = GetValue((int)$vid);
+                if (!$this->sameValue($cur, $last[0], (int)$vid) && array_key_exists(3, $last) && $this->sameValue($cur, $last[3], (int)$vid)) {
+                    $bad[] = $this->varLabel((int)$vid) . ' → ' . AUTOMATLogik::fmtNum($last[0]);
+                }
+            }
+            if ($changed) {
+                $this->WriteAttributeString('Sent', json_encode($sent));
+            }
+        } finally {
+            $this->lockLeave();
+        }
+        if (count($bad) > 0) {
+            $text = 'Gerät hat nicht reagiert (Wert unverändert): ' . implode(', ', $bad) . '. Funkverbindung prüfen.';
+            $this->addLog('', '⚠️ ' . $text);
+            if ($this->pBool('cfg_NotifyFaults')) {
+                $this->message('⚠️ Automat', $text, true, null);
+            }
+        }
     }
 
     /** Gesendete Befehle je Variable: [[Wert, Zeit, Szene, Wert vor dem Befehl], …] (ältere Form [Wert, Zeit, Szene] wird umgewandelt). */
@@ -1847,11 +1921,14 @@ class Automat extends IPSModule
                 $hide[] = $r;
             }
         }
-        $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($show)));
-        $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_map(function ($r) {
-            return ['Uid' => (string)($r['Uid'] ?? ''), 'Type' => (string)($r['Type'] ?? ''), 'Data' => json_encode($r)];
-        }, array_values($hide))));
         $active = trim($text) !== '' || $room !== '' || $cat !== '' || $state !== '';
+        // Kennung dieses Filterstands an sichtbaren und ausgeblendeten Zeilen: wird später ohne Filter gespeichert,
+        // passen alte ausgeblendete Zeilen nicht mehr dazu und kommen nicht zurück (z. B. nach dem Löschen)
+        $gen = $active ? substr(md5(uniqid('', true)), 0, 8) : '';
+        $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($show, $gen)));
+        $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_map(function ($r) use ($gen) {
+            return ['Uid' => (string)($r['Uid'] ?? ''), 'Type' => (string)($r['Type'] ?? ''), 'Data' => json_encode($r), 'Gen' => $gen];
+        }, array_values($hide))));
         $this->UpdateFormField('FilterInfo', 'caption', '🔎 Zeigt ' . count($show) . ' von ' . count($rows) . ' Automatismen — die übrigen sind nur ausgeblendet und bleiben beim „Übernehmen“ erhalten.');
         $this->UpdateFormField('FilterInfo', 'visible', $active);
     }
@@ -2481,6 +2558,23 @@ class Automat extends IPSModule
      */
     public function UIEditForm(string $uid, string $type): string
     {
+        return $this->editForm($uid, $type, null);
+    }
+
+    /**
+     * AUTOMAT_UIEditFormRow($id, $rowJson): string — wie UIEditForm, aber mit der Zeile, wie sie gerade in der
+     * Liste steht. So zeigt der Dialog auch bei noch nicht übernommenen Zeilen (Entdecken, Duplizieren) alle
+     * belegten Plätze (Prüfbericht 17.10.2026).
+     */
+    public function UIEditFormRow(string $rowJson): string
+    {
+        $row = json_decode($rowJson, true);
+        $row = is_array($row) ? $row : [];
+        return $this->editForm((string)($row['Uid'] ?? ''), (string)($row['Type'] ?? ''), $row);
+    }
+
+    private function editForm(string $uid, string $type, ?array $current): string
+    {
         $this->confCache = null;
         $isNew = $uid === '';
         $typeOpts = [['caption' => '— bitte wählen —', 'value' => '']];
@@ -2498,8 +2592,8 @@ class Automat extends IPSModule
             ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
         $saved = $isNew ? null : $this->rowByUid($uid);
-        $this->editRow = $saved ?? [];
-        $fieldProblems = $saved !== null && $saved['Type'] === $type ? AUTOMATKatalog::fieldProblems($saved, function (int $vid) {
+        $this->editRow = $current !== null && count($current) > 0 ? $current + ($saved ?? []) : ($saved ?? []);
+        $fieldProblems = count($this->editRow) > 0 && ($this->editRow['Type'] ?? '') === $type ? AUTOMATKatalog::fieldProblems($this->editRow, function (int $vid) {
             return IPS_VariableExists($vid);
         }) : [];
         if (count($fieldProblems) > 0) {
@@ -2752,7 +2846,10 @@ class Automat extends IPSModule
             }
         }
         if (count($out) === 0 && (int)$v['VariableType'] === VARIABLETYPE_BOOLEAN) {
-            $out = ['true' => 'an / wahr', 'false' => 'aus / falsch'];
+            // Matter-Kontakt ohne Beschriftung: wahr = geschlossen — so steht es auch in der Auswahl
+            $out = AUTOMATErkennung::contactInverted($this->varInfo($vid)) && preg_match(AUTOMATErkennung::contactPattern(), IPS_GetName($vid) . ' ' . IPS_GetName(IPS_GetParent($vid)))
+                ? ['true' => 'zu', 'false' => 'offen']
+                : ['true' => 'an / wahr', 'false' => 'aus / falsch'];
         }
         return $out;
     }
@@ -3003,12 +3100,27 @@ class Automat extends IPSModule
         }
         // Ausgefilterte Zeilen (unsichtbare Liste) dazu — ohne Doppelte (die sichtbare Liste gewinnt)
         $seen = [];
+        $gens = [];
+        $genKnown = false;
         foreach ($rows as $r) {
             if (is_array($r) && isset($r['Uid'])) {
                 $seen[(string)$r['Uid']] = true;
             }
+            if (is_array($r) && array_key_exists('Gen', $r)) {
+                $genKnown = true;
+                $gens[(string)$r['Gen']] = true;
+            }
         }
         foreach (json_decode((string)$this->pStr('AutomationsHidden'), true) ?: [] as $h) {
+            // Nur ausgeblendete Zeilen desselben Filterstands: wurde danach ohne Filter gespeichert (z. B. eine Zeile
+            // gelöscht), gehört die alte unsichtbare Liste nicht mehr dazu — sonst käme Gelöschtes zurück.
+            // Altbestand ohne Kennung zählt, solange die sichtbare Liste auch noch keine trägt.
+            $hg = is_array($h) && array_key_exists('Gen', $h) ? (string)$h['Gen'] : null;
+            // Trägt die sichtbare Liste gar keine Kennung (Symcon hätte sie nicht gespeichert), lieber alles behalten.
+            $belongs = !$genKnown || ($hg !== null && $hg !== '' && (count($rows) === 0 || isset($gens[$hg])));
+            if (!$belongs) {
+                continue;
+            }
             // Die ganze Zeile steckt als JSON in der Spalte „Data“ — Symcon speichert in dieser unsichtbaren
             // Liste nur die Spalten (Fund 15.10.2026: ohne „Data“ blieben nur Kennung und Art übrig).
             $r = self::unwrapHidden($h);
@@ -3207,11 +3319,12 @@ class Automat extends IPSModule
     // =====================================================================
 
     /** Listenwerte für das Formular: gespeicherte Zeilen plus berechneter Zustand. */
-    private function listValues(array $rows): array
+    private function listValues(array $rows, string $gen = ''): array
     {
         $status = $this->attrMap('Status');
         $out = [];
         foreach ($rows as $r) {
+            $r['Gen'] = $gen; // Filterstand, zu dem die unsichtbare Liste gehört (siehe rows())
             $uid = (string)($r['Uid'] ?? '');
             $p = AUTOMATKatalog::problems($r, function (int $vid) {
                 return IPS_VariableExists($vid);
@@ -3483,6 +3596,7 @@ class Automat extends IPSModule
                         ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true],
                         ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true],
                         ['caption' => 'Daten', 'name' => 'Data', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => 'Filterstand', 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true],
                     ],
                 ],
                 [
@@ -3502,7 +3616,7 @@ class Automat extends IPSModule
                         ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                         ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                     ],
-                    'form' => "return json_decode(AUTOMAT_UIEditForm(\$id, (string)(\$Automations['Uid'] ?? ''), (string)(\$Automations['Type'] ?? '')), true);",
+                    'form' => "return json_decode(AUTOMAT_UIEditFormRow(\$id, json_encode(\$Automations)), true);",
                 ],
                 ['type' => 'RowLayout', 'items' => [
                     ['type' => 'Select', 'name' => 'cfg_CopyRoom', 'caption' => 'Angehakte (☑︎) duplizieren — in Raum', 'width' => '320px', 'value' => '', 'options' => $this->copyRoomOptions()],

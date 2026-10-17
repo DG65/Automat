@@ -68,6 +68,8 @@ function mkvar(int $id, int $type, $value, string $name, int $parent, bool $acti
     $GLOBALS['OBJ'][$id] = ['kind' => 2, 'name' => $name, 'parent' => $parent, 'ident' => $ident, 'hidden' => false, 'type' => $type, 'value' => $value, 'action' => $action, 'profile' => $profile, 'pres' => $pres];
 }
 function IPS_GetKernelRunlevel(): int { return KR_READY; }
+function IPS_SetProperty(int $id, string $n, $v): bool { $GLOBALS['INSTANCES'][$id]->props[$n] = $v; return true; }
+function IPS_ApplyChanges(int $id): bool { $GLOBALS['INSTANCES'][$id]->ApplyChanges(); return true; }
 // Sperren wie Symcon; der Prüfstand merkt sich, ob je verschachtelt gesperrt wurde (wäre live eine Selbstblockade)
 function IPS_SemaphoreEnter(string $n, int $ms): bool { $GLOBALS['SEM'][$n] = ($GLOBALS['SEM'][$n] ?? 0) + 1; $GLOBALS['SEMMAX'] = max($GLOBALS['SEMMAX'] ?? 0, $GLOBALS['SEM'][$n]); return true; }
 function IPS_SemaphoreLeave(string $n): bool { $GLOBALS['SEM'][$n] = ($GLOBALS['SEM'][$n] ?? 0) - 1; return true; }
@@ -152,8 +154,8 @@ class IPSModule
     public array $tileUpdates = [];
     public array $logged = [];
 
-    public function Create() {}
-    public function ApplyChanges() {}
+    public function Create() { $GLOBALS['INSTANCES'][$this->InstanceID] = $this; }
+    public function ApplyChanges() { $GLOBALS['INSTANCES'][$this->InstanceID] = $this; }
     public function RegisterPropertyString(string $n, string $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
     public function RegisterPropertyInteger(string $n, int $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
     public function RegisterPropertyFloat(string $n, float $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
@@ -1355,6 +1357,14 @@ step($af, $stp, ['k' => 'flag'], ['val' => [1600 => 0.5], 'paused' => true]);
 at('13:00:00');
 $r = step($af, $stp, ['k' => 'flag'], ['val' => [1600 => 0.5]]);
 check('Pause 10:05–13:00 (Kompressor lief unbeobachtet): danach kein Fehlalarm', $stp['ph'] === 'ok' && $r['msg'] === [] && (int)$stp['since'] === ts('2026-10-13 13:00:00'), json_encode($stp));
+$afS = $af;
+$afS['af_push'] = true;
+$sts = [];
+at('20:00:00');
+$r = step($afS, $sts, ['k' => 'tick'], ['val' => [1600 => 80.0], 'upd' => [1600 => ts('2026-10-13 13:00:00')]]);
+check('Messwert seit 7 h unverändert (Stecker offline, letzter Wert 80 W): Warnung statt ewig „läuft“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'nicht aktualisiert') !== false && strpos($r['status'], 'nicht aktualisiert') !== false);
+$r = step($afS, $sts, ['k' => 'tick'], ['val' => [1600 => 80.0], 'upd' => [1600 => ts('2026-10-13 13:00:00')]]);
+check('… nur einmal gemeldet', $r['msg'] === []);
 at('09:30:00');
 step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.0], ['val' => [1600 => 0.0]]);
 at('11:30:00');
@@ -1820,7 +1830,11 @@ $m->UISetListOrder(1);
 check('„Ordnen nach Art“ setzt die Sortierung der offenen Liste', $m->fieldUpdates[0][0] === 'Automations' && $m->fieldUpdates[0][1] === 'sort' && strpos($m->fieldUpdates[0][2], 'TypeLabel') !== false);
 check('Genau eine Spalte mit width auto', count(array_filter($list['columns'], fn($c) => ($c['width'] ?? '') === 'auto')) === 1);
 check('Zustandsspalte zeigt für jede Zeile einen Status', count(array_filter($list['values'], fn($r) => trim((string)($r['State'] ?? '')) === '')) === 0, json_encode(array_column($list['values'], 'State'), JSON_UNESCAPED_UNICODE));
-check('Bearbeiten-Dialog als PHP-Code je Zeile', strpos($list['form'], 'AUTOMAT_UIEditForm($id') !== false);
+check('Bearbeiten-Dialog als PHP-Code je Zeile, mit der Zeile aus der offenen Liste', strpos($list['form'], 'AUTOMAT_UIEditFormRow($id, json_encode($Automations))') !== false);
+$unsaved = AUTOMATKatalog::defaults('gehen') + ['Uid' => 'aneu99', 'Name' => 'Gehen neu', 'Type' => 'gehen'];
+for ($i = 1; $i <= 12; $i++) { $unsaved['gc_kon' . $i] = 1031; }
+$dlgU = json_encode(json_decode($m->UIEditFormRow(json_encode($unsaved)), true), JSON_UNESCAPED_UNICODE);
+check('Noch nicht übernommene Zeile (Entdecken) mit 12 Kontakten: Dialog hat Plätze bis 20, belegte sichtbar', strpos($dlgU, '"gc_kon20"') !== false && preg_match('/"name":"gc_kon12"[^}]*"visible":true/', $dlgU) === 1);
 // Dialog
 $dlg = json_decode($m->UIEditForm('aflur1', 'bewegung'), true);
 $names = [];
@@ -2721,7 +2735,7 @@ check('Ausgefilterte Zeile steckt vollständig in der Spalte „Data“ (ohne An
 check('Hinweis „zeigt 2 von 3 — die übrigen bleiben erhalten“', in_array(['FilterInfo', 'visible', true], $m->fieldUpdates, true) && strpos(json_encode($m->fieldUpdates, JSON_UNESCAPED_UNICODE), 'Zeigt 2 von 3') !== false);
 // So speichert Symcon beim „Übernehmen“ mit aktivem Filter: beide Listen getrennt — und in der unsichtbaren
 // Liste NUR deren Spalten (live gesehen 15.10.2026: alles andere war weg).
-$colsOnly = array_map(fn($r) => array_intersect_key($r, ['Uid' => 1, 'Type' => 1, 'Data' => 1]), $hidden);
+$colsOnly = array_map(fn($r) => array_intersect_key($r, ['Uid' => 1, 'Type' => 1, 'Data' => 1, 'Gen' => 1]), $hidden);
 $m->props['Automations'] = json_encode($shown);
 $m->props['AutomationsHidden'] = json_encode($colsOnly);
 $m->ApplyChanges();
@@ -2730,6 +2744,28 @@ check('Nach dem Speichern mit Filter: alle 3 Automatismen da, MIT ihren Einstell
 check('… und arbeiten weiter (Nachrichten auch für den ausgefilterten registriert)', isset($m->messages[1031]));
 $lvF2 = json_decode($m->GetConfigurationForm(), true);
 check('Formular neu geöffnet: alle 3 sichtbar, unsichtbare Liste leer', count($find($lvF2['elements'], 'Automations')['values']) === 3 && $find($lvF2['elements'], 'AutomationsHidden')['values'] === []);
+// Danach ohne Filter eine Zeile löschen und speichern — Symcon schickt die (unveränderte) unsichtbare Liste evtl. nicht mit
+$keepProps = [$m->props['Automations'], $m->props['AutomationsHidden']];
+$visNow = array_values(array_filter($find($lvF2['elements'], 'Automations')['values'], fn($r) => $r['Uid'] !== 'afl002'));
+$m->props['Automations'] = json_encode($visNow);
+$rowsDel = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
+check('Gelöschter Automatismus kommt aus der alten unsichtbaren Liste nicht zurück', !in_array('afl002', array_column($rowsDel, 'Uid'), true) && count($rowsDel) === 2, json_encode(array_column($rowsDel, 'Uid')));
+$m->props['Automations'] = json_encode([$fA]);
+$m->props['AutomationsHidden'] = json_encode([['Uid' => 'afl002', 'Type' => 'fenster', 'Data' => json_encode($fB)]]);
+$rowsLeg = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
+check('Altbestand (0.1.41–0.1.47, ohne Filterstand): ausgeblendete Zeile zählt weiter', in_array('afl002', array_column($rowsLeg, 'Uid'), true));
+$m->props['AutomationsHidden'] = json_encode([['Uid' => 'afl002', 'Type' => 'fenster', 'Data' => json_encode($fB), 'Gen' => 'abc12345']]);
+$rowsSafe = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
+check('Speichert Symcon die Kennung an den sichtbaren Zeilen nicht: nichts geht verloren', in_array('afl002', array_column($rowsSafe, 'Uid'), true));
+$noUid = $fA;
+$noUid['Uid'] = '';
+$m->props['Automations'] = json_encode([$noUid]);
+$m->props['AutomationsHidden'] = '[]';
+$m->ApplyChanges();
+$saved1 = json_decode($m->props['Automations'], true);
+check('Zeile ohne Kennung bekommt beim Übernehmen eine feste (nicht „r0“)', preg_match('/^a[0-9a-f]{5}$/', (string)($saved1[0]['Uid'] ?? '')) === 1, json_encode($saved1[0]['Uid'] ?? null));
+[$m->props['Automations'], $m->props['AutomationsHidden']] = $keepProps;
+$m->ApplyChanges();
 $m->fieldUpdates = [];
 $hidRows = $hidden; // so reicht das onChange die unsichtbare Liste weiter: mit Spalte „Data“
 $m->UIFilterList(json_encode(array_merge($shown, $hidRows)), '', '', '', 'off');
@@ -2857,6 +2893,24 @@ check('Hausmodus per SetValue von außen: Heizung bekommt den Wechsel (17 °C)',
 fire($m, 1901, 17.0);
 $m->RequestAction('Hausmodus', 0);
 check('… über RequestAction zurück: kein doppelter Wechsel, Sollwert 21,5 °C', GetValue(1901) === 21.5);
+mkinst(1220, 'Essen Terrassentür');
+mkvar(1221, VARIABLETYPE_BOOLEAN, true, 'Essen Terrassentür', 1220, false, '', [], 'BooleanState_State');
+$vl = (new ReflectionMethod('Automat', 'valueLabels'))->invoke($m, 1221);
+check('Wächter-Auswahl beim Matter-Kontakt: „zu“ für wahr, „offen“ für falsch', ($vl['true'] ?? '') === 'zu' && ($vl['false'] ?? '') === 'offen', json_encode($vl, JSON_UNESCAPED_UNICODE));
+$m->props['Automations'] = '[]';
+$m->ApplyChanges();
+SetValue(1001, false);
+$GLOBALS['LOGS'] = [];
+$sw->invoke($m, 1001, true, '');
+SetValue(1001, false); // Gerät hat nicht reagiert (Wert bleibt aus)
+$GLOBALS['CLOCK'] += 25;
+$m->Tick();
+check('Schaltbefehl ohne Wirkung: nach 20 s im Protokoll „hat nicht reagiert“', strpos(json_encode($m->attrs['Protocol'] ?? '', JSON_UNESCAPED_UNICODE), 'nicht reagiert') !== false);
+$sw->invoke($m, 1001, true, '');
+$GLOBALS['CLOCK'] += 25;
+$before = $m->attrs['Protocol'];
+$m->Tick();
+check('… reagiert es, kein Eintrag', $m->attrs['Protocol'] === $before);
 check('Nie verschachtelt gesperrt, am Ende alles freigegeben', ($GLOBALS['SEMMAX'] ?? 0) === 1 && array_sum($GLOBALS['SEM'] ?? []) === 0, json_encode([$GLOBALS['SEMMAX'] ?? null, $GLOBALS['SEM'] ?? null]));
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');
