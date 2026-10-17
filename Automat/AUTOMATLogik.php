@@ -29,6 +29,33 @@ require_once __DIR__ . '/AUTOMATKatalog.php';
 
 class AUTOMATLogik
 {
+    /**
+     * Aufräumen, wenn ein Automatismus abgeschaltet, gelöscht, auf Probelauf gestellt oder umgebaut wird: was er
+     * gerade festhält, zurückgeben (abgesenkte Sollwerte). Lichter bleiben, wie sie sind. Liefert [Befehle, Text].
+     */
+    public static function cleanup(string $type, array $st, array $ctx): array
+    {
+        $cmd = [];
+        $vals = [];
+        if ($type === 'fenster' && in_array($st['ph'] ?? '', ['ab'], true)) {
+            foreach ((array)($st['saved'] ?? []) as $vid => $v) {
+                $cmd[] = [(int)$vid, (float)$v];
+                $vals[] = self::fmtNum((float)$v) . ' °C';
+            }
+        }
+        if ($type === 'heizung') {
+            foreach ((array)($st['saved'] ?? []) as $k => $v) {
+                $cur = array_key_exists((int)$k, $ctx['val'] ?? []) ? (float)$ctx['val'][(int)$k] : null;
+                $set = $st['set'][$k] ?? null;
+                if ($set !== null && ($cur === null || abs($cur - (float)$set) <= 0.05)) {
+                    $cmd[] = [(int)$k, (float)$v];
+                    $vals[] = self::fmtNum((float)$v) . ' °C';
+                }
+            }
+        }
+        return [$cmd, count($cmd) > 0 ? 'Sollwert zurück auf ' . implode(', ', array_unique($vals)) . '.' : ''];
+    }
+
     public static function step(array $row, array $st, array $ev, array $ctx): array
     {
         $type = (string)($row['Type'] ?? '');
@@ -920,11 +947,10 @@ class AUTOMATLogik
                 $open = true;
             }
         }
-        $restore = function () use (&$st, &$res, $soll) {
-            foreach ($soll as $vid) {
-                if (isset($st['saved'][$vid])) {
-                    $res['cmd'][] = [$vid, (float)$st['saved'][$vid]];
-                }
+        $restore = function () use (&$st, &$res) {
+            // Alle gemerkten zurückstellen — auch ein inzwischen aus der Liste genommenes Thermostat
+            foreach ((array)$st['saved'] as $vid => $v) {
+                $res['cmd'][] = [(int)$vid, (float)$v];
             }
             $vals = [];
             foreach ($st['saved'] as $v) {
@@ -974,7 +1000,10 @@ class AUTOMATLogik
                 $st['saved'] = [];
                 $from = [];
                 foreach ($soll as $s) {
-                    $cur = (float)($ctx['val'][$s] ?? $absenk);
+                    if (!array_key_exists($s, $ctx['val'] ?? [])) {
+                        continue; // ohne Messwert nichts merken — sonst „zurück“ auf den Absenkwert
+                    }
+                    $cur = (float)$ctx['val'][$s];
                     $st['saved'][$s] = $cur;
                     $from[] = self::fmtNum($cur) . ' °C';
                     $res['cmd'][] = [$s, $absenk];
@@ -2206,6 +2235,16 @@ class AUTOMATLogik
         $saved = (array)$st['saved'];
         $set = (array)$st['set'];
         $logs = [];
+        // Handbedienung nur an einer echten fremden Änderung erkennen (nicht am Tick: Funk-Thermostate melden den
+        // neuen Wert oft erst nach Minuten, andere Automatismen schalten mit „eigenem“ Echo). Prüfbericht 17.10.2026.
+        if (($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $soll, true)) {
+            $hk = (string)(int)$ev['vid'];
+            if (isset($set[$hk]) && abs((float)($ev['v'] ?? 0) - (float)$set[$hk]) > 0.05) {
+                unset($set[$hk]);
+                $st['hand'][$hk] = true; // Grundwert ($saved) bleibt gemerkt — gilt beim Heimkommen
+                $logs[] = self::nameOf((int)$ev['vid'], $ctx) . ' von Hand auf ' . self::fmtNum((float)($ev['v'] ?? 0)) . ' °C gestellt — bleibt so';
+            }
+        }
         foreach ($soll as $vid) {
             $k = (string)$vid;
             $cur = array_key_exists($vid, $ctx['val'] ?? []) ? (float)$ctx['val'][$vid] : null;
@@ -2213,24 +2252,25 @@ class AUTOMATLogik
                 continue;
             }
             if ($target !== null) {
-                if (isset($set[$k]) && abs($cur - (float)$set[$k]) > 0.05) {
-                    // Während der Absenkung von Hand geändert: so lassen.
-                    unset($set[$k], $saved[$k]);
-                    $st['hand'][$k] = true;
-                    $logs[] = self::nameOf($vid, $ctx) . ' von Hand auf ' . self::fmtNum($cur) . ' °C gestellt — bleibt so';
+                if (!empty($st['hand'][$k])) {
                     continue;
                 }
-                if (!empty($st['hand'][$k])) {
+                if (!empty($ctx['held'][$vid]) && !isset($set[$k])) {
+                    // „Fenster offen“ hält dieses Thermostat gerade abgesenkt: nicht dazwischenfahren. Ist das Fenster
+                    // zu, stellt es seinen Wert zurück, dann senkt der nächste Durchlauf hier ab.
                     continue;
                 }
                 if (!isset($saved[$k])) {
                     $saved[$k] = $cur;
                 }
-                if (abs($cur - $target) > 0.05) {
+                if ((!isset($set[$k]) || abs((float)$set[$k] - $target) > 0.05) && abs($cur - $target) > 0.05) {
                     $res['cmd'][] = [$vid, $target];
                 }
                 $set[$k] = $target;
             } elseif (isset($saved[$k])) {
+                if (!empty($ctx['held'][$vid])) {
+                    continue; // Fenster noch offen: zurückstellen, wenn es zu ist
+                }
                 if (isset($set[$k]) && abs($cur - (float)$set[$k]) <= 0.05 && abs($cur - (float)$saved[$k]) > 0.05) {
                     $res['cmd'][] = [$vid, (float)$saved[$k]];
                     $logs[] = self::nameOf($vid, $ctx) . ' zurück auf ' . self::fmtNum((float)$saved[$k]) . ' °C';

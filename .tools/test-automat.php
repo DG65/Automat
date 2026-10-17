@@ -1027,6 +1027,31 @@ $r = step($hz, $st, ['k' => 'mode', 'from' => 0, 'to' => 2], ['mode' => 2, 'val'
 check('„Nacht“ nicht angekreuzt: nichts', $r['cmd'] === []);
 $r = step($hz, $st, ['k' => 'mode', 'from' => 2, 'to' => 4], ['mode' => 4, 'val' => [950 => 21.5, 951 => 20.0], 'names' => $nm]);
 check('„Urlaub“: 15 °C', cmdMap($r) === ['950=15.0', '951=15.0']);
+// Prüfbericht 17.10.2026: Heizung + Fenster offen am selben Thermostat, träge Thermostate, Moduswechsel nach Handeingriff
+$hz1 = AUTOMATKatalog::defaults('heizung') + ['Uid' => 'ahzg03', 'Name' => 'Heizung'];
+$hz1['hz_soll1'] = 950;
+$st = [];
+$r = step($hz1, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [950 => 21.0], 'names' => $nm]);
+$r = step($hz1, $st, ['k' => 'tick'], ['mode' => 3, 'val' => [950 => 21.0], 'names' => $nm]);
+check('Thermostat meldet die 17 °C noch nicht (Funk): keine „Handbedienung“, kein neuer Befehl', $r['cmd'] === [] && $r['log'] === null && empty($st['hand']), (string)$r['log']);
+$r = step($hz1, $st, ['k' => 'output', 'vid' => 950, 'v' => 12.0, 'own' => true], ['mode' => 3, 'val' => [950 => 12.0], 'names' => $nm, 'held' => [950 => true]]);
+check('Fenster offen senkt auf 12 °C (eigenes Echo): keine Handbedienung, Grundwert 21 bleibt gemerkt', empty($st['hand']) && ($st['saved']['950'] ?? null) === 21.0);
+$r = step($hz1, $st, ['k' => 'mode', 'from' => 3, 'to' => 0], ['mode' => 0, 'val' => [950 => 12.0], 'names' => $nm, 'held' => [950 => true]]);
+check('Heimkommen bei offenem Fenster: nichts zurückstellen (Fenster hält)', $r['cmd'] === [] && ($st['saved']['950'] ?? null) === 21.0);
+$r = step($hz1, $st, ['k' => 'tick'], ['mode' => 0, 'val' => [950 => 17.0], 'names' => $nm]);
+check('Fenster zu, stellt 17 °C zurück → Heizung stellt auf den Grundwert 21 °C', cmdMap($r) === ['950=21.0'], json_encode($r['cmd']));
+$st = [];
+$r = step($hz1, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [950 => 12.0], 'names' => $nm, 'held' => [950 => true]]);
+check('Fenster schon offen, dann „Abwesend“: Heizung fährt nicht dazwischen', $r['cmd'] === [] && !isset($st['saved']['950']));
+$st = [];
+step($hz1, $st, ['k' => 'mode', 'from' => 0, 'to' => 3], ['mode' => 3, 'val' => [950 => 21.0], 'names' => $nm]);
+step($hz1, $st, ['k' => 'output', 'vid' => 950, 'v' => 19.0], ['mode' => 3, 'val' => [950 => 19.0], 'names' => $nm]);
+$r = step($hz1, $st, ['k' => 'mode', 'from' => 3, 'to' => 4], ['mode' => 4, 'val' => [950 => 19.0], 'names' => $nm]);
+check('Abwesend → von Hand 19 °C → Urlaub: senkt auf 15 °C, merkt weiter 21 °C (nicht 19)', cmdMap($r) === ['950=15.0'] && ($st['saved']['950'] ?? null) === 21.0);
+$r = step($hz1, $st, ['k' => 'mode', 'from' => 4, 'to' => 0], ['mode' => 0, 'val' => [950 => 15.0], 'names' => $nm]);
+check('… Heimkommen: zurück auf 21 °C', cmdMap($r) === ['950=21.0']);
+[$cc, $ct] = AUTOMATLogik::cleanup('fenster', ['ph' => 'ab', 'saved' => [950 => 21.0, 951 => 22.0]], []);
+check('Aufräumen „Fenster offen“: alle gemerkten Sollwerte zurück', $cc === [[950, 21.0], [951, 22.0]] && strpos($ct, '21 °C') !== false);
 
 heading('A8i. Taster-Zuordnung');
 $tg = AUTOMATKatalog::defaults('taster') + ['Uid' => 'atst01', 'Name' => 'Taster Flur'];
@@ -2318,6 +2343,18 @@ check('… und die Heizung bekommt den Wechsel: 17 °C', GetValue(1901) === 17.0
 fire($m, 1901, 17.0); // Echo der Absenkung
 $m->RequestAction('Hausmodus', 0);
 check('Zurück auf „Tag“: Sollwert wieder 21,5 °C', GetValue(1901) === 21.5);
+// Abschalten mitten in der Absenkung gibt den Sollwert frei
+$m->RequestAction('Hausmodus', 3);
+fire($m, 1901, 17.0);
+$hzOff = $hzr;
+$hzOff['Enabled'] = false;
+$m->props['Automations'] = json_encode([$hzOff, $alr, $tgr]);
+$m->ApplyChanges();
+check('Heizung mitten in „Abwesend“ abgeschaltet: Sollwert zurück auf 21,5 °C', GetValue(1901) === 21.5, json_encode(GetValue(1901)));
+$m->props['Automations'] = json_encode([$hzr, $alr, $tgr]);
+$m->ApplyChanges();
+$m->RequestAction('Hausmodus', 0);
+fire($m, 1901, GetValue(1901));
 $m->RequestAction('Pause', true);
 $GLOBALS['PUSH'] = [];
 at('23:30:00');

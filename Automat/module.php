@@ -182,6 +182,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('Due', '{}');
         $this->RegisterAttributeString('End', '{}');
         $this->RegisterAttributeString('Sent', '{}');
+        $this->RegisterAttributeString('Fp', '{}');
         $this->RegisterAttributeString('MelStats', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
         $this->RegisterAttributeString('Suggestions', '[]');
@@ -291,6 +292,7 @@ class Automat extends IPSModule
                 IPS_DeleteVariable($cid);
             }
         }
+        $this->cleanupChanged($rows);
         // Zustände entfernter Automatismen vergessen.
         $uids = array_column($rows, 'Uid');
         foreach (['Status', 'Due', 'End'] as $attr) {
@@ -457,6 +459,57 @@ class Automat extends IPSModule
     {
         if (--$this->lockDepth === 0 && function_exists('IPS_SemaphoreLeave')) {
             IPS_SemaphoreLeave('AUTOMAT_' . $this->InstanceID);
+        }
+    }
+
+    /**
+     * Abgeschaltete, gelöschte, auf Probelauf gestellte oder umgebaute Automatismen geben frei, was sie festhalten
+     * (abgesenkte Sollwerte), und beginnen mit frischem Zustand. Vorher blieb z. B. ein Thermostat dauerhaft auf
+     * 12 °C, wenn „Fenster offen“ mitten in der Absenkung abgeschaltet wurde (Prüfbericht 17.10.2026).
+     */
+    private function cleanupChanged(array $rows): void
+    {
+        $old = json_decode($this->aStr('Fp'), true);
+        $new = [];
+        foreach ($rows as $r) {
+            $v = AUTOMATKatalog::variables($r);
+            $out = $v['out'];
+            sort($out);
+            $new[$r['Uid']] = ['t' => $r['Type'], 'on' => !empty($r['Enabled']) && empty($r['Dry']), 'out' => $out];
+        }
+        $this->WriteAttributeString('Fp', json_encode($new));
+        if (!is_array($old)) {
+            return; // erster Lauf nach dem Update: nur merken
+        }
+        $byUid = array_column($rows, null, 'Uid');
+        $states = $this->statesMap();
+        $cmds = [];
+        foreach ($old as $uid => $o) {
+            $n = $new[$uid] ?? null;
+            if ($n !== null && $n['on'] === $o['on'] && $n['out'] === $o['out']) {
+                continue;
+            }
+            $st = is_array($states[$uid] ?? null) ? $states[$uid] : [];
+            if (!empty($o['on']) && count($st) > 0) {
+                $row = $byUid[$uid] ?? ['Uid' => $uid, 'Type' => (string)$o['t'], 'Name' => (string)$o['t']];
+                $val = [];
+                foreach (array_merge((array)$o['out'], array_keys((array)($st['saved'] ?? []))) as $vid) {
+                    if (IPS_VariableExists((int)$vid)) {
+                        $val[(int)$vid] = GetValue((int)$vid);
+                    }
+                }
+                [$c, $text] = AUTOMATLogik::cleanup((string)$o['t'], $st, ['val' => $val]);
+                if (count($c) > 0) {
+                    $cmds = array_merge($cmds, $c);
+                    $why = $n === null ? 'gelöscht' : (!$n['on'] ? 'abgeschaltet' : 'geändert');
+                    $this->addLog(isset($byUid[$uid]) ? $this->rowName($row) : '', 'Automatismus ' . $why . ' — ' . $text);
+                }
+            }
+            unset($states[$uid]); // frischer Zustand (auch nach einem Probelauf, der nur so getan hat)
+        }
+        $this->statesWrite($states);
+        foreach ($cmds as [$vid, $value]) {
+            $this->switchVariable((int)$vid, $value);
         }
     }
 
@@ -631,6 +684,18 @@ class Automat extends IPSModule
             foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
                 if (IPS_VariableExists($cv) && AUTOMATErkennung::contactInverted($this->varInfo($cv))) {
                     $ctx['inv'][$cv] = true;
+                }
+            }
+        }
+        if ($row['Type'] === 'heizung') {
+            // Thermostate, die „Fenster offen“ gerade abgesenkt hält — dort fährt die Heizung nicht dazwischen
+            $states = $this->statesMap();
+            foreach ($this->rows() as $fr) {
+                $fst = $states[$fr['Uid']] ?? [];
+                if ($fr['Type'] === 'fenster' && !empty($fr['Enabled']) && empty($fr['Dry']) && ($fst['ph'] ?? '') === 'ab') {
+                    foreach (array_keys((array)($fst['saved'] ?? [])) as $hv) {
+                        $ctx['held'][(int)$hv] = true;
+                    }
                 }
             }
         }
