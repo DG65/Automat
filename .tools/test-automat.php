@@ -1528,6 +1528,7 @@ $cases = [
     ['', ['type' => 0, 'profile' => '~Lock.Reversed', 'name' => 'Status Türriegel', 'inst' => 'Türschloß', 'ident' => 'DoorLockBoltState']],
     ['', ['type' => 0, 'profile' => '~Lock', 'name' => 'Status Schnappverschluss', 'inst' => 'Türschloß', 'ident' => 'DoorLockLatchState']],
     ['contact', ['type' => 0, 'name' => 'Windfang Haustür', 'inst' => 'Windfang Haustür', 'ident' => 'BooleanState_State']],
+    ['', ['type' => 1, 'action' => true, 'profile' => '~ShutterMoveStop', 'name' => 'Steuerung', 'inst' => 'Rollladen Küche']],
 ];
 foreach ($cases as [$want, $a]) {
     $got = AUTOMATErkennung::role($it($a));
@@ -2834,6 +2835,17 @@ $sw->invoke($m, 1201, 5, '');
 check('Ganzzahl-Dimmer meldet 4 statt 5: eigenes Echo', $ceCall(1201, 4) === true);
 $GLOBALS['CLOCK'] += 20;
 check('Nach Ablauf (15 s) ist eine Änderung wieder Handbedienung', $ceCall(1201, 60) === false);
+$m->props['Automations'] = json_encode([$hzr]);
+$m->props['cfg_ModeAuto'] = false;
+SetValue(1901, 21.5);
+$m->ApplyChanges();
+$m->RequestAction('Hausmodus', 0);
+$hm = IPS_GetObjectIDByIdent('Hausmodus', 12345);
+fire($m, $hm, 3); // Skript setzt den Hausmodus per SetValue
+check('Hausmodus per SetValue von außen: Heizung bekommt den Wechsel (17 °C)', GetValue(1901) === 17.0, json_encode(GetValue(1901)));
+fire($m, 1901, 17.0);
+$m->RequestAction('Hausmodus', 0);
+check('… über RequestAction zurück: kein doppelter Wechsel, Sollwert 21,5 °C', GetValue(1901) === 21.5);
 check('Nie verschachtelt gesperrt, am Ende alles freigegeben', ($GLOBALS['SEMMAX'] ?? 0) === 1 && array_sum($GLOBALS['SEM'] ?? []) === 0, json_encode([$GLOBALS['SEMMAX'] ?? null, $GLOBALS['SEM'] ?? null]));
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

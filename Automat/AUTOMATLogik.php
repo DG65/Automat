@@ -1421,7 +1421,9 @@ class AUTOMATLogik
                 $rel(39) => 'Christi Himmelfahrt', $rel(50) => 'Pfingstmontag', $rel(60) => 'Fronleichnam', $fix(8, 15) => 'Mariä Himmelfahrt',
                 $fix(10, 26) => 'Nationalfeiertag', $fix(11, 1) => 'Allerheiligen', $fix(12, 8) => 'Mariä Empfängnis', $fix(12, 25) => 'Christtag', $fix(12, 26) => 'Stefanitag'];
         } elseif ($land === 'CH') {
-            $list = [$fix(1, 1) => 'Neujahr', $rel(39) => 'Auffahrt', $fix(8, 1) => 'Bundesfeier', $fix(12, 25) => 'Weihnachten'];
+            // Bundesweit nur 1.8.; dazu die in fast allen Kantonen geltenden Feiertage (kantonale Unterschiede möglich)
+            $list = [$fix(1, 1) => 'Neujahr', $rel(-2) => 'Karfreitag', $rel(1) => 'Ostermontag', $rel(39) => 'Auffahrt',
+                $rel(50) => 'Pfingstmontag', $fix(8, 1) => 'Bundesfeier', $fix(12, 25) => 'Weihnachten', $fix(12, 26) => 'Stephanstag'];
         } else {
             $list = [$fix(1, 1) => 'Neujahr', $rel(-2) => 'Karfreitag', $rel(1) => 'Ostermontag', $fix(5, 1) => 'Tag der Arbeit',
                 $rel(39) => 'Christi Himmelfahrt', $rel(50) => 'Pfingstmontag', $fix(10, 3) => 'Tag der Deutschen Einheit',

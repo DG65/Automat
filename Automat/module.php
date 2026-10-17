@@ -183,6 +183,7 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('End', '{}');
         $this->RegisterAttributeString('Sent', '{}');
         $this->RegisterAttributeString('Fp', '{}');
+        $this->RegisterAttributeInteger('ModeKnown', -1);
         $this->RegisterAttributeString('MelStats', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
         $this->RegisterAttributeString('Suggestions', '[]');
@@ -277,6 +278,13 @@ class Automat extends IPSModule
         if ($presence > 0) {
             $this->RegisterMessage($presence, VM_UPDATE);
         }
+        $modeID = @IPS_GetObjectIDByIdent('Hausmodus', $this->InstanceID);
+        if ($modeID) {
+            $this->RegisterMessage($modeID, VM_UPDATE);
+            if ($this->aInt('ModeKnown') < 0) {
+                $this->WriteAttributeInteger('ModeKnown', (int)GetValue($modeID));
+            }
+        }
         $isDay = $this->locationVariable('IsDay');
         if ($isDay > 0 && ($this->pInt('cfg_DayRef') === 2 || $this->pInt('cfg_EveningRef') === 2)) {
             $this->RegisterMessage($isDay, VM_UPDATE);
@@ -333,6 +341,19 @@ class Automat extends IPSModule
         }
         if ($vid === $this->locationVariable('IsDay') || ($vid > 0 && $vid === $this->lightVar())) {
             $this->evaluateMode(false);
+        }
+        $modeID = @IPS_GetObjectIDByIdent('Hausmodus', $this->InstanceID);
+        if ($modeID && $vid === $modeID) {
+            // Hausmodus per SetValue von außen (Skript, Ereignis) — sonst bekämen Szene, Heizung, Gehen-Check den
+            // Wechsel nicht mit (Prüfbericht 17.10.2026)
+            $known = $this->aInt('ModeKnown');
+            if ($changed && (int)$value !== $known && isset(AUTOMATKatalog::MODES[(int)$value])) {
+                $this->WriteAttributeInteger('ModeKnown', (int)$value);
+                $this->announceMode($known >= 0 ? $known : (int)($Data[2] ?? 0), (int)$value, 'von außen gesetzt');
+                $this->reschedule();
+                $this->refreshTile();
+            }
+            return;
         }
         $origin = '';
         $own = $this->consumeEcho($vid, $value, $origin);
@@ -1087,8 +1108,15 @@ class Automat extends IPSModule
             return;
         }
         $from = (int)$this->GetValue('Hausmodus');
+        $this->WriteAttributeInteger('ModeKnown', $mode);
         $this->SetValue('Hausmodus', $mode);
-        $this->addLog('', '🏠 Hausmodus „' . AUTOMATKatalog::MODES[$mode] . '“ (' . $source . ').');
+        $this->announceMode($from, $mode, $source);
+    }
+
+    /** Alle Automatismen über einen Wechsel des Hausmodus informieren. */
+    private function announceMode(int $from, int $mode, string $source): void
+    {
+        $this->addLog('', '🏠 Hausmodus „' . (AUTOMATKatalog::MODES[$mode] ?? $mode) . '“ (' . $source . ').');
         foreach ($this->rows() as $row) {
             $this->process($row, in_array($row['Type'], self::MODE_EVENT_TYPES, true) ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
         }
@@ -2051,6 +2079,8 @@ class Automat extends IPSModule
         $total = 0;
         foreach ($marked as $r) {
             $c = $r;
+            $cTotal = 0; // je Kopie zählen — eine unvollständige Kopie darf nicht aktiv werden
+            $cMapped = 0;
             $old = trim((string)($r['Room'] ?? ''));
             if ($room !== '' && $room !== $old) {
                 $c['Room'] = $room;
@@ -2069,6 +2099,7 @@ class Automat extends IPSModule
                             continue;
                         }
                         $total++;
+                        $cTotal++;
                         $role = $roleOf[$vid] ?? '';
                         $pick = 0;
                         foreach ($byRoom[$role] ?? [] as $cand) {
@@ -2080,6 +2111,7 @@ class Automat extends IPSModule
                         if ($pick > 0) {
                             $taken[$pick] = true;
                             $mapped++;
+                            $cMapped++;
                         }
                         $c[$n] = $pick;
                     }
@@ -2088,7 +2120,7 @@ class Automat extends IPSModule
                 $c['Name'] = trim((string)$r['Name']) . ' (Kopie)';
             }
             // Eine Kopie mit denselben Geräten würde doppelt regeln — deshalb erst nach dem Prüfen aktiv.
-            $c['Enabled'] = $room !== '' && $room !== $old && $total > 0 && $mapped === $total;
+            $c['Enabled'] = $room !== '' && $room !== $old && $cTotal > 0 && $cMapped === $cTotal;
             $copies[] = $c;
         }
         $msg = $this->insertRows($copies, $rowsJson, count($copies) . ' Kopie(n)', true);

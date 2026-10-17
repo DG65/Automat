@@ -79,7 +79,8 @@ class AUTOMATErkennung
             return 'alarm';
         }
         // Rollläden/Jalousien (Position mit Aktion)
-        if (($type === 1 || $type === 2) && $action && (preg_match('/shutter|blind|jalousie|rollladen|rolladen/', $profile)
+        // ~ShutterMoveStop/~ShutterMoveStep sind Fahrbefehle (0–4), keine Position — dorthin ginge sonst 100
+        if (($type === 1 || $type === 2) && $action && !preg_match('/move|step|stop/', $profile) && (preg_match('/shutter|blind|jalousie|rollladen|rolladen/', $profile)
             || preg_match('/rollladen|rolladen|rollo\b|jalousie|raffstore|shutter|blind|markise/iu', $text))) {
             return 'shutter';
         }
