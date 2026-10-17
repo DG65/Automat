@@ -1025,6 +1025,18 @@ check('Zu feucht: erst nach 10 min melden', $r['msg'] === [] && $r['due'] === ts
 at('07:10:00');
 $r = step($lf, $st, ['k' => 'tick'], ['val' => [900 => 71.0, 901 => false], 'names' => $nm]);
 check('Nach 10 min: „Bitte lüften“', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Bitte lüften: 71') !== false);
+$stL = [];
+at('07:00:00');
+step($lf, $stL, ['k' => 'trigger', 'vid' => 900, 'v' => 72.0], ['val' => [900 => 72.0, 901 => false], 'names' => $nm, 'locked' => false, 'condOk' => false]);
+at('07:10:00');
+$r = step($lf, $stL, ['k' => 'tick'], ['val' => [900 => 72.0, 901 => false], 'names' => $nm, 'condOk' => false]);
+check('Erinnern fällt in eine weiche Sperre (Bedingung nicht erfüllt): keine Meldung', $r['msg'] === []);
+at('07:20:00');
+$r = step($lf, $stL, ['k' => 'tick'], ['val' => [900 => 72.0, 901 => false], 'names' => $nm]);
+check('… Sperre vorbei: Erinnerung kommt nachträglich', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Bitte lüften') !== false);
+$lfBad = $lf;
+$lfBad['lf_ok'] = 70.0;
+check('„Gut unter“ ≥ „Erinnern ab“ wird als Problem gemeldet', count(array_filter(AUTOMATKatalog::problems($lfBad, fn() => true), fn($x) => strpos($x, 'Wieder gut unter') !== false)) === 1);
 at('07:15:00');
 $r = step($lf, $st, ['k' => 'trigger', 'vid' => 901, 'v' => true], ['val' => [900 => 66.0, 901 => true], 'names' => $nm]);
 check('Fenster auf: Status „wird gelüftet“, keine Erinnerung', $r['msg'] === [] && strpos($r['status'], 'Wird gelüftet') !== false);

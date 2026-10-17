@@ -894,6 +894,9 @@ class AUTOMATKatalog
                 $p[] = 'Kein Hausmodus angekreuzt, bei dem geprüft wird.';
             }
         }
+        if ($t === 'lueften' && (float)($row['lf_ok'] ?? 55) >= (float)($row['lf_hoch'] ?? 65)) {
+            $p[] = '„Wieder gut unter“ muss kleiner sein als „Erinnern ab“ — sonst wechselt die Meldung ständig.';
+        }
         if ($t === 'zeitschalt') {
             $any = false;
             foreach (self::WEEKDAYS as $n => $_) {

@@ -2208,11 +2208,15 @@ class AUTOMATLogik
             } elseif ($now >= (int)$st['since'] + $dauer) {
                 $st['ph'] = 'hoch';
                 $st['last'] = $now;
-                if (count($open) === 0 && $soft === '') {
-                    $res['log'] = 'Luft zu schlecht: ' . $txt . ' — Erinnerung zum Lüften.';
-                    $res['msg'][] = ['💨 ' . $name, 'Bitte lüften: ' . $txt . '.'];
-                }
+                $st['told'] = false;
             }
+        }
+        if ($st['ph'] === 'hoch' && empty($st['told']) && count($open) === 0 && $soft === '' && $v >= $ok) {
+            // Erste Erinnerung — auch nachträglich, wenn sie beim Überschreiten wegen Sperre/Hausmodus nicht ging
+            $st['told'] = true;
+            $st['last'] = $now;
+            $res['log'] = 'Luft zu schlecht: ' . $txt . ' — Erinnerung zum Lüften.';
+            $res['msg'][] = ['💨 ' . $name, 'Bitte lüften: ' . $txt . '.'];
         } elseif ($st['ph'] === 'hoch') {
             if ($v < $ok) {
                 $st['ph'] = 'ok';
