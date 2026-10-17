@@ -1312,7 +1312,9 @@ class AUTOMATLogik
             $beforeDay = $now < $dayStart;
         }
         if ($eveRef === 2 || $eveRef === 6) {
-            $evening = !$eveFlag && $now >= $noon;
+            // Ein Gewitter am Nachmittag ist noch kein Abend: frühestens 2 h vor Sonnenuntergang (wenn bekannt)
+            $ssAny = $c['ssAny'] ?? null;
+            $evening = !$eveFlag && $now >= ($ssAny !== null ? max($noon, (int)$ssAny - 7200) : $noon);
         } else {
             $eveStart = $eveRef === 0 ? (int)$c['sunset'] + (int)($c['eveOff'] ?? 0) * 60 : self::timeOn((string)($c['eveFrom'] ?? AUTOMATKatalog::time(18, 0)), $today);
             $evening = $now >= $eveStart;
@@ -1556,7 +1558,10 @@ class AUTOMATLogik
         $in = (int)($row['kl_taster'] ?? 0);
         if (($ev['k'] ?? '') === 'trigger' && (int)($ev['vid'] ?? 0) === $in && $hard === '') {
             $key = mb_strtolower(self::valueKey($ev['v'] ?? ''));
-            if (!in_array($key, ['', 'false', '0'], true) && $now - (int)$st['last'] >= 10) {
+            // Dieselbe Meldung ohne Wertänderung (Funkqualität, Abfrage) ist kein neues Klingeln — außer die Klingel
+            // meldet bewusst immer denselben Wert (Prüfbericht 17.10.2026)
+            $repeat = array_key_exists('changed', $ev) && !$ev['changed'] && empty($row['kl_impuls']);
+            if (!$repeat && !in_array($key, ['', 'false', '0'], true) && $now - (int)$st['last'] >= 10) {
                 $st['last'] = $now;
                 $away = in_array($mode, [AUTOMATKatalog::MODE_AWAY, AUTOMATKatalog::MODE_HOLIDAY], true);
                 $res['log'] = 'Es hat geklingelt' . ($away ? ' (niemand zu Hause)' : '') . '.';
@@ -2025,6 +2030,14 @@ class AUTOMATLogik
                 $res['msg'][] = ['🚨 ' . $name, 'ALARM: ' . implode(', ', $who) . ' (' . date('H:i', $now) . ' Uhr)' . ($what ? '. ' . implode('; ', $what) : '') . '.'];
             }
         } elseif (count($who) > 0) {
+            $added = array_values(array_diff($who, (array)$st['who']));
+            if (count($added) > 0) {
+                // Weiterer Melder während eines laufenden Alarms (z. B. Rauch breitet sich aus) — sofort melden
+                $res['log'] = '🚨 Weiterer Melder: ' . implode(', ', $added) . '.';
+                if (!empty($row['al_push'])) {
+                    $res['msg'][] = ['🚨 ' . $name, 'ALARM jetzt auch: ' . implode(', ', $added) . ' (' . date('H:i', $now) . ' Uhr). Alle: ' . implode(', ', $who) . '.'];
+                }
+            }
             if ($wdh > 0 && $now >= (int)$st['last'] + $wdh) {
                 $st['last'] = $now;
                 if (!empty($row['al_push'])) {
@@ -2079,7 +2092,9 @@ class AUTOMATLogik
         $downTs = $downRef === 1 && $sun['ss'] !== null ? (int)$sun['ss'] + (int)($row['rl_downoff'] ?? 0) * 60 : self::timeOn((string)($row['rl_downzeit'] ?? AUTOMATKatalog::time(21, 0)), $today);
         if ($downRef === 2) {
             // Zentraler Helligkeitssensor („🏠 Hausmodus“: Schwellen und Haltezeit dort). Nur nachmittags — morgens ist es auch dunkel.
-            $downReady = ($now >= $noon + 7200 && ($ctx['dark'] ?? null) === true) || $now >= $latest;
+            // Frühestens 2 h vor Sonnenuntergang — ein Gewitter um 14 Uhr schloss sonst für den ganzen Tag
+            $darkFrom = $sun['ss'] !== null ? max($noon + 7200, (int)$sun['ss'] - 7200) : $noon + 7200;
+            $downReady = ($now >= $darkFrom && ($ctx['dark'] ?? null) === true) || $now >= $latest;
         } elseif ($downRef === 3) {
             $downReady = ($now >= $noon && $mode === AUTOMATKatalog::MODE_NIGHT) || $now >= $latest;
         } else {

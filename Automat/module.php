@@ -380,7 +380,7 @@ class Automat extends IPSModule
             }
             $vars = AUTOMATKatalog::variables($row);
             if (in_array($vid, $vars['in'], true)) {
-                $this->process($row, ['k' => 'trigger', 'vid' => $vid, 'v' => $value]);
+                $this->process($row, ['k' => 'trigger', 'vid' => $vid, 'v' => $value, 'changed' => $changed]);
                 $touched = true;
             }
             if ($changed && in_array($vid, $vars['out'], true)) {
@@ -1162,6 +1162,7 @@ class Automat extends IPSModule
                 'sunset' => isset(self::EVE_EVENTS[$eveRef]) ? $this->sunOn(self::EVE_EVENTS[$eveRef], $today) : null,
                 'isDay' => $isDayVid > 0 ? (bool)GetValue($isDayVid) : null,
                 'lightDay' => $this->lightDayNow($now),
+                'ssAny' => $this->sunOn('Sunset', $today),
             ], $presence, $current);
         } else {
             // Nur Anwesenheit: Abwesend setzen bzw. beim Heimkommen auf Tag zurück.

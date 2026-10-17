@@ -341,6 +341,7 @@ class AUTOMATKatalog
                 return [
                     ['k' => 'info', 'c' => 'Klingel'],
                     ['n' => 'kl_taster', 'k' => 'var', 'c' => 'Klingel (wahr/Wert beim Klingeln)', 'req' => true],
+                    ['n' => 'kl_impuls', 'k' => 'bool', 'c' => 'Klingel meldet jedes Klingeln mit demselben Wert (bleibt z. B. auf „wahr“)', 'd' => false],
                     ['n' => 'kl_push', 'k' => 'bool', 'c' => 'Melden (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => true],
                     ['n' => 'kl_bild', 'k' => 'object', 'c' => 'Kamerabild (Medienobjekt, optional — geht an Skript-Meldewege mit)'],
                     ['k' => 'info', 'c' => 'Licht (nur bei „Abend“ und „Nacht“)'],
