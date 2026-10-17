@@ -1783,13 +1783,24 @@ class AUTOMATLogik
         $modus = (int)($row['zs_modus'] ?? 0);
         $hol = (array)($ctx['holiday'] ?? []);
         $first = !isset($st['on']);
-        $st += ['on' => false, 'manual' => '', 'did' => [], 'jd' => '', 'jit' => 0];
-        if ($st['jd'] !== $today) {
-            $st['jd'] = $today;
-            $st['jit'] = (int)round((float)($ctx['rnd'] ?? 0) * max(0, (int)($row['zs_zufall'] ?? 0)) * 60);
+        $st += ['on' => false, 'manual' => '', 'did' => [], 'jd' => '', 'jit' => 0, 'jits' => []];
+        // Zufallsversatz je Starttag des Fensters merken: ein Fenster über Mitternacht behält den Versatz seines
+        // Abends (vorher wurde um 00:00 neu gewürfelt und das Fenster von gestern verschoben — Prüfbericht 17.10.2026).
+        if (!isset($st['jits'][$today])) {
+            $st['jits'][$today] = (int)round((float)($ctx['rnd'] ?? 0) * max(0, (int)($row['zs_zufall'] ?? 0)) * 60);
+            if ($st['jd'] === self::addDays($today, -1)) {
+                $st['jits'][$st['jd']] = $st['jits'][$st['jd']] ?? (int)$st['jit']; // Übernahme aus der alten Form
+            }
+            $st['jits'] = array_slice($st['jits'], -3, null, true);
         }
+        $st['jd'] = $today;
+        $st['jit'] = (int)$st['jits'][$today];
+        $jitOf = function (string $d) use (&$st): int {
+            return (int)($st['jits'][$d] ?? $st['jits'][array_key_last($st['jits'])] ?? 0);
+        };
         $jit = (int)$st['jit'];
-        $win = function (string $d) use ($row, $jit): array {
+        $win = function (string $d) use ($row, $jitOf): array {
+            $jit = $jitOf($d);
             $on = self::timeOn((string)($row['zs_ein'] ?? AUTOMATKatalog::time(7, 0)), $d) + $jit;
             $off = self::timeOn((string)($row['zs_aus'] ?? AUTOMATKatalog::time(8, 0)), $d) + $jit;
             if ($off <= $on) {
@@ -1821,11 +1832,17 @@ class AUTOMATLogik
                 $st['on'] = false;
                 $st['manual'] = $key;
                 $res['log'] = 'Von Hand ausgeschaltet — bleibt aus bis zum nächsten Schaltzeitpunkt.';
+            } elseif (($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $outs, true)
+                && $key !== null && !$st['on'] && self::isTrue($ev['v'] ?? false)) {
+                // Im Fenster von Hand wieder eingeschaltet: am Fensterende wieder normal ausschalten
+                $st['on'] = true;
+                $st['manual'] = '';
             }
             if ($first) {
                 $st['on'] = $key !== null; // beim Einrichten nichts nachholen, nur den Zustand übernehmen
-            } elseif ($hard === '' && $soft === '') {
-                if ($key !== null && !$st['on'] && $st['manual'] !== $key) {
+            } elseif ($hard === '') {
+                // Eine weiche Sperre (Hausmodus, Bedingung) verhindert nur das Einschalten — laufende Zeiten enden normal
+                if ($key !== null && !$st['on'] && $st['manual'] !== $key && $soft === '') {
                     $setAll(true);
                     $st['on'] = true;
                     $res['log'] = 'Schaltzeit — ein.';
@@ -1835,7 +1852,7 @@ class AUTOMATLogik
                     $res['log'] = 'Schaltzeit — aus.';
                 }
             }
-            foreach ([$today, self::addDays($today, 1)] as $d) {
+            foreach ([self::addDays($today, -1), $today, self::addDays($today, 1)] as $d) {
                 if (self::zsDay($row, $d, $hol)) {
                     foreach ($win($d) as $t) {
                         if ($t > $now && ($next === null || $t < $next)) {
