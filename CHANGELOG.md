@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.50 (Build 51) — 17.10.2026
+
+- Von Hand auslösen (Wunsch Dietmar: Wohnzimmer-Jalousien oben, im Modul nicht nach unten zu bringen): `AUTOMAT_RunNow($id, $uid, $what)` mit Ereignis `run` — Rollladen `down`/`up` (auch in Pause/Sperre, Aussperrschutz gilt), Szene sofort ohne Verzögerung, Zeitschaltuhr stellt den jetzt gültigen Zustand her, Treppenlicht startet, Gehen-Check prüft probeweise ohne Moduswechsel, Heizung vergisst Handeingriffe und setzt neu; andere Arten machen einen normalen Durchlauf (`RUN_TYPES`). Formular: Buttons für angehakte Zeilen (`UIRunMarked`), Kachel: ⬆/⬇ bzw. ▶ je Automatismus. Probelauf bleibt Probelauf.
+- Hauptliste: Spalte `Gen` (unsichtbar, gespeichert) — die Kennung des Filterstands geht damit sicher nicht verloren.
+
 ## 0.1.49 (Build 50) — 17.10.2026
 
 - Kontakt-Richtung nach Beschriftung: `contactInverted()` prüft zuerst die Beschriftung für wahr/falsch (Darstellung `OPTIONS`, sonst Profil-Zuordnungen `assoc`) — „Gesperrt/Geschlossen/Verriegelt/…“ bei wahr → wahr = zu; „Offen/Geöffnet/Entriegelt/Entsperrt“ bei wahr → wahr = offen. Danach Matter „Boolean State“, zuletzt „…Reversed“. Damit gilt ein Türschloss mit „~Lock“ als zu, wenn es „Gesperrt“ meldet; „~Lock.Reversed“ (vorher wegen „Reversed“ falsch herum) stimmt jetzt. Gilt für Kontaktfelder, Wächter-Vorschläge aus „Entdecken“. Live: Dietmar, Haustüre #32185 (Z-Wave).

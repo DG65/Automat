@@ -62,6 +62,11 @@ class AUTOMATLogik
         // 'end' = Zeitpunkt des nächsten sichtbaren Ereignisses (Licht aus, Absenkung, Meldung) für die Restzeit-Anzeige.
         // 'lost' = Melder, bei denen der Rückfall eingreifen musste („aus“-Meldung verloren) — fürs Funkqualitäts-Protokoll.
         $res = ['st' => $st, 'cmd' => [], 'msg' => [], 'log' => null, 'status' => '', 'due' => null, 'end' => null, 'lost' => []];
+        // „Jetzt ausführen“ (Button im Formular/Kachel): Arten mit eigener Behandlung bekommen das Ereignis, alle
+        // anderen einen normalen Durchlauf (holt nach, was gerade fällig ist)
+        if (($ev['k'] ?? '') === 'run' && !in_array($type, self::RUN_TYPES, true)) {
+            $ev = ['k' => 'tick'];
+        }
         switch ($type) {
             case 'zeitlicht':
                 return self::zeitlicht($row, $st, $ev, $ctx, $res);
@@ -323,7 +328,9 @@ class AUTOMATLogik
             $res['log'] = $why . ' — Zeit verlängert bis ' . date('H:i:s', $st['until']) . ' Uhr.';
         };
 
-        if ($k === 'trigger' && in_array($vid, $trg, true) && self::isTrue($ev['v'] ?? false)) {
+        if ($k === 'run') {
+            $start('Von Hand über Automat ausgelöst');
+        } elseif ($k === 'trigger' && in_array($vid, $trg, true) && self::isTrue($ev['v'] ?? false)) {
             $start('Taster/Auslöser betätigt');
         } elseif ($k === 'output' && empty($ev['own']) && in_array($vid, $outs, true)) {
             if (self::isTrue($ev['v'] ?? false)) {
@@ -465,6 +472,8 @@ class AUTOMATLogik
     /** Zeitfenster nach einem automatischen Ausschalten, in dem Wieder-Einschalten als Fehlabschaltung gilt. */
     public const FALSE_OFF_WINDOW = 180;
     public const LEARN_FACTOR_MAX = 4;
+    /** Arten, die „Jetzt ausführen“ selbst behandeln (siehe step()). */
+    public const RUN_TYPES = ['rollladen', 'szene', 'zeitschalt', 'heizung', 'gehen', 'zeitlicht'];
 
     /** Aktive „weitere Anzeichen für Anwesenheit“ (Namen); Zahlen zählen über der Schwelle, sonst „an“. */
     private static function activeHints(array $row, array $ctx): array
@@ -1484,6 +1493,19 @@ class AUTOMATLogik
         $st += ['last' => '', 'lastTs' => 0, 'bad' => false];
         $name = trim((string)($row['Name'] ?? '')) ?: 'Gehen-Check';
         $hard = self::hardBlock($ctx);
+        if (($ev['k'] ?? '') === 'run') {
+            // Probe-Check von Hand: wie beim Gehen, ohne den Hausmodus zu ändern
+            $first = 3;
+            foreach ([3, 4, 2] as $m) {
+                if (!empty($row['gc_m' . $m])) {
+                    $first = $m;
+                    break;
+                }
+            }
+            $row['gc_m' . $first] = true;
+            $ev = ['k' => 'mode', 'from' => (int)($ctx['mode'] ?? 0), 'to' => $first];
+            $hard = '';
+        }
         if (($ev['k'] ?? '') === 'mode' && !empty($row['gc_m' . (int)($ev['to'] ?? -1)])) {
             $to = (int)$ev['to'];
             if ($hard !== '') {
@@ -1868,7 +1890,13 @@ class AUTOMATLogik
                 $st['on'] = true;
                 $st['manual'] = '';
             }
-            if ($first) {
+            if (($ev['k'] ?? '') === 'run') {
+                // Von Hand über Automat: den Zustand herstellen, der jetzt gelten soll (im Fenster an, sonst aus)
+                $setAll($key !== null);
+                $st['on'] = $key !== null;
+                $st['manual'] = '';
+                $res['log'] = 'Von Hand ausgelöst — ' . ($key !== null ? 'im Schaltfenster: ein.' : 'außerhalb des Schaltfensters: aus.');
+            } elseif ($first) {
                 $st['on'] = $key !== null; // beim Einrichten nichts nachholen, nur den Zustand übernehmen
             } elseif ($hard === '') {
                 // Eine weiche Sperre (Hausmodus, Bedingung) verhindert nur das Einschalten — laufende Zeiten enden normal
@@ -1896,7 +1924,10 @@ class AUTOMATLogik
             $want = $modus === 2;
             [$a, $b] = $win($today);
             $t = $want ? $a : self::timeOn((string)($row['zs_aus'] ?? AUTOMATKatalog::time(8, 0)), $today) + $jit;
-            if ($first) {
+            if (($ev['k'] ?? '') === 'run') {
+                $setAll($want);
+                $res['log'] = 'Von Hand ausgelöst — ' . ($want ? 'ein.' : 'aus.');
+            } elseif ($first) {
                 $st['did'][$today] = $now >= $t;
             } elseif (self::zsDay($row, $today, $hol) && $now >= $t && $now - $t < 3600 && empty($st['did'][$today]) && $hard === '' && $soft === '') {
                 $setAll($want);
@@ -2150,6 +2181,26 @@ class AUTOMATLogik
                 $st['wait'] = false;
             }
         }
+        if (($ev['k'] ?? '') === 'run') {
+            // Von Hand über Automat: schließen/öffnen (oder das gerade Fällige), auch in Pause/Sperre — nur der
+            // Aussperrschutz gilt weiter
+            $what = (string)($ev['what'] ?? '');
+            if ($what === '') {
+                $what = $downReady ? 'down' : 'up';
+            }
+            if ($what === 'down' && count($open) > 0) {
+                $res['log'] = 'Schließen von Hand angefordert — nicht geschlossen, offen: ' . implode(', ', $open) . ' (Aussperrschutz).';
+            } elseif ($what === 'down') {
+                $res['log'] = 'Von Hand ausgelöst — ' . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
+                $st['down'] = $today;
+                $st['up'] = $today;
+                $st['wait'] = false;
+            } else {
+                $res['log'] = 'Von Hand ausgelöst — ' . $set((float)($row['rl_auf'] ?? 0), 'geöffnet');
+                $st['up'] = $today;
+            }
+            $ev = ['k' => 'tick'];
+        }
         if ($hard === '' && $soft === '' && $st['wait'] && $st['waitDay'] === $yesterday && count($open) === 0) {
             $res['log'] = 'Tür jetzt zu — ' . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
             $st['wait'] = false;
@@ -2398,6 +2449,11 @@ class AUTOMATLogik
         $saved = (array)$st['saved'];
         $set = (array)$st['set'];
         $logs = [];
+        $force = ($ev['k'] ?? '') === 'run';
+        if ($force) {
+            // Von Hand über Automat: Handeingriffe vergessen und den Sollwert für den Hausmodus neu setzen
+            $st['hand'] = [];
+        }
         // Handbedienung nur an einer echten fremden Änderung erkennen (nicht am Tick: Funk-Thermostate melden den
         // neuen Wert oft erst nach Minuten, andere Automatismen schalten mit „eigenem“ Echo). Prüfbericht 17.10.2026.
         if (($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $soll, true)) {
@@ -2426,7 +2482,7 @@ class AUTOMATLogik
                 if (!isset($saved[$k])) {
                     $saved[$k] = $cur;
                 }
-                if ((!isset($set[$k]) || abs((float)$set[$k] - $target) > 0.05) && abs($cur - $target) > 0.05) {
+                if (($force || !isset($set[$k]) || abs((float)$set[$k] - $target) > 0.05) && abs($cur - $target) > 0.05) {
                     $res['cmd'][] = [$vid, $target];
                 }
                 $set[$k] = $target;
@@ -2434,7 +2490,7 @@ class AUTOMATLogik
                 if (!empty($ctx['held'][$vid])) {
                     continue; // Fenster noch offen: zurückstellen, wenn es zu ist
                 }
-                if (isset($set[$k]) && abs($cur - (float)$set[$k]) <= 0.05 && abs($cur - (float)$saved[$k]) > 0.05) {
+                if (($force || (isset($set[$k]) && abs($cur - (float)$set[$k]) <= 0.05)) && abs($cur - (float)$saved[$k]) > 0.05) {
                     $res['cmd'][] = [$vid, (float)$saved[$k]];
                     $logs[] = self::nameOf($vid, $ctx) . ' zurück auf ' . self::fmtNum((float)$saved[$k]) . ' °C';
                 }
@@ -2701,6 +2757,12 @@ class AUTOMATLogik
         $hard = self::hardBlock($ctx);
         $modeName = AUTOMATKatalog::MODES[$mode] ?? (string)$mode;
         $name = trim((string)($row['Name'] ?? '')) ?: 'Szene';
+        if (($ev['k'] ?? '') === 'run') {
+            // Von Hand über Automat: jetzt ausführen, ohne Verzögerung und unabhängig vom Hausmodus
+            $st['pend'] = $mode;
+            $st['at'] = $now;
+            $hard = '';
+        }
         if (($ev['k'] ?? '') === 'mode') {
             $to = (int)($ev['to'] ?? $mode);
             if ((int)$st['pend'] >= 0 && (int)$st['pend'] !== $to) {

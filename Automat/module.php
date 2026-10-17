@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.50' => [
+            '▶ Von Hand auslösen: In der Liste Automatismen anhaken und „▶ Jetzt ausführen“ — holt eine verschlafene Schaltung nach (Szene, Zeitschaltuhr, Treppenlicht, Gehen-Check als Probe, Heizung neu setzen). Für Rollläden „⬇ schließen“ und „⬆ öffnen“. Dieselben Knöpfe gibt es in der Kachel. Der Aussperrschutz (offene Tür) gilt auch hier.',
+        ],
         '0.1.49' => [
             '🔐 Türschlösser: Meldet ein Schloss „Gesperrt“, gilt die Tür als zu. Automat liest dafür die Beschriftung des Werts („Gesperrt“, „Geschlossen“, „Entriegelt“, „Geöffnet“ …) statt nur des Profilnamens. Beim Riegel („~Lock.Reversed“) lag die Erkennung vorher genau falsch herum.',
         ],
@@ -488,7 +491,7 @@ class Automat extends IPSModule
      * gerade gespeicherten Zustand des anderen. Geschaltet wird erst danach (die Rückmeldung des Geräts läuft
      * wieder hier durch und darf nicht auf die eigene Sperre warten).
      */
-    private function process(array $row, array $ev): void
+    private function process(array $row, array $ev): ?array
     {
         try {
             $this->lockEnter();
@@ -500,10 +503,56 @@ class Automat extends IPSModule
             if ($res !== null) {
                 $this->applyResult($row, $res);
             }
+            return $res;
         } catch (Throwable $e) {
             // Ein Fehler in einem Automatismus darf die anderen im selben Durchlauf nicht aufhalten.
             $this->LogMessage('Automatismus „' . $this->rowName($row) . '“: Fehler — ' . $e->getMessage(), KL_ERROR);
+            return null;
         }
+    }
+
+    /**
+     * AUTOMAT_RunNow($id, $uid, $what): string — einen Automatismus von Hand auslösen: verschlafene Schaltung
+     * nachholen bzw. testen. $what: '' = das jetzt Fällige (Szene ausführen, Zeitschaltuhr-Zustand herstellen,
+     * Treppenlicht starten, Gehen-Check prüfen, Heizung neu setzen), 'down'/'up' = Rollläden schließen/öffnen.
+     */
+    public function RunNow(string $uid, string $what): string
+    {
+        $row = $this->rowByUid(preg_replace('/[^a-z0-9]/', '', strtolower($uid)));
+        if ($row === null) {
+            return '⚠️ Unbekannter oder noch nicht übernommener Automatismus „' . $uid . '“ — erst „Übernehmen“.';
+        }
+        if (empty($row['Enabled'])) {
+            return '⚫ „' . $this->rowName($row) . '“ ist nicht aktiv.';
+        }
+        if (in_array($what, ['down', 'up'], true) && $row['Type'] !== 'rollladen') {
+            return 'ℹ️ „' . $this->rowName($row) . '“ ist kein Rollladen-Automatismus.';
+        }
+        $res = $this->process($row, ['k' => 'run', 'what' => $what]);
+        $this->reschedule();
+        $this->refreshTile();
+        $log = $res !== null && $res['log'] !== null ? (string)$res['log'] : 'Nichts zu tun — ' . (string)($res['status'] ?? '');
+        return (!empty($row['Dry']) ? '🧪 ' : '▶ ') . $this->rowName($row) . ': ' . $log;
+    }
+
+    /** AUTOMAT_UIRunMarked($id, $rowsJson, $what): string — angehakte Automatismen von Hand auslösen. */
+    public function UIRunMarked(string $rowsJson, string $what): string
+    {
+        $rows = json_decode($rowsJson, true);
+        $marked = array_values(array_filter(is_array($rows) ? $rows : [], function ($r) {
+            return is_array($r) && !empty($r['Mark']);
+        }));
+        if (count($marked) === 0) {
+            return 'ℹ️ Bitte zuerst in der Liste bei den Automatismen, die du auslösen willst, das Häkchen ☑︎ setzen.';
+        }
+        $out = [];
+        foreach ($marked as $r) {
+            if ($what !== '' && ($r['Type'] ?? '') !== 'rollladen') {
+                continue;
+            }
+            $out[] = $this->RunNow((string)($r['Uid'] ?? ''), $what);
+        }
+        return count($out) > 0 ? implode("\n", $out) : 'ℹ️ Unter den angehakten ist kein Rollladen-Automatismus.';
     }
 
     /** Sperre für Lese-/Schreibabschnitte der Attribute (nicht verschachteln, nie während eines Schaltbefehls halten). */
@@ -2984,6 +3033,7 @@ class Automat extends IPSModule
                 'room' => trim((string)($row['Room'] ?? '')), 'status' => $st,
                 'due' => isset($due[$uid]) ? (int)$due[$uid] : null, 'enabled' => !empty($row['Enabled']),
                 'locked' => $locked, 'permanent' => $light ? (bool)$this->getOwn('d_' . $uid, false) : null,
+                'run' => $type === 'rollladen' ? 'updown' : (in_array($type, AUTOMATLogik::RUN_TYPES, true) ? 'run' : ''),
                 'state' => $this->tileState($row, $st, $locked, isset($due[$uid])),
             ];
         }
@@ -3039,6 +3089,8 @@ class Automat extends IPSModule
             $this->RequestAction('l_' . $uid, !empty($d['v']));
         } elseif ($a === 'perm' && $this->rowByUid($uid) !== null && @IPS_GetObjectIDByIdent('d_' . $uid, $this->InstanceID)) {
             $this->RequestAction('d_' . $uid, !empty($d['v']));
+        } elseif ($a === 'run' && $this->rowByUid($uid) !== null) {
+            $this->RunNow($uid, in_array($d['v'] ?? '', ['down', 'up'], true) ? (string)$d['v'] : ''); // landet im Protokoll
         } elseif ($a === 'pause') {
             $this->RequestAction('Pause', !empty($d['v']));
         } elseif ($a === 'mode' && isset(AUTOMATKatalog::MODES[(int)($d['v'] ?? -1)])) {
@@ -3643,12 +3695,19 @@ class Automat extends IPSModule
                         ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
                         ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                         ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
+                        ['caption' => 'Filterstand', 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                     ],
                     'form' => "return json_decode(AUTOMAT_UIEditFormRow(\$id, json_encode(\$Automations)), true);",
                 ],
                 ['type' => 'RowLayout', 'items' => [
                     ['type' => 'Select', 'name' => 'cfg_CopyRoom', 'caption' => 'Angehakte (☑︎) duplizieren — in Raum', 'width' => '320px', 'value' => '', 'options' => $this->copyRoomOptions()],
                     ['type' => 'Button', 'caption' => '📄 Duplizieren', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIDuplicate($id, json_encode($r), (string)$cfg_CopyRoom);'],
+                ]],
+                ['type' => 'RowLayout', 'items' => [
+                    ['type' => 'Label', 'caption' => 'Angehakte (☑︎) von Hand:'],
+                    ['type' => 'Button', 'caption' => '▶ Jetzt ausführen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'\');'],
+                    ['type' => 'Button', 'caption' => '⬇ Rollläden schließen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'down\');'],
+                    ['type' => 'Button', 'caption' => '⬆ Rollläden öffnen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'up\');'],
                 ]],
                 ['type' => 'RowLayout', 'items' => [
                     ['type' => 'Button', 'caption' => '📋 Übersicht anzeigen', 'onClick' => 'echo AUTOMAT_Overview($id);'],

@@ -240,6 +240,20 @@
             b1.onclick = function () { auSend({ a: 'perm', uid: it.uid, v: !it.permanent }, it.permanent ? 'Dauerlicht aus …' : 'Dauerlicht an …'); };
             top.appendChild(b1);
         }
+        // Von Hand auslösen: Rollläden auf/zu, sonst „jetzt ausführen“ (verschlafene Schaltung nachholen)
+        if (it.run === 'updown') {
+            [['up', '⬆', 'Jetzt öffnen', 'Wird geöffnet …'], ['down', '⬇', 'Jetzt schließen', 'Wird geschlossen …']].forEach(function (x) {
+                var b = auEl('button', 'au-btn', x[1]);
+                b.title = x[2];
+                b.onclick = function () { auSend({ a: 'run', uid: it.uid, v: x[0] }, x[3]); };
+                top.appendChild(b);
+            });
+        } else if (it.run === 'run') {
+            var b0 = auEl('button', 'au-btn', '▶');
+            b0.title = 'Jetzt ausführen';
+            b0.onclick = function () { auSend({ a: 'run', uid: it.uid, v: '' }, 'Wird ausgeführt …'); };
+            top.appendChild(b0);
+        }
         var b2 = auEl('button', 'au-btn' + (it.locked ? ' on' : ''), it.locked ? '🔒' : '🔓');
         b2.title = it.locked ? 'Sperre aufheben' : 'Sperren (tut dann nichts)';
         b2.onclick = function () { auSend({ a: 'lock', uid: it.uid, v: !it.locked }, it.locked ? 'Sperre wird aufgehoben …' : 'Wird gesperrt …'); };
