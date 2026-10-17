@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.51 (Build 52) — 17.10.2026
+
+- Rollladen: `$set` sendet an alle Rollläden, auch wenn die Position schon am Ziel steht (vorher übersprungen). Z-Wave-Aktoren setzen die Position beim Befehl; nach einem verlorenen Funkbefehl stand die Anzeige „richtig“ und weder Zeitplan noch „⬇ Rollläden schließen“ schickten etwas (live Dietmar, Wohnzimmer). Protokoll vermerkt „laut Anzeige schon so — Befehl trotzdem gesendet“.
+
 ## 0.1.50 (Build 51) — 17.10.2026
 
 - Von Hand auslösen (Wunsch Dietmar: Wohnzimmer-Jalousien oben, im Modul nicht nach unten zu bringen): `AUTOMAT_RunNow($id, $uid, $what)` mit Ereignis `run` — Rollladen `down`/`up` (auch in Pause/Sperre, Aussperrschutz gilt), Szene sofort ohne Verzögerung, Zeitschaltuhr stellt den jetzt gültigen Zustand her, Treppenlicht startet, Gehen-Check prüft probeweise ohne Moduswechsel, Heizung vergisst Handeingriffe und setzt neu; andere Arten machen einen normalen Durchlauf (`RUN_TYPES`). Formular: Buttons für angehakte Zeilen (`UIRunMarked`), Kachel: ⬆/⬇ bzw. ▶ je Automatismus. Probelauf bleibt Probelauf.

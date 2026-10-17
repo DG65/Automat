@@ -2158,21 +2158,22 @@ class AUTOMATLogik
         $open = self::activeOf(AUTOMATKatalog::vars($row, 'rl_tuer'), $ctx, !empty($row['rl_tuerinvert']));
         // Schaltet und sagt, wer wirklich einen Befehl bekam und wer schon so stand — „Rollläden geschlossen“ war
         // vorher auch dann im Protokoll, wenn gar nichts gesendet wurde (Prüfbericht 17.10.2026).
+        // Immer senden — auch wenn die Anzeige schon am Ziel steht: Viele Rollladen-Aktoren (z. B. Z-Wave) setzen die
+        // Position schon beim Befehl. Ging ein Befehl im Funk verloren, stünde die Anzeige sonst für immer „richtig“
+        // und kein Befehl käme mehr an (live 17.10.2026: Wohnzimmer oben, Anzeige 0 — auch von Hand ging nichts).
         $set = function (float $v, string $verb) use ($outs, $ctx, &$res, &$st, $now): string {
             $sent = [];
             $already = [];
             foreach ($outs as $vid) {
                 $cur = $ctx['val'][$vid] ?? null;
-                if ($cur === null || abs((float)$cur - $v) > 0.5) {
-                    $res['cmd'][] = [$vid, $v];
-                    $sent[] = self::nameOf($vid, $ctx);
-                } else {
+                $res['cmd'][] = [$vid, $v];
+                $sent[] = self::nameOf($vid, $ctx);
+                if ($cur !== null && abs((float)$cur - $v) <= 0.5) {
                     $already[] = self::nameOf($vid, $ctx);
                 }
             }
-            // Nachkontrolle in 3 Minuten: steht die Position dann nicht am Ziel, einmal erneut senden
             $st['chk'] = count($sent) > 0 ? ['at' => $now + 180, 'v' => $v, 'n' => 0] : null;
-            return 'Rollläden ' . $verb . (count($sent) > 0 ? ': ' . implode(', ', $sent) : '') . (count($already) > 0 ? (count($sent) > 0 ? ' — ' : ': ') . implode(', ', $already) . ' stand' . (count($already) > 1 ? 'en' : '') . ' schon so' : '') . '.';
+            return 'Rollläden ' . $verb . ': ' . implode(', ', $sent) . (count($already) > 0 ? ' (laut Anzeige stand' . (count($already) > 1 ? 'en' : '') . ' ' . implode(', ', $already) . ' schon so — Befehl trotzdem gesendet)' : '') . '.';
         };
         // Aussperrschutz von gestern Abend: nach Mitternacht noch schließen, sobald die Tür zu ist — aber nicht mehr,
         // wenn morgens das Öffnen ansteht. Vorher blieb „wartet“ für immer stehen (Status falsch, nächste Meldung fehlte).

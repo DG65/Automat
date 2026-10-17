@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.51' => [
+            '🛠 Rollläden: Der Befehl geht jetzt immer raus — auch wenn die Anzeige schon „zu“ bzw. „offen“ zeigt. Manche Aktoren (z. B. Z-Wave) setzen die Anzeige schon beim Befehl; ging einer im Funk verloren, schickte Automat danach keinen mehr, auch nicht von Hand.',
+        ],
         '0.1.50' => [
             '▶ Von Hand auslösen: In der Liste Automatismen anhaken und „▶ Jetzt ausführen“ — holt eine verschlafene Schaltung nach (Szene, Zeitschaltuhr, Treppenlicht, Gehen-Check als Probe, Heizung neu setzen). Für Rollläden „⬇ schließen“ und „⬆ öffnen“. Dieselben Knöpfe gibt es in der Kachel. Der Aussperrschutz (offene Tür) gilt auch hier.',
         ],
