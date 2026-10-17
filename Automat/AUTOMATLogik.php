@@ -340,18 +340,27 @@ class AUTOMATLogik
             }
         }
         $res['st'] = $st;
-        return self::lightTimers($row, $res, $ctx, $outs, 'zl', (int)($row['zl_vorwarn'] ?? 0));
+        // Vorwarnung höchstens die halbe Leuchtdauer — sonst ginge das Licht gleich beim Einschalten wieder aus
+        return self::lightTimers($row, $res, $ctx, $outs, 'zl', min((int)($row['zl_vorwarn'] ?? 0), intdiv($dauer, 2)));
     }
 
     /**
      * Gemeinsamer Teil Zeitlicht/Bewegungslicht: harte Sperre und Dauerlicht.
      * Setzt $res['done'] = true, wenn die Entscheidung damit gefallen ist.
      */
-    private static function lightCommon(array $row, array $st, array $ev, array $ctx, array $res, array $outs, string $p, int $dauer): array
+    private static function lightCommon(array $row, array $st, array $ev, array $ctx, array $res, array $outs, string $p, int $dauer, bool $active = false): array
     {
         $now = (int)$ctx['now'];
         $hard = self::hardBlock($ctx);
         if ($hard !== '') {
+            if ($st['ph'] === 'flash') {
+                // Sperre genau in der Vorwarn-Sekunde: Schalter waren kurz aus — wieder einschalten, „bleibt wie es ist“
+                foreach (self::onCmds($outs, $row, $ctx, $p) as $c) {
+                    if ((float)($ctx['dim'][$c[0]] ?? 0) <= 0) {
+                        $res['cmd'][] = $c;
+                    }
+                }
+            }
             if ($st['ph'] !== 'aus' && $st['ph'] !== 'gesperrt') {
                 $res['log'] = 'Automatik ' . $hard . ' — laufende Zeit abgebrochen, Licht bleibt wie es ist.';
             }
@@ -364,8 +373,9 @@ class AUTOMATLogik
         }
         if ($st['ph'] === 'gesperrt') {
             $st['ph'] = self::anyOn($outs, $ctx) ? 'an' : 'aus';
-            $st['until'] = $st['ph'] === 'an' ? $now + $dauer : 0;
-            $res['log'] = 'Sperre aufgehoben' . ($st['ph'] === 'an' ? ' — Licht ist an, geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.' : '.');
+            // Meldet ein Melder noch Bewegung, läuft der Nachlauf erst danach (sonst Licht aus bei Bewegung)
+            $st['until'] = $st['ph'] === 'an' && !$active ? $now + $dauer : 0;
+            $res['log'] = 'Sperre aufgehoben' . ($st['ph'] === 'an' ? ($st['until'] > 0 ? ' — Licht ist an, geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.' : ' — Licht ist an, Bewegung erkannt.') : '.');
         }
         if (!empty($ctx['permanent'])) {
             if ($st['ph'] !== 'dauer') {
@@ -381,8 +391,8 @@ class AUTOMATLogik
         }
         if ($st['ph'] === 'dauer') {
             $st['ph'] = 'an';
-            $st['until'] = $now + $dauer;
-            $res['log'] = 'Dauerlicht beendet — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+            $st['until'] = $active ? 0 : $now + $dauer;
+            $res['log'] = 'Dauerlicht beendet — ' . ($active ? 'Bewegung erkannt, Nachlauf startet danach.' : 'Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.');
         }
         $res['st'] = $st;
         return $res;
@@ -551,12 +561,24 @@ class AUTOMATLogik
         if (!isset($st['since']) || !is_array($st['since'])) {
             $st['since'] = [];
         }
+        // Melderzustand auch während Sperre/Dauerlicht nachführen — sonst geht ein „aus“ in der Sperre verloren und
+        // der Rückfall meldet danach einen Funkverlust, den es nie gab (Prüfbericht 17.10.2026).
+        if (($ev['k'] ?? '') === 'trigger' && !$impuls && in_array((int)($ev['vid'] ?? 0), $mel, true)) {
+            $mv = (int)$ev['vid'];
+            $st['act'][$mv] = self::isTrue($ev['v'] ?? false);
+            if ($st['act'][$mv]) {
+                $st['since'][$mv] = $now;
+            } else {
+                unset($st['since'][$mv]);
+            }
+        }
         foreach ($mel as $m) {
             if (!empty($st['act'][$m]) && !isset($st['since'][$m])) {
                 $st['since'][$m] = $now;
             }
         }
-        $res = self::lightCommon($row, $st, $ev, $ctx, $res, $outs, 'bl', $nach);
+        $activeNow = !$impuls && (in_array(true, (array)$st['act'], true) || count(self::activeHints($row, $ctx)) > 0);
+        $res = self::lightCommon($row, $st, $ev, $ctx, $res, $outs, 'bl', $nach, $activeNow);
         if ($res['done'] ?? false) {
             unset($res['done']);
             return $res;
@@ -645,8 +667,9 @@ class AUTOMATLogik
                 if ($st['ph'] === 'aus' || $st['ph'] === 'hand') {
                     $st['ph'] = 'an';
                     $noteReOn('von Hand');
-                    $st['until'] = $now + max($nach, $handPause);
-                    $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Licht wurde von Hand eingeschaltet — geht um ' . date('H:i:s', $st['until']) . ' Uhr aus, Bewegung verlängert.';
+                    // Meldet ein Melder noch Bewegung, startet der Nachlauf erst mit „keine Bewegung“
+                    $st['until'] = $activeNow ? 0 : $now + max($nach, $handPause);
+                    $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Licht wurde von Hand eingeschaltet — ' . ($st['until'] > 0 ? 'geht um ' . date('H:i:s', $st['until']) . ' Uhr aus, Bewegung verlängert.' : 'Bewegung erkannt, Nachlauf startet danach.');
                 }
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
                 $st['offAt'] = 0; // von Hand aus: kein Lernanlass
@@ -720,7 +743,7 @@ class AUTOMATLogik
         }
         $phBefore = $st['ph'];
         $res['st'] = $st;
-        $res = self::lightTimers($row, $res, $ctx, $outs, 'bl', (int)($row['bl_vorwarn'] ?? 0));
+        $res = self::lightTimers($row, $res, $ctx, $outs, 'bl', min((int)($row['bl_vorwarn'] ?? 0), intdiv($nach, 2)));
         if (in_array($phBefore, ['an', 'warn', 'flash'], true) && $res['st']['ph'] === 'aus') {
             $res['st']['offAt'] = $now; // automatisch aus — Wieder-An in den nächsten Minuten wäre eine Fehlabschaltung
         }
@@ -783,9 +806,14 @@ class AUTOMATLogik
             $start += $jitter;
         }
         if ($aus === 0) {
-            $end = self::timeOn((string)($row['dz_auszeit'] ?? AUTOMATKatalog::time(23, 0)), $ymd);
-            if ($end <= $start) {
-                $end = self::timeOn((string)($row['dz_auszeit'] ?? AUTOMATKatalog::time(23, 0)), $next);
+            // Liegt die Ausschaltzeit vor dem Einschalten und vor Mittag, gehört sie zur Nacht danach (18:00 → 01:00).
+            // Sonst bleibt sie am selben Tag — liegt der Sonnenuntergang im Sommer nach der Ausschaltzeit, wird heute
+            // gar nicht geschaltet. Vorher wurde das Ende auf den nächsten Abend geschoben, das Licht brannte fast
+            // 24 h (Prüfbericht 17.10.2026).
+            $auszeit = (string)($row['dz_auszeit'] ?? AUTOMATKatalog::time(23, 0));
+            $end = self::timeOn($auszeit, $ymd);
+            if ($end <= $start - ($ein !== 2 ? $jitter : 0) && $end < self::timeOn(AUTOMATKatalog::time(12, 0), $ymd)) {
+                $end = self::timeOn($auszeit, $next);
             }
             $end += $jitter;
         } elseif ($aus === 1) {
