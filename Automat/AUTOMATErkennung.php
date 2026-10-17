@@ -133,6 +133,11 @@ class AUTOMATErkennung
      */
     public static function contactInverted(array $v): bool
     {
+        // Matter-Kontaktsensor (Cluster „Boolean State“): wahr = Kontakt = GESCHLOSSEN. Ohne Profil und Darstellung
+        // war das nicht zu erkennen — live 17.10.2026: Rollladen blieb wegen „offener“ Terrassentür oben.
+        if (preg_match('/^BooleanState/i', (string)($v['ident'] ?? ''))) {
+            return true;
+        }
         $profile = mb_strtolower((string)($v['profile'] ?? ''));
         if (strpos($profile, 'reversed') !== false) {
             return true;

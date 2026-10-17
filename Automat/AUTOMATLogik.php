@@ -912,8 +912,11 @@ class AUTOMATLogik
         $st += ['ph' => 'zu', 'until' => 0, 'saved' => []];
         $open = false;
         foreach ($kon as $k) {
-            $v = self::isTrue($ctx['val'][$k] ?? false);
-            if ($invert ? !$v : $v) {
+            if (!array_key_exists($k, $ctx['val'] ?? [])) {
+                continue;
+            }
+            $v = self::isTrue($ctx['val'][$k]);
+            if (self::contactInvert($k, $ctx, $invert) ? !$v : $v) {
                 $open = true;
             }
         }
@@ -1843,6 +1846,16 @@ class AUTOMATLogik
     // Gemeinsam für die Typen ab 0.1.31
     // ------------------------------------------------------------------
 
+    /**
+     * Ist dieser Kontakt umgekehrt (wahr = zu)? Erkennt Automat die Richtung selbst (Matter-Kontakt, Profil
+     * „…Reversed“, Darstellung „geschlossen“ bei wahr), gilt das — sonst das Häkchen im Automatismus. So meldet
+     * derselbe Sensor in jedem Automatismus dasselbe, auch gemischt mit anderen Kontakten.
+     */
+    public static function contactInvert(int $vid, array $ctx, bool $rowInvert): bool
+    {
+        return !empty($ctx['inv'][$vid]) ? true : $rowInvert;
+    }
+
     /** Namen der Variablen, deren Wert „aktiv“ ist (bei $invert umgekehrt). Fehlende Werte zählen nicht. */
     private static function activeOf(array $vids, array $ctx, bool $invert): array
     {
@@ -1851,7 +1864,7 @@ class AUTOMATLogik
             if (!array_key_exists($vid, $ctx['val'] ?? [])) {
                 continue;
             }
-            if (self::isTrue($ctx['val'][$vid]) !== $invert) {
+            if (self::isTrue($ctx['val'][$vid]) !== self::contactInvert($vid, $ctx, $invert)) {
                 $out[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
             }
         }

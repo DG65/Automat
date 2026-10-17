@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.46' => [
+            '🛠 Fenster-/Türkontakte: Ob ein Kontakt „wahr = offen“ oder „wahr = zu“ meldet, erkennt Automat jetzt je Sensor selbst (Matter-Kontakte, Profile „…Reversed“, Darstellung) und wendet das in jedem Automatismus gleich an. Das Häkchen „umgekehrt“ braucht es nur noch für Sensoren, die Automat nicht erkennt. Vorher hielt eine geschlossene Matter-Terrassentür den Rollladen oben.',
+        ],
         '0.1.45' => [
             '🕒 Bewegungslicht: Der lernende Nachlauf wird höchstens das Vierfache des eingestellten Werts (30 s → höchstens 2 min). Als „zu früh ausgeschaltet“ zählt nur noch, wer innerhalb der eingestellten Nachlaufzeit zurückkommt. Wer den Nachlauf ändert, verwirft das Gelernte. Das Protokoll nennt den gelernten Wert. Beim Update beginnt das Lernen bei allen Bewegungslichtern neu.',
         ],
@@ -574,6 +577,13 @@ class Automat extends IPSModule
             'names'     => $names,
             'rnd'       => $this->randomUnit(),
         ];
+        foreach (AUTOMATKatalog::CONTACT_FIELDS as $cf) {
+            foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
+                if (IPS_VariableExists($cv) && AUTOMATErkennung::contactInverted($this->varInfo($cv))) {
+                    $ctx['inv'][$cv] = true;
+                }
+            }
+        }
         if ($row['Type'] === 'bewegung') {
             foreach (AUTOMATKatalog::vars($row, 'bl_mel') as $m) {
                 $ctx['melTimeout'][$m] = $this->melderTimeout($m);
@@ -2870,7 +2880,27 @@ class Automat extends IPSModule
         }
         $p = IPS_GetParent($vid);
         $name = IPS_GetName($vid);
-        return $p > 0 && IPS_InstanceExists($p) ? IPS_GetName($p) . ' / ' . $name : $name;
+        if ($p > 0 && IPS_InstanceExists($p)) {
+            $inst = IPS_GetName($p);
+            // „Essen Terrassentür / Essen Terrassentür“ (Matter, Zigbee2MQTT …) nur einmal nennen
+            return mb_strtolower(trim($inst)) === mb_strtolower(trim($name)) ? $name : $inst . ' / ' . $name;
+        }
+        return $name;
+    }
+
+    /** Profil, Darstellung und Ident einer Variable — für die Erkennung der Kontakt-Richtung. */
+    private function varInfo(int $vid): array
+    {
+        $v = IPS_GetVariable($vid);
+        $pres = $v['VariableCustomPresentation'] ?? [];
+        if (!is_array($pres) || count($pres) === 0) {
+            $pres = $v['VariablePresentation'] ?? [];
+        }
+        return [
+            'profile' => (string)($v['VariableCustomProfile'] ?? '') ?: (string)($v['VariableProfile'] ?? '') ?: (string)((is_array($pres) ? $pres : [])['PROFILE'] ?? ''),
+            'pres'    => is_array($pres) ? $pres : [],
+            'ident'   => (string)IPS_GetObject($vid)['ObjectIdent'],
+        ];
     }
 
     /** Größter Wert eines Dimmers (0 = Schalter). */

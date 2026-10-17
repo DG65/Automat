@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.46 (Build 47) — 17.10.2026
+
+- Fehlerbehebung Kontakt-Richtung: Erkennung je Variable statt Häkchen je Automatismus. `AUTOMATErkennung::contactInverted()` erkennt zusätzlich Matter „Boolean State“ (Ident `BooleanState…`, wahr = Kontakt = geschlossen); `context()` füllt `ctx['inv']` für alle Kontaktfelder (`CONTACT_FIELDS`), `AUTOMATLogik::contactInvert()` nutzt das vor dem Häkchen (kein doppeltes Umdrehen). Gilt für Fenster offen, Gehen-Check, Sommer-Lüften, Rollladen-Aussperrschutz, Lüftungserinnerung. Live gefunden bei Dietmar: geschlossene Matter-Terrassentür hielt den Rollladen Essen oben.
+- Namen „Instanz / Variable“ nur einmal, wenn beide gleich heißen („Essen Terrassentür / Essen Terrassentür“).
+
 ## 0.1.45 (Build 46) — 16.10.2026
 
 - Bewegungslicht, lernender Nachlauf: Obergrenze `LEARN_FACTOR_MAX` (4 × Grundwert, nie über „höchstens“); Fehlabschaltung nur bei Wieder-An innerhalb des eingestellten Nachlaufs (mind. 30 s, höchstens 3 min, `falseOffWindow()`) statt pauschal 3 min; geänderter Grundwert verwirft das Gelernte (`learnBase`); Protokoll „Licht geht um … aus“ nennt gelernten und eingestellten Wert. Beim Update beginnt das Lernen neu (Zustände ohne `learnBase`). Live gefunden bei Dietmar: Flur mit 30 s hatte sich in zwei Tagen über 8 „Fehlabschaltungen“ auf 12:57 min hochgelernt.

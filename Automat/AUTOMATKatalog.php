@@ -20,6 +20,8 @@ class AUTOMATKatalog
     public const SLOTS = 4;
     /** Freie Plätze über den belegten hinaus — Mehrfachfelder haben damit keine feste Obergrenze (Dietmar 15.10.2026). */
     public const SPARE = 8;
+    /** Fenster-/Türkontakte: deren Richtung (wahr = offen oder zu) erkennt Automat je Variable selbst. */
+    public const CONTACT_FIELDS = ['fo_kon', 'gc_kon', 'sl_kon', 'rl_tuer', 'lf_kon'];
 
     /**
      * Kleinste echte Objekt-ID in Symcon (IDs sind fünfstellig, 10000–59999). Kleinere Werte in einem

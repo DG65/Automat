@@ -933,6 +933,19 @@ check('Nachmittags noch hell (zentraler Sensor): bleibt offen', $r['cmd'] === []
 at('17:50:00');
 $r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => false], 'sun' => $sunR, 'dark' => true]);
 check('Zentraler Sensor meldet dunkel: zu', cmdMap($r) === ['700=100.0']);
+// Live 17.10.2026: Matter-Terrassentür meldet wahr = ZU, Häkchen „umgekehrt“ nicht gesetzt → Rollladen blieb oben.
+$st = ['up' => '2026-10-13', 'down' => '', 'wait' => false];
+$r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => true], 'sun' => $sunR, 'dark' => true, 'inv' => [710 => true]]);
+check('Erkannter Matter-Kontakt (wahr = zu): Tür gilt als zu, Rollladen schließt — ohne Häkchen', cmdMap($r) === ['700=100.0'], (string)$r['log']);
+$st = ['up' => '2026-10-13', 'down' => '', 'wait' => false];
+$r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => false], 'sun' => $sunR, 'dark' => true, 'inv' => [710 => true]]);
+check('… und falsch = offen hält ihn auf', $r['cmd'] === [] && $st['wait'] === true);
+$st = ['up' => '2026-10-13', 'down' => '', 'wait' => false];
+$rlI = $rlL;
+$rlI['rl_tuerinvert'] = true;
+$r = step($rlI, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => true], 'sun' => $sunR, 'dark' => true, 'inv' => [710 => true]]);
+check('Erkannt + Häkchen gesetzt: nicht doppelt umgedreht', cmdMap($r) === ['700=100.0']);
+check('Matter „Boolean State“ wird als „wahr = zu“ erkannt, Leckage-/sonstige Variablen nicht ohne Ident', AUTOMATErkennung::contactInverted(['ident' => 'BooleanState_State', 'profile' => '', 'pres' => []]) && !AUTOMATErkennung::contactInverted(['ident' => 'State', 'profile' => '', 'pres' => []]));
 $st = ['up' => '2026-10-13', 'down' => '', 'wait' => false];
 at('16:00:00');
 $r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0], 'sun' => $sunR]);
