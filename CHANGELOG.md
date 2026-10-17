@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.48 (Build 49) — 17.10.2026
+
+Restliche Punkte der Prüfung vom 17.10.2026 (673 Prüfungen):
+- `checkUnanswered()`: Schaltbefehl, auf den der Wert 20 s später noch auf dem alten Stand ist → Protokoll und optional Störungsmeldung (Rollläden ausgenommen, eigene Nachkontrolle). Timer plant die Nachkontrolle ein.
+- Hausmodus „Abend“ über „Ist es Tag“/Helligkeitssensor und Rollladen „bei Dunkelheit“: frühestens 2 h vor Sonnenuntergang (`ssAny`).
+- Ausfall-Wächter: Warnung bei Messwert ohne Aktualisierung seit ≥ 6 h (`ctx['upd']`, `staleTold`).
+- Alarm: weiterer Melder während des Alarms wird sofort gemeldet.
+- Türklingel: Trigger ohne Wertänderung (`changed`) kein neues Klingeln; Option `kl_impuls` für Klingeln, die immer denselben Wert melden.
+- Wächter: Werteauswahl „zu/offen“ bei erkannten Matter-Kontakten ohne Beschriftung.
+- Dialog: `AUTOMAT_UIEditFormRow($id, json_encode($Automations))` — Zeile aus der offenen Liste (nicht übernommene Zeilen zeigen alle Plätze, Feldprüfung auf dem aktuellen Stand). `UIEditForm` bleibt.
+- Filter: Kennung des Filterstands (`Gen`) an sichtbaren und ausgeblendeten Zeilen; alte ausgeblendete Zeilen gelten nach einem Speichern ohne Filter nicht mehr (Gelöschtes kommt nicht zurück). Sicherer Rückfall, falls Symcon die Kennung nicht speichert; Altbestand bleibt gültig.
+- Zeilen ohne Kennung bekommen beim Übernehmen einmal eine feste (`IPS_SetProperty` + `IPS_ApplyChanges`) statt „r<Index>“.
+
+Bewusst so belassen: Melder-Rückfall bei durchgehend „Bewegung“ ohne neue Meldung (gewollt: gelernte Grenze 3 × p90; jede neue Meldung des Melders schaltet wieder ein).
+
 ## 0.1.47 (Build 48) — 17.10.2026
 
 Ergebnis einer vollständigen Prüfung aller Arten und des Gerüsts (vier Prüfberichte), Anlass: Rollladen Essen/Wohnen live. Jeder Fund mit eigenem Prüfstand-Fall (661 Prüfungen).

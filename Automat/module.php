@@ -69,6 +69,15 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.48' => [
+            '🔎 Die letzten offenen Punkte der Prüfung behoben:',
+            '• Reagiert ein Licht oder Schalter nicht auf einen Befehl (z. B. Funkstörung), steht das nach 20 s im Protokoll — auf Wunsch als Störungsmeldung.',
+            '• Hausmodus „Abend“ und Rollladen „bei Dunkelheit“ frühestens 2 h vor Sonnenuntergang — ein Gewitter am Nachmittag schließt nicht mehr für den ganzen Tag.',
+            '• Ausfall-Wächter warnt, wenn die Messsteckdose seit 6 h nichts mehr meldet. Wasser-/Rauchalarm meldet weitere Melder sofort. Türklingel: wiederholte Meldungen ohne Änderung zählen nicht als neues Klingeln (neue Option für Klingeln mit immer gleichem Wert).',
+            '• Wächter: Bei Matter-Kontakten heißt die Auswahl jetzt „zu“ und „offen“.',
+            '• Dialog zeigt auch bei noch nicht übernommenen Automatismen (Entdecken, Duplizieren) alle eingetragenen Geräte.',
+            '• Gelöschte Automatismen kommen nach einem früheren Speichern mit Filter nicht zurück; neue Automatismen bekommen immer eine feste Kennung.',
+        ],
         '0.1.47' => [
             '🔎 Gründliche Prüfung aller Automatismen — rund 30 Fehler behoben, jeder mit eigenem Test. Die wichtigsten:',
             '• Rollladen: Das Protokoll nennt, welcher Rollladen wirklich einen Befehl bekam. Nach 3 Minuten prüft Automat nach und sendet einmal erneut. Ein Aussperrschutz über Mitternacht wird sauber beendet. Beim Rauchalarm gilt der „offen“-Wert des Rollladen-Automatismus.',
