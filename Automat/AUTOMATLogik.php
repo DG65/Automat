@@ -1487,6 +1487,7 @@ class AUTOMATLogik
             } else {
                 $open = self::activeOf(AUTOMATKatalog::vars($row, 'gc_kon'), $ctx, !empty($row['gc_invert']));
                 $on = [];
+                $off = [];
                 $watt = (float)($row['gc_watt'] ?? 10);
                 foreach (AUTOMATKatalog::vars($row, 'gc_geraet') as $vid) {
                     if (!array_key_exists($vid, $ctx['val'] ?? [])) {
@@ -1495,9 +1496,12 @@ class AUTOMATLogik
                     $v = $ctx['val'][$vid];
                     $isOn = is_bool($v) ? $v : (is_numeric($v) ? (float)$v >= $watt : self::isTrue($v));
                     if ($isOn) {
-                        $on[] = self::nameOf($vid, $ctx);
-                        if (!empty($row['gc_aus'])) {
+                        // Leistungswerte kann man nicht ausschalten — nur schaltbare Variablen bekommen den Befehl
+                        if (!empty($row['gc_aus']) && (!isset($ctx['switchable']) || !empty($ctx['switchable'][$vid]))) {
                             $res['cmd'][] = [$vid, self::offValue($vid, $ctx)];
+                            $off[] = self::nameOf($vid, $ctx);
+                        } else {
+                            $on[] = self::nameOf($vid, $ctx);
                         }
                     }
                 }
@@ -1505,13 +1509,16 @@ class AUTOMATLogik
                 if ($open) {
                     $parts[] = 'offen: ' . implode(', ', $open);
                 }
+                if ($off) {
+                    $parts[] = 'ausgeschaltet: ' . implode(', ', $off);
+                }
                 if ($on) {
-                    $parts[] = (!empty($row['gc_aus']) ? 'ausgeschaltet: ' : 'noch an: ') . implode(', ', $on);
+                    $parts[] = 'noch an: ' . implode(', ', $on);
                 }
                 $txt = $parts ? implode('; ', $parts) : 'alles zu und aus';
                 $st['last'] = AUTOMATKatalog::MODES[$to] . ' — ' . $txt;
                 $st['lastTs'] = $now;
-                $st['bad'] = count($open) > 0 || (count($on) > 0 && empty($row['gc_aus']));
+                $st['bad'] = count($open) > 0 || count($on) > 0; // was noch an ist, wurde nicht ausgeschaltet
                 $res['log'] = 'Gehen-Check bei „' . AUTOMATKatalog::MODES[$to] . '“: ' . $txt . '.';
                 if (!empty($row['gc_push']) && ($parts || !empty($row['gc_ok']))) {
                     $res['msg'][] = [($parts ? '🚪 ' : '✅ ') . $name, ($parts ? 'Beim ' . ($to === AUTOMATKatalog::MODE_NIGHT ? 'Zubettgehen' : 'Gehen') . ' — ' . $txt : ucfirst($txt)) . '.'];
@@ -2789,6 +2796,9 @@ class AUTOMATLogik
         }
         $st['home'] = $home;
         $res['st'] = $st;
+        // Ergebnis bei jedem Lauf melden (das Modul schreibt nur bei Änderung) — nach einem Probelauf stand die
+        // Variable sonst bis zum nächsten Wechsel falsch (Prüfbericht 17.10.2026).
+        $res['self'] = $st['ph'] !== 'weg';
         switch ($st['ph']) {
             case 'da':
                 $res['status'] = '🏠 Zu Hause: ' . implode(', ', $home);

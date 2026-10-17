@@ -690,6 +690,11 @@ class Automat extends IPSModule
                 }
             }
         }
+        if ($row['Type'] === 'gehen') {
+            foreach (AUTOMATKatalog::vars($row, 'gc_geraet') as $gv) {
+                $ctx['switchable'][$gv] = IPS_VariableExists($gv) && HasAction($gv);
+            }
+        }
         if ($row['Type'] === 'alarm') {
             foreach ($this->rows() as $rr) {
                 if ($rr['Type'] === 'rollladen' && !empty($rr['Enabled'])) {
