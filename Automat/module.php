@@ -590,7 +590,7 @@ class Automat extends IPSModule
             $this->setVarIfChanged('s_' . $uid, $res['status']);
             $res['cmd'] = [];
             $res['msg'] = [];
-            unset($res['mode']);
+            unset($res['mode'], $res['fault']);
             $res['self'] = null;
         }
         foreach ($res['cmd'] as [$vid, $value]) {
@@ -604,6 +604,9 @@ class Automat extends IPSModule
         }
         if ($res['log'] !== null) {
             $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
+        }
+        if (!empty($res['fault']) && $this->pBool('cfg_NotifyFaults')) {
+            $this->message('⚠️ ' . $this->rowName($row), (string)$res['fault'], true, null);
         }
         if (count($failed) > 0 && $this->pBool('cfg_NotifyFaults')) {
             $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true, null);
@@ -684,6 +687,15 @@ class Automat extends IPSModule
             foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
                 if (IPS_VariableExists($cv) && AUTOMATErkennung::contactInverted($this->varInfo($cv))) {
                     $ctx['inv'][$cv] = true;
+                }
+            }
+        }
+        if ($row['Type'] === 'alarm') {
+            foreach ($this->rows() as $rr) {
+                if ($rr['Type'] === 'rollladen' && !empty($rr['Enabled'])) {
+                    foreach (AUTOMATKatalog::vars($rr, 'rl_out') as $rv) {
+                        $ctx['rlOpen'][$rv] = (float)($rr['rl_auf'] ?? 0);
+                    }
                 }
             }
         }

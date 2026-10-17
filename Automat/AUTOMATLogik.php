@@ -1981,7 +1981,9 @@ class AUTOMATLogik
                 $did['Licht an'][] = self::nameOf($vid, $ctx);
             }
             foreach (AUTOMATKatalog::vars($row, 'al_hoch') as $vid) {
-                $res['cmd'][] = [$vid, (float)($row['al_hochwert'] ?? 0)];
+                // Steuert ein Rollladen-Automatismus denselben Rollladen, gilt dessen „offen“-Wert (täglich erprobt) —
+                // ein falsch herum eingetragener Wert würde beim Rauchalarm sonst den Fluchtweg schließen.
+                $res['cmd'][] = [$vid, array_key_exists($vid, $ctx['rlOpen'] ?? []) ? (float)$ctx['rlOpen'][$vid] : (float)($row['al_hochwert'] ?? 0)];
                 $did['Rollladen auf'][] = self::nameOf($vid, $ctx);
             }
             foreach (AUTOMATKatalog::vars($row, 'al_aus') as $vid) {
@@ -2035,7 +2037,8 @@ class AUTOMATLogik
         $noon = self::timeOn(AUTOMATKatalog::time(12, 0), $today);
         $mode = (int)($ctx['mode'] ?? 0);
         $first = !isset($st['up']);
-        $st += ['up' => '', 'down' => '', 'wait' => false];
+        $st += ['up' => '', 'down' => '', 'wait' => false, 'waitDay' => '', 'chk' => null];
+        $yesterday = self::addDays($today, -1);
 
         // Öffnen
         $upRef = (int)($row['rl_upref'] ?? 1);
@@ -2065,14 +2068,67 @@ class AUTOMATLogik
         $hard = self::hardBlock($ctx);
         $soft = self::softBlock($row, $ctx);
         $open = self::activeOf(AUTOMATKatalog::vars($row, 'rl_tuer'), $ctx, !empty($row['rl_tuerinvert']));
-        $set = function (float $v) use ($outs, $ctx, &$res) {
+        // Schaltet und sagt, wer wirklich einen Befehl bekam und wer schon so stand — „Rollläden geschlossen“ war
+        // vorher auch dann im Protokoll, wenn gar nichts gesendet wurde (Prüfbericht 17.10.2026).
+        $set = function (float $v, string $verb) use ($outs, $ctx, &$res, &$st, $now): string {
+            $sent = [];
+            $already = [];
             foreach ($outs as $vid) {
                 $cur = $ctx['val'][$vid] ?? null;
                 if ($cur === null || abs((float)$cur - $v) > 0.5) {
                     $res['cmd'][] = [$vid, $v];
+                    $sent[] = self::nameOf($vid, $ctx);
+                } else {
+                    $already[] = self::nameOf($vid, $ctx);
                 }
             }
+            // Nachkontrolle in 3 Minuten: steht die Position dann nicht am Ziel, einmal erneut senden
+            $st['chk'] = count($sent) > 0 ? ['at' => $now + 180, 'v' => $v, 'n' => 0] : null;
+            return 'Rollläden ' . $verb . (count($sent) > 0 ? ': ' . implode(', ', $sent) : '') . (count($already) > 0 ? (count($sent) > 0 ? ' — ' : ': ') . implode(', ', $already) . ' stand' . (count($already) > 1 ? 'en' : '') . ' schon so' : '') . '.';
         };
+        // Aussperrschutz von gestern Abend: nach Mitternacht noch schließen, sobald die Tür zu ist — aber nicht mehr,
+        // wenn morgens das Öffnen ansteht. Vorher blieb „wartet“ für immer stehen (Status falsch, nächste Meldung fehlte).
+        if ($st['wait'] && $st['waitDay'] !== $today) {
+            if ($st['waitDay'] !== $yesterday || $upReady || $now >= $noon) {
+                $st['wait'] = false;
+            }
+        }
+        if ($hard === '' && $soft === '' && $st['wait'] && $st['waitDay'] === $yesterday && count($open) === 0) {
+            $res['log'] = 'Tür jetzt zu — ' . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
+            $st['wait'] = false;
+            $st['down'] = $yesterday; // gehört zur Nacht davor — morgens wird normal geöffnet
+        }
+        $chkOff = [];
+        if (is_array($st['chk'])) {
+            foreach ($outs as $vid) {
+                $cur = $ctx['val'][$vid] ?? null;
+                if ($cur !== null && abs((float)$cur - (float)$st['chk']['v']) > 2.0) {
+                    $chkOff[] = $vid;
+                }
+            }
+            if (count($chkOff) === 0) {
+                $st['chk'] = null; // alle am Ziel
+            }
+        }
+        if ($hard === '' && $soft === '' && is_array($st['chk']) && $now >= (int)$st['chk']['at']) {
+            $want = (float)$st['chk']['v'];
+            $off = $chkOff;
+            if ((int)$st['chk']['n'] === 0) {
+                foreach ($off as $vid) {
+                    $res['cmd'][] = [$vid, $want];
+                }
+                $res['log'] = 'Nachkontrolle: ' . implode(', ', array_map(function ($v) use ($ctx) {
+                    return self::nameOf($v, $ctx);
+                }, $off)) . ' steht nicht am Ziel — Befehl erneut gesendet.';
+                $st['chk'] = ['at' => $now + 180, 'v' => $want, 'n' => 1];
+            } else {
+                $res['log'] = '⚠️ ' . implode(', ', array_map(function ($v) use ($ctx) {
+                    return self::nameOf($v, $ctx);
+                }, $off)) . ' hat auch auf den zweiten Befehl nicht reagiert.';
+                $res['fault'] = $res['log'];
+                $st['chk'] = null;
+            }
+        }
         if ($hard === '' && $soft === '') {
             if ($downReady && $st['down'] !== $today) {
                 if (count($open) > 0) {
@@ -2083,16 +2139,15 @@ class AUTOMATLogik
                         }
                     }
                     $st['wait'] = true;
+                    $st['waitDay'] = $today;
                 } else {
-                    $set((float)($row['rl_zu'] ?? 100));
-                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . 'Rollläden geschlossen.';
+                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
                     $st['down'] = $today;
                     $st['wait'] = false;
                     $st['up'] = $today; // heute nicht mehr öffnen
                 }
             } elseif ($upReady && $st['up'] !== $today && !$downReady) {
-                $set((float)($row['rl_auf'] ?? 0));
-                $res['log'] = 'Rollläden geöffnet.';
+                $res['log'] = $set((float)($row['rl_auf'] ?? 0), 'geöffnet');
                 $st['up'] = $today;
             }
         }
@@ -2102,10 +2157,13 @@ class AUTOMATLogik
         } elseif ($st['wait']) {
             $res['status'] = '⏳ Bleibt oben — offen: ' . implode(', ', $open);
             $res['due'] = $now + 60;
+        } elseif (is_array($st['chk'])) {
+            $res['status'] = '⏳ Befehl gesendet — Nachkontrolle um ' . date('H:i', (int)$st['chk']['at']) . ' Uhr';
+            $res['due'] = (int)$st['chk']['at'];
         } elseif ($soft !== '') {
             $res['status'] = '🌙 Pausiert: ' . $soft;
         } elseif ($st['down'] === $today) {
-            $res['status'] = '⬇️ Zu seit heute Abend — öffnet morgen früh';
+            $res['status'] = '⬇️ Zu-Befehl gesendet (heute Abend) — öffnet morgen früh';
         } elseif ($st['up'] === $today) {
             $res['status'] = '⬆️ Offen' . (in_array($downRef, [0, 1], true) ? ' — schließt um ' . self::fmtClock(min($downTs, $latest), $now) : ' — schließt bei ' . ($downRef === 2 ? 'Dunkelheit' : '„Nacht“') . ', spätestens ' . date('H:i', $latest) . ' Uhr')
                 . ($downRef === 2 && ($ctx['dark'] ?? null) === null ? ' (⚠️ kein Helligkeitssensor unter „🏠 Hausmodus“ — nur „spätestens“ gilt)' : '');

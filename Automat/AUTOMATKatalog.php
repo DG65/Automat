@@ -894,6 +894,14 @@ class AUTOMATKatalog
                 $p[] = 'Kein Hausmodus angekreuzt, bei dem geprüft wird.';
             }
         }
+        if ($t === 'rollladen') {
+            foreach (['rl_spaet' => 'Spätestens', 'rl_downzeit' => 'Uhrzeit fürs Schließen'] as $f => $c) {
+                $tm = json_decode((string)($row[$f] ?? ''), true);
+                if (is_array($tm) && (int)($tm['hour'] ?? 12) < 12 && ($f === 'rl_spaet' || (int)($row['rl_downref'] ?? 1) === 0)) {
+                    $p[] = '„' . $c . '“ liegt vor 12 Uhr — Schließzeiten nach Mitternacht werden nicht unterstützt (bitte z. B. 23:59 wählen).';
+                }
+            }
+        }
         if ($t === 'lueften' && (float)($row['lf_ok'] ?? 55) >= (float)($row['lf_hoch'] ?? 65)) {
             $p[] = '„Wieder gut unter“ muss kleiner sein als „Erinnern ab“ — sonst wechselt die Meldung ständig.';
         }
