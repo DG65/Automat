@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.52' => [
+            '🔃 Rollläden: Automat nimmt die Richtung jetzt je Rollladen aus dessen Profil — „~Shutter“: 0 = offen, „~Shutter.Reversed“: 0 = zu. Gemischte Aktoren (z. B. Z-Wave und Shelly) in einem Automatismus fahren damit alle richtig herum. Die Werte „offen/zu“ im Automatismus gelten nur noch für Rollläden ohne dieses Profil. Gilt auch für „Rollladen öffnen“ beim Wasser-/Rauchalarm.',
+        ],
         '0.1.51' => [
             '🛠 Rollläden: Der Befehl geht jetzt immer raus — auch wenn die Anzeige schon „zu“ bzw. „offen“ zeigt. Manche Aktoren (z. B. Z-Wave) setzen die Anzeige schon beim Befehl; ging einer im Funk verloren, schickte Automat danach keinen mehr, auch nicht von Hand.',
         ],
@@ -812,6 +815,14 @@ class Automat extends IPSModule
         if ($row['Type'] === 'gehen') {
             foreach (AUTOMATKatalog::vars($row, 'gc_geraet') as $gv) {
                 $ctx['switchable'][$gv] = IPS_VariableExists($gv) && HasAction($gv);
+            }
+        }
+        if ($row['Type'] === 'rollladen' || $row['Type'] === 'alarm') {
+            foreach (array_merge(AUTOMATKatalog::vars($row, 'rl_out'), AUTOMATKatalog::vars($row, 'al_hoch')) as $sv) {
+                $dir = IPS_VariableExists($sv) ? $this->shutterDir($sv) : null;
+                if ($dir !== null) {
+                    $ctx['rlDir'][$sv] = $dir;
+                }
             }
         }
         if ($row['Type'] === 'alarm') {
@@ -3309,6 +3320,20 @@ class Automat extends IPSModule
             return mb_strtolower(trim($inst)) === mb_strtolower(trim($name)) ? $name : $inst . ' / ' . $name;
         }
         return $name;
+    }
+
+    /**
+     * Richtung eines Rollladens aus seinem Profil: ~Shutter = 0 offen / Höchstwert zu, ~Shutter.Reversed = 0 zu /
+     * Höchstwert offen. null = unbekannt (dann gelten die Werte im Automatismus).
+     */
+    private function shutterDir(int $vid): ?array
+    {
+        $p = mb_strtolower((string)$this->varInfo($vid)['profile']);
+        if (!preg_match('/^~shutter(\.reversed)?$/', $p)) {
+            return null;
+        }
+        $max = $this->dimMax($vid) > 0 ? $this->dimMax($vid) : 100.0;
+        return strpos($p, 'reversed') !== false ? ['open' => $max, 'closed' => 0.0] : ['open' => 0.0, 'closed' => $max];
     }
 
     /** Profil, Darstellung und Ident einer Variable — für die Erkennung der Kontakt-Richtung. */

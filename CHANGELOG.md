@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.52 (Build 53) — 17.10.2026
+
+- Rollladen-Richtung je Gerät: `shutterDir()` liest das Profil (`~Shutter` → offen 0 / zu Höchstwert; `~Shutter.Reversed` → offen Höchstwert / zu 0) und gibt es als `ctx['rlDir']` an Rollladen und Alarm; `AUTOMATLogik::shutterTarget()` nutzt es vor `rl_auf`/`rl_zu` bzw. `al_hochwert`. Nachkontrolle mit Zielwert je Rollladen. Live Dietmar: Z-Wave-Jalousien (~Shutter) und Shelly (~Shutter.Reversed) mit einheitlich „offen 100 / zu 0“ — die Z-Wave-Jalousien fuhren abends auf statt zu.
+
 ## 0.1.51 (Build 52) — 17.10.2026
 
 - Rollladen: `$set` sendet an alle Rollläden, auch wenn die Position schon am Ziel steht (vorher übersprungen). Z-Wave-Aktoren setzen die Position beim Befehl; nach einem verlorenen Funkbefehl stand die Anzeige „richtig“ und weder Zeitplan noch „⬇ Rollläden schließen“ schickten etwas (live Dietmar, Wohnzimmer). Protokoll vermerkt „laut Anzeige schon so — Befehl trotzdem gesendet“.

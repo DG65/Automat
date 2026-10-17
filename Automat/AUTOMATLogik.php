@@ -2061,7 +2061,7 @@ class AUTOMATLogik
             foreach (AUTOMATKatalog::vars($row, 'al_hoch') as $vid) {
                 // Steuert ein Rollladen-Automatismus denselben Rollladen, gilt dessen „offen“-Wert (täglich erprobt) —
                 // ein falsch herum eingetragener Wert würde beim Rauchalarm sonst den Fluchtweg schließen.
-                $res['cmd'][] = [$vid, array_key_exists($vid, $ctx['rlOpen'] ?? []) ? (float)$ctx['rlOpen'][$vid] : (float)($row['al_hochwert'] ?? 0)];
+                $res['cmd'][] = [$vid, isset($ctx['rlDir'][$vid]) ? (float)$ctx['rlDir'][$vid]['open'] : (array_key_exists($vid, $ctx['rlOpen'] ?? []) ? (float)$ctx['rlOpen'][$vid] : (float)($row['al_hochwert'] ?? 0))];
                 $did['Rollladen auf'][] = self::nameOf($vid, $ctx);
             }
             foreach (AUTOMATKatalog::vars($row, 'al_aus') as $vid) {
@@ -2113,6 +2113,15 @@ class AUTOMATLogik
     // Rollladen nach Zeit/Sonne
     // ------------------------------------------------------------------
 
+    /** Zielwert eines Rollladens: aus der Richtung seines Profils (ctx['rlDir']), sonst aus dem Automatismus. */
+    public static function shutterTarget(int $vid, bool $close, array $row, array $ctx): float
+    {
+        if (isset($ctx['rlDir'][$vid])) {
+            return (float)$ctx['rlDir'][$vid][$close ? 'closed' : 'open'];
+        }
+        return $close ? (float)($row['rl_zu'] ?? 100) : (float)($row['rl_auf'] ?? 0);
+    }
+
     private static function rollladen(array $row, array $st, array $ev, array $ctx, array $res): array
     {
         $now = (int)$ctx['now'];
@@ -2161,10 +2170,15 @@ class AUTOMATLogik
         // Immer senden — auch wenn die Anzeige schon am Ziel steht: Viele Rollladen-Aktoren (z. B. Z-Wave) setzen die
         // Position schon beim Befehl. Ging ein Befehl im Funk verloren, stünde die Anzeige sonst für immer „richtig“
         // und kein Befehl käme mehr an (live 17.10.2026: Wohnzimmer oben, Anzeige 0 — auch von Hand ging nichts).
-        $set = function (float $v, string $verb) use ($outs, $ctx, &$res, &$st, $now): string {
+        // Ziel je Rollladen: Richtung aus dessen Profil (~Shutter: 0 = offen; ~Shutter.Reversed: 0 = zu), sonst die
+        // Werte im Automatismus — so passen gemischte Aktoren (Z-Wave + Shelly) in EINEM Automatismus (live 17.10.2026)
+        $set = function (bool $close, string $verb) use ($outs, $ctx, $row, &$res, &$st, $now): string {
             $sent = [];
             $already = [];
+            $targets = [];
             foreach ($outs as $vid) {
+                $v = self::shutterTarget($vid, $close, $row, $ctx);
+                $targets[$vid] = $v;
                 $cur = $ctx['val'][$vid] ?? null;
                 $res['cmd'][] = [$vid, $v];
                 $sent[] = self::nameOf($vid, $ctx);
@@ -2172,7 +2186,7 @@ class AUTOMATLogik
                     $already[] = self::nameOf($vid, $ctx);
                 }
             }
-            $st['chk'] = count($sent) > 0 ? ['at' => $now + 180, 'v' => $v, 'n' => 0] : null;
+            $st['chk'] = count($sent) > 0 ? ['at' => $now + 180, 't' => $targets, 'n' => 0] : null;
             return 'Rollläden ' . $verb . ': ' . implode(', ', $sent) . (count($already) > 0 ? ' (laut Anzeige stand' . (count($already) > 1 ? 'en' : '') . ' ' . implode(', ', $already) . ' schon so — Befehl trotzdem gesendet)' : '') . '.';
         };
         // Aussperrschutz von gestern Abend: nach Mitternacht noch schließen, sobald die Tür zu ist — aber nicht mehr,
@@ -2192,26 +2206,29 @@ class AUTOMATLogik
             if ($what === 'down' && count($open) > 0) {
                 $res['log'] = 'Schließen von Hand angefordert — nicht geschlossen, offen: ' . implode(', ', $open) . ' (Aussperrschutz).';
             } elseif ($what === 'down') {
-                $res['log'] = 'Von Hand ausgelöst — ' . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
+                $res['log'] = 'Von Hand ausgelöst — ' . $set(true, 'geschlossen');
                 $st['down'] = $today;
                 $st['up'] = $today;
                 $st['wait'] = false;
             } else {
-                $res['log'] = 'Von Hand ausgelöst — ' . $set((float)($row['rl_auf'] ?? 0), 'geöffnet');
+                $res['log'] = 'Von Hand ausgelöst — ' . $set(false, 'geöffnet');
                 $st['up'] = $today;
             }
             $ev = ['k' => 'tick'];
         }
         if ($hard === '' && $soft === '' && $st['wait'] && $st['waitDay'] === $yesterday && count($open) === 0) {
-            $res['log'] = 'Tür jetzt zu — ' . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
+            $res['log'] = 'Tür jetzt zu — ' . $set(true, 'geschlossen');
             $st['wait'] = false;
             $st['down'] = $yesterday; // gehört zur Nacht davor — morgens wird normal geöffnet
         }
         $chkOff = [];
+        $chkT = function (int $vid) use (&$st): float {
+            return (float)($st['chk']['t'][$vid] ?? $st['chk']['v'] ?? 0);
+        };
         if (is_array($st['chk'])) {
             foreach ($outs as $vid) {
                 $cur = $ctx['val'][$vid] ?? null;
-                if ($cur !== null && abs((float)$cur - (float)$st['chk']['v']) > 2.0) {
+                if ($cur !== null && abs((float)$cur - $chkT($vid)) > 2.0) {
                     $chkOff[] = $vid;
                 }
             }
@@ -2220,16 +2237,16 @@ class AUTOMATLogik
             }
         }
         if ($hard === '' && $soft === '' && is_array($st['chk']) && $now >= (int)$st['chk']['at']) {
-            $want = (float)$st['chk']['v'];
             $off = $chkOff;
             if ((int)$st['chk']['n'] === 0) {
                 foreach ($off as $vid) {
-                    $res['cmd'][] = [$vid, $want];
+                    $res['cmd'][] = [$vid, $chkT($vid)];
                 }
                 $res['log'] = 'Nachkontrolle: ' . implode(', ', array_map(function ($v) use ($ctx) {
                     return self::nameOf($v, $ctx);
                 }, $off)) . ' steht nicht am Ziel — Befehl erneut gesendet.';
-                $st['chk'] = ['at' => $now + 180, 'v' => $want, 'n' => 1];
+                $st['chk']['at'] = $now + 180;
+                $st['chk']['n'] = 1;
             } else {
                 $res['log'] = '⚠️ ' . implode(', ', array_map(function ($v) use ($ctx) {
                     return self::nameOf($v, $ctx);
@@ -2250,13 +2267,13 @@ class AUTOMATLogik
                     $st['wait'] = true;
                     $st['waitDay'] = $today;
                 } else {
-                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . $set((float)($row['rl_zu'] ?? 100), 'geschlossen');
+                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . $set(true, 'geschlossen');
                     $st['down'] = $today;
                     $st['wait'] = false;
                     $st['up'] = $today; // heute nicht mehr öffnen
                 }
             } elseif ($upReady && $st['up'] !== $today && !$downReady) {
-                $res['log'] = $set((float)($row['rl_auf'] ?? 0), 'geöffnet');
+                $res['log'] = $set(false, 'geöffnet');
                 $st['up'] = $today;
             }
         }
