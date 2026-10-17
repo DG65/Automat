@@ -1621,7 +1621,7 @@ class AUTOMATLogik
         };
         $ti = $val('sl_innen');
         $ta = $val('sl_aussen');
-        $st += ['ph' => '', 'sent' => []];
+        $st += ['ph' => '', 'sent' => [], 'told' => ''];
         $name = trim((string)($row['Name'] ?? '')) ?: 'Sommer-Lüften';
         $hard = self::hardBlock($ctx);
         if ($ti === null || $ta === null || $hard !== '') {
@@ -1652,10 +1652,20 @@ class AUTOMATLogik
         $txt = 'innen ' . self::fmtNum($ti) . ' °C, außen ' . self::fmtNum($ta) . ' °C' . ($dp ? ' (Taupunkt innen ' . self::fmtNum(round($dpi, 1)) . ', außen ' . self::fmtNum(round($dpa, 1)) . ' °C)' : '');
         if ($new !== '' && $new !== $st['ph']) {
             $st['ph'] = $new;
-            $relevant = count($kon) === 0 || ($new === 'close' ? count($open) > 0 : count($open) === 0);
+        }
+        if ($st['ph'] === '') {
+            $st['told'] = '';
+        }
+        // Gemeldet wird, sobald die Lage gilt UND es gerade passt (Fenster offen bzw. zu, keine Sperre) — auch wenn
+        // das erst nach dem Umschlag so ist (Fenster geht später auf, Heimkommen). Vorher ging das verloren.
+        $cur = $st['ph'];
+        if ($cur !== '' && $st['told'] !== $cur) {
+            $relevant = count($kon) === 0 || ($cur === 'close' ? count($open) > 0 : count($open) === 0);
             $soft = self::softBlock($row, $ctx);
-            $cool = $now - (int)($st['sent'][$new] ?? 0) >= 7200; // höchstens alle 2 Stunden dieselbe Empfehlung
+            $cool = $now - (int)($st['sent'][$cur] ?? 0) >= 7200; // höchstens alle 2 Stunden dieselbe Empfehlung
+            $new = $cur;
             if ($relevant && $soft === '' && $cool) {
+                $st['told'] = $cur;
                 $st['sent'][$new] = $now;
                 $res['log'] = ($new === 'close' ? 'Draußen wärmer' : 'Draußen kühler') . ' — ' . $txt . '.';
                 if (!empty($row['sl_push'])) {
@@ -1688,6 +1698,11 @@ class AUTOMATLogik
         $st += ['ph' => 'ok', 'since' => 0, 'gaps' => []];
         $hard = self::hardBlock($ctx);
         if ($p === null || $hard !== '') {
+            // Was in der Pause/Sperre oder ohne Messwert passiert ist, sieht der Wächter nicht — danach neu beginnen,
+            // sonst gäbe es beim Ende der Pause einen Fehlalarm über die ganze Pausenzeit (Prüfbericht 17.10.2026).
+            if ($st['ph'] === 'ok') {
+                $st['since'] = 0;
+            }
             $res['st'] = $st;
             $res['status'] = $hard !== '' ? self::hardStatus($hard) : '❔ Leistung unbekannt';
             return $res;
@@ -1708,7 +1723,8 @@ class AUTOMATLogik
                 }
             }
         } else {
-            if ((int)$st['since'] > 0) {
+            if ((int)$st['since'] > 0 && $st['ph'] !== 'alarm') {
+                // nur normale Pausen/Läufe als Maßstab — ein echter Ausfall ist kein „bisher längster Wert“
                 $len = $now - (int)$st['since'];
                 if ($len >= 60) {
                     $st['gaps'][] = $len;

@@ -1269,6 +1269,12 @@ check('Abends kühler, Fenster zu: „Jetzt lüften“', count($r['msg']) === 1 
 $st = [];
 $r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 21.0, 1501 => 15.0, 1502 => false]]);
 check('Innen unter 23 °C: keine Empfehlung', $r['msg'] === [] && strpos($r['status'], 'Innen unter') !== false);
+$sl['sl_push'] = true;
+$st = [];
+$r = step($sl, $st, ['k' => 'tick'], ['val' => [1500 => 24.5, 1501 => 29.0, 1502 => false]]);
+check('Draußen wärmer, Fenster zu: (noch) keine Meldung', $r['msg'] === []);
+$r = step($sl, $st, ['k' => 'trigger', 'vid' => 1502, 'v' => true], ['val' => [1500 => 24.5, 1501 => 29.0, 1502 => true]]);
+check('… Fenster geht später auf: jetzt „Fenster schließen“ (vorher nie)', count($r['msg']) === 1 && strpos($r['msg'][0][1], 'Fenster schließen') !== false);
 $slK = $sl;
 $slK['sl_rhinnen'] = 1503;
 $slK['sl_rhaussen'] = 1504;
@@ -1287,6 +1293,14 @@ step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.5], ['val' => [1600 =>
 at('09:00:00');
 step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 75.0], ['val' => [1600 => 75.0]]);
 check('Normale Pause (40 min) wird als „normal“ gemerkt', $st['gaps'] === [2400] && strpos(step($af, $st, ['k' => 'tick'], ['val' => [1600 => 75.0]])['status'], 'bisher längste Pause 40 min') !== false);
+$stp = ['ph' => 'ok', 'since' => 0, 'gaps' => []];
+at('10:00:00');
+step($af, $stp, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.5], ['val' => [1600 => 0.5]]);
+at('10:05:00');
+step($af, $stp, ['k' => 'flag'], ['val' => [1600 => 0.5], 'paused' => true]);
+at('13:00:00');
+$r = step($af, $stp, ['k' => 'flag'], ['val' => [1600 => 0.5]]);
+check('Pause 10:05–13:00 (Kompressor lief unbeobachtet): danach kein Fehlalarm', $stp['ph'] === 'ok' && $r['msg'] === [] && (int)$stp['since'] === ts('2026-10-13 13:00:00'), json_encode($stp));
 at('09:30:00');
 step($af, $st, ['k' => 'trigger', 'vid' => 1600, 'v' => 0.0], ['val' => [1600 => 0.0]]);
 at('11:30:00');
