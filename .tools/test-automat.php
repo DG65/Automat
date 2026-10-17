@@ -1550,6 +1550,10 @@ foreach ($cases as [$want, $a]) {
 }
 check('Matter-Kontakt mit Beschriftung „Geschlossen“ an true → invertiert', AUTOMATErkennung::contactInverted($it($cases[6][1])) === true);
 check('Normaler Kontakt nicht invertiert', AUTOMATErkennung::contactInverted($it(['profile' => '~Window'])) === false);
+// Live 17.10.2026 (Haustüre #32185, Z-Wave-Schloss): „Gesperrt“ heißt zu — Beschriftung entscheidet, nicht der Profilname
+check('Schloss ~Lock (wahr = Gesperrt): wahr heißt zu', AUTOMATErkennung::contactInverted(['profile' => '~Lock', 'pres' => [], 'ident' => 'DoorLockDoorState', 'assoc' => [0 => 'Entriegelt', 1 => 'Gesperrt']]) === true);
+check('Schloss ~Lock.Reversed (falsch = Gesperrt): wahr heißt offen (vorher falsch herum)', AUTOMATErkennung::contactInverted(['profile' => '~Lock.Reversed', 'pres' => [], 'ident' => 'DoorLockBoltState', 'assoc' => [0 => 'Gesperrt', 1 => 'Entriegelt']]) === false);
+check('~Window (wahr = Geöffnet): nicht umgekehrt; ~Window.Reversed (wahr = Geschlossen): umgekehrt', AUTOMATErkennung::contactInverted(['profile' => '~Window', 'pres' => [], 'assoc' => [0 => 'Geschlossen', 1 => 'Geöffnet']]) === false && AUTOMATErkennung::contactInverted(['profile' => '~Window.Reversed', 'pres' => [], 'assoc' => [0 => 'Geöffnet', 1 => 'Geschlossen']]) === true);
 
 heading('B2. Räume aus Namen und Vorschläge');
 $items = [

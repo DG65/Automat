@@ -141,32 +141,54 @@ class AUTOMATErkennung
         return self::CONTACT_WORDS;
     }
 
+    /**
+     * Meldet dieser Kontakt „wahr“ für ZU? Maßgeblich ist zuerst die Beschriftung des Werts (Darstellung, sonst
+     * Profil): „Geschlossen“, „Gesperrt“, „Verriegelt“ … bei wahr → ja; „Offen“, „Entsperrt“ … bei wahr → nein.
+     * Ein Türschloss mit „~Lock“ (wahr = Gesperrt) heißt also: gesperrt = zu (Dietmar 17.10.2026, Haustüre #32185).
+     * Ohne Beschriftung: Matter „Boolean State“ (wahr = Kontakt = zu), dann Profil „…Reversed“.
+     */
     public static function contactInverted(array $v): bool
     {
-        // Matter-Kontaktsensor (Cluster „Boolean State“): wahr = Kontakt = GESCHLOSSEN. Ohne Profil und Darstellung
-        // war das nicht zu erkennen — live 17.10.2026: Rollladen blieb wegen „offener“ Terrassentür oben.
-        if (preg_match('/^BooleanState/i', (string)($v['ident'] ?? ''))) {
-            return true;
-        }
-        $profile = mb_strtolower((string)($v['profile'] ?? ''));
-        if (strpos($profile, 'reversed') !== false) {
-            return true;
-        }
+        $closed = '/geschlossen|closed|\bzu\b|gesperrt|verriegelt|abgeschlossen|\blocked|gesichert|secured/iu';
+        $open = '/offen|geöffnet|open|entsperrt|unlocked|entriegelt|ungesichert|unsecured/iu';
+        $cap = [];
         $opts = $v['pres']['OPTIONS'] ?? null;
         if (is_string($opts)) {
             $opts = json_decode($opts, true);
         }
-        if (is_array($opts)) {
-            foreach ($opts as $o) {
-                if (!is_array($o)) {
-                    continue;
-                }
-                if (preg_match('/geschlossen|closed|\bzu\b/i', (string)($o['Caption'] ?? '')) && !empty($o['Value'])) {
-                    return true;
+        foreach (is_array($opts) ? $opts : [] as $o) {
+            if (is_array($o) && array_key_exists('Value', $o) && trim((string)($o['Caption'] ?? '')) !== '') {
+                $cap[!empty($o['Value']) ? 1 : 0] = (string)$o['Caption'];
+            }
+        }
+        if (count($cap) === 0) {
+            foreach ((array)($v['assoc'] ?? []) as $val => $name) {
+                if (trim((string)$name) !== '') {
+                    $cap[!empty($val) ? 1 : 0] = (string)$name;
                 }
             }
         }
-        return false;
+        if (isset($cap[1])) {
+            if (preg_match($open, $cap[1])) {
+                return false;
+            }
+            if (preg_match($closed, $cap[1])) {
+                return true;
+            }
+        }
+        if (isset($cap[0])) {
+            if (preg_match($open, $cap[0])) {
+                return true;
+            }
+            if (preg_match($closed, $cap[0])) {
+                return false;
+            }
+        }
+        // Matter-Kontaktsensor (Cluster „Boolean State“): wahr = Kontakt = GESCHLOSSEN — live 17.10.2026
+        if (preg_match('/^BooleanState/i', (string)($v['ident'] ?? ''))) {
+            return true;
+        }
+        return strpos(mb_strtolower((string)($v['profile'] ?? '')), 'reversed') !== false;
     }
 
     /** Grundformen von Raumwörtern: Kurz- und Langform werden gleich („Essen“/„Esszimmer“ → „ess“). */

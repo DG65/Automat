@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.49' => [
+            '🔐 Türschlösser: Meldet ein Schloss „Gesperrt“, gilt die Tür als zu. Automat liest dafür die Beschriftung des Werts („Gesperrt“, „Geschlossen“, „Entriegelt“, „Geöffnet“ …) statt nur des Profilnamens. Beim Riegel („~Lock.Reversed“) lag die Erkennung vorher genau falsch herum.',
+        ],
         '0.1.48' => [
             '🔎 Die letzten offenen Punkte der Prüfung behoben:',
             '• Reagiert ein Licht oder Schalter nicht auf einen Befehl (z. B. Funkstörung), steht das nach 20 s im Protokoll — auf Wunsch als Störungsmeldung.',
@@ -1725,7 +1728,7 @@ class Automat extends IPSModule
             $item = [
                 'vid' => $vid, 'type' => (int)$v['VariableType'],
                 'action' => ((int)($v['VariableCustomAction'] ?? 0) > 1) || ((int)($v['VariableAction'] ?? 0) > 1),
-                'profile' => $profile, 'pres' => $pres, 'suffix' => trim($suffix),
+                'profile' => $profile, 'pres' => $pres, 'suffix' => trim($suffix), 'assoc' => $this->profileAssoc($profile),
                 'name' => (string)$obj['ObjectName'], 'inst' => $parent > 0 ? IPS_GetName($parent) : '', 'ident' => (string)$obj['ObjectIdent'],
                 'room' => $roomByInstance[$instID] ?? ($roomByInstance[$vid] ?? null),
                 'module' => $instID > 0 ? (string)(@IPS_GetInstance($instID)['ModuleInfo']['ModuleName'] ?? '') : '',
@@ -3261,11 +3264,27 @@ class Automat extends IPSModule
         if (!is_array($pres) || count($pres) === 0) {
             $pres = $v['VariablePresentation'] ?? [];
         }
+        $profile = (string)($v['VariableCustomProfile'] ?? '') ?: (string)($v['VariableProfile'] ?? '') ?: (string)((is_array($pres) ? $pres : [])['PROFILE'] ?? '');
         return [
-            'profile' => (string)($v['VariableCustomProfile'] ?? '') ?: (string)($v['VariableProfile'] ?? '') ?: (string)((is_array($pres) ? $pres : [])['PROFILE'] ?? ''),
+            'profile' => $profile,
             'pres'    => is_array($pres) ? $pres : [],
             'ident'   => (string)IPS_GetObject($vid)['ObjectIdent'],
+            'assoc'   => $this->profileAssoc($profile),
         ];
+    }
+
+    /** Zuordnungen eines Profils als [Wert => Beschriftung] (für die Kontakt-Richtung, z. B. ~Lock: wahr = Gesperrt). */
+    private function profileAssoc(string $profile): array
+    {
+        $out = [];
+        if ($profile !== '' && IPS_VariableProfileExists($profile)) {
+            foreach ((array)(IPS_GetVariableProfile($profile)['Associations'] ?? []) as $a) {
+                if (is_array($a) && isset($a['Value'])) {
+                    $out[(int)$a['Value']] = (string)($a['Name'] ?? '');
+                }
+            }
+        }
+        return $out;
     }
 
     /** Größter Wert eines Dimmers (0 = Schalter). */

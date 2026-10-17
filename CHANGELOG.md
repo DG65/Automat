@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.49 (Build 50) — 17.10.2026
+
+- Kontakt-Richtung nach Beschriftung: `contactInverted()` prüft zuerst die Beschriftung für wahr/falsch (Darstellung `OPTIONS`, sonst Profil-Zuordnungen `assoc`) — „Gesperrt/Geschlossen/Verriegelt/…“ bei wahr → wahr = zu; „Offen/Geöffnet/Entriegelt/Entsperrt“ bei wahr → wahr = offen. Danach Matter „Boolean State“, zuletzt „…Reversed“. Damit gilt ein Türschloss mit „~Lock“ als zu, wenn es „Gesperrt“ meldet; „~Lock.Reversed“ (vorher wegen „Reversed“ falsch herum) stimmt jetzt. Gilt für Kontaktfelder, Wächter-Vorschläge aus „Entdecken“. Live: Dietmar, Haustüre #32185 (Z-Wave).
+
 ## 0.1.48 (Build 49) — 17.10.2026
 
 Restliche Punkte der Prüfung vom 17.10.2026 (673 Prüfungen):
