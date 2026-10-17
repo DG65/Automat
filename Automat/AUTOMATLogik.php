@@ -2341,15 +2341,20 @@ class AUTOMATLogik
             return $res;
         }
         $key = mb_strtolower(self::valueKey($ev['v'] ?? ''));
-        if ($key === '' || $key === 'false' || $key === '0') {
-            return $res; // Loslassen bzw. Rücksetzen
-        }
         $map = ['wahr' => 'true', 'falsch' => 'false', 'an' => 'true', 'aus' => 'false'];
-        foreach (['k' => 'kurz', 'd' => 'doppelt', 'l' => 'lang'] as $p => $label) {
-            $want = array_map(function ($x) use ($map) {
+        $wants = [];
+        foreach (['k', 'd', 'l'] as $p) {
+            $wants[$p] = array_map(function ($x) use ($map) {
                 $x = mb_strtolower(trim($x));
                 return $map[$x] ?? mb_strtolower(self::valueKey($x));
             }, explode(',', (string)($row['tg_' . $p . 'wert'] ?? '')));
+        }
+        // „falsch“/0 ist meist das Loslassen — außer, der Wert ist ausdrücklich einer Druckart zugeordnet
+        if ($key === '' || (($key === 'false' || $key === '0') && !in_array($key, array_merge(...array_values($wants)), true))) {
+            return $res; // Loslassen bzw. Rücksetzen
+        }
+        foreach (['k' => 'kurz', 'd' => 'doppelt', 'l' => 'lang'] as $p => $label) {
+            $want = $wants[$p];
             if (!in_array($key, $want, true)) {
                 continue;
             }
@@ -2402,11 +2407,19 @@ class AUTOMATLogik
     // Aufwach-/Einschlaflicht
     // ------------------------------------------------------------------
 
-    /** Weckzeit heute aus Variable (Zeitstempel → Uhrzeit, „HH:MM“) oder null. */
+    /**
+     * Weckzeit heute aus Variable oder null. Ein Zeitstempel mit Datum in der Zukunft ist der nächste Wecker und
+     * gilt nur an seinem Tag — ein Wecker für Montag startete sonst schon am Samstag (Prüfbericht 17.10.2026). Liegt
+     * das Datum heute oder zurück (Variable nur für die Uhrzeit, z. B. ~UnixTimestampTime), gilt die Uhrzeit täglich.
+     * „HH:MM“ gilt jeden Tag.
+     */
     public static function wakeTime($v, string $ymd): ?int
     {
         [$y, $mo, $d] = array_map('intval', explode('-', $ymd));
         if ((is_int($v) || is_float($v) || (is_string($v) && ctype_digit($v))) && (int)$v > 86400) {
+            if (date('Y-m-d', (int)$v) > $ymd) {
+                return null;
+            }
             return mktime((int)date('G', (int)$v), (int)date('i', (int)$v), 0, $mo, $d, $y);
         }
         if (is_string($v) && preg_match('/^(\d{1,2}):(\d{2})/', trim($v), $m)) {
@@ -2452,7 +2465,10 @@ class AUTOMATLogik
         $begin = $at !== null ? ($up ? $at - $dauer : $at) : null;
         $soft = self::softBlock($row, $ctx);
         $go = false;
-        if ($st['ph'] === 'idle' && $st['day'] !== $today && $soft === '') {
+        // „beim Wechsel auf Nacht“: keine Tagessperre (der Wechsel kurz nach Mitternacht gehört zur Nacht davor),
+        // nur nicht zweimal binnen 6 Stunden.
+        $fresh = $start === 2 ? $now - (int)$st['t0'] >= 6 * 3600 : $st['day'] !== $today;
+        if ($st['ph'] === 'idle' && $fresh && $soft === '') {
             if ($start === 2 && ($ev['k'] ?? '') === 'mode' && (int)($ev['to'] ?? -1) === AUTOMATKatalog::MODE_NIGHT) {
                 $go = true;
             } elseif ($begin !== null && $dayOk && $now >= $begin && $now < $begin + $dauer) {
@@ -2476,11 +2492,15 @@ class AUTOMATLogik
             foreach ($outs as $vid) {
                 $from = max($from, $levelOf($vid));
             }
-            $st['from'] = $up ? 1 : max(1, $from);
+            // Aufwachen beginnt beim aktuellen Pegel — ein schon helles Licht wird nicht erst auf 1 % gedimmt
+            $st['from'] = max(1, $from);
             $res['log'] = ($up ? 'Aufwachlicht' : 'Einschlaflicht') . ' startet — bis ' . date('H:i', (int)$st['t1']) . ' Uhr.';
             if (!$up && $from === 0) {
                 $st['ph'] = 'idle';
                 $res['log'] = 'Einschlaflicht: Licht ist schon aus — nichts zu tun.';
+            } elseif ($up && $from >= $ziel) {
+                $st['ph'] = 'idle';
+                $res['log'] = 'Aufwachlicht: Licht ist schon ' . $from . ' % hell — nichts zu tun.';
             }
         }
         if ($st['ph'] === 'ramp') {
