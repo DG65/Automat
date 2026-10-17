@@ -26,3 +26,11 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
   getestet — Dietmar hat diese Geräte nicht. Rückmeldungen anderer Nutzer ernst nehmen und zuerst am Prüfstand nachbauen.
 - Ab 0.1.35 ebenfalls nur am Prüfstand: Gehen-Check, Türklingel, Sommer-Lüften, Ausfall-Wächter, Zeitschaltuhr,
   Duplizieren, Probelauf, Feiertage, Statistik, Gewohnheitsvorschläge (Archivabfrage wochenweise, höchstens 25 Lichter).
+- Ab 0.1.47 (vollständige Prüfung 17.10.2026):
+  - `process()` rechnet und speichert unter einer Sperre (`lockEnter`/`lockLeave`) und schaltet erst danach. Nie eine Sperre halten, während `RequestAction` läuft, denn die Gerätemeldung kommt wieder hier an.
+  - `Sent` ist eine Liste je Variable. Zwischenwerte gelten als eigenes Echo.
+  - `VM_UPDATE` ohne Wertänderung wird bei Ausgängen ignoriert.
+  - Kontakt-Richtung je Sensor über `ctx['inv']`.
+  - `cleanupChanged()` gibt beim Abschalten, Löschen, Probelauf oder Umbau frei.
+  - Neue Arten, die etwas festhalten (Sollwerte), brauchen einen Zweig in `AUTOMATLogik::cleanup()`.
+  - Der Prüfstand bildet Gerätemeldungen mit `geändert`/`alter Wert` nach (`fire()`, `PENDING`).
