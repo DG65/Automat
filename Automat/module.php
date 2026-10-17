@@ -69,6 +69,16 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.47' => [
+            '🔎 Gründliche Prüfung aller Automatismen — rund 30 Fehler behoben, jeder mit eigenem Test. Die wichtigsten:',
+            '• Rollladen: Das Protokoll nennt, welcher Rollladen wirklich einen Befehl bekam. Nach 3 Minuten prüft Automat nach und sendet einmal erneut. Ein Aussperrschutz über Mitternacht wird sauber beendet. Beim Rauchalarm gilt der „offen“-Wert des Rollladen-Automatismus.',
+            '• Fenster offen + Heizung nach Hausmodus am selben Thermostat: Der Komfortwert geht nicht mehr verloren. Ein Thermostat, das den neuen Wert erst später meldet, gilt nicht mehr als „von Hand verstellt“.',
+            '• Abschalten, Löschen, Probelauf oder Umbau eines Automatismus gibt abgesenkte Sollwerte wieder frei.',
+            '• Bewegungslicht: Der Nachlauf startet erst, wenn keine Bewegung mehr gemeldet wird — auch nach Handeinschaltung, Dauerlicht und Sperre.',
+            '• Dämmerung: Im Sommer brannte das Licht fast 24 Stunden, wenn der Sonnenuntergang nach der Ausschaltzeit lag.',
+            '• Zeitschaltuhr, Aufwachlicht, Sommer-Lüften, Lüften, Ausfall-Wächter, Taster, Gehen-Check, Anwesenheit: einzelne Fehler behoben (siehe Änderungsprotokoll).',
+            '• Grundgerüst: gleichzeitige Abläufe überschreiben sich nicht mehr gegenseitig; Geräte, die ihren Wert mehrfach oder in Zwischenschritten melden, gelten nicht mehr als Handbedienung; ein per Skript gesetzter Hausmodus wird erkannt.',
+        ],
         '0.1.46' => [
             '🛠 Fenster-/Türkontakte: Ob ein Kontakt „wahr = offen“ oder „wahr = zu“ meldet, erkennt Automat jetzt je Sensor selbst (Matter-Kontakte, Profile „…Reversed“, Darstellung) und wendet das in jedem Automatismus gleich an. Das Häkchen „umgekehrt“ braucht es nur noch für Sensoren, die Automat nicht erkennt. Vorher hielt eine geschlossene Matter-Terrassentür den Rollladen oben.',
         ],

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.1.47 (Build 48) — 17.10.2026
+
+Ergebnis einer vollständigen Prüfung aller Arten und des Gerüsts (vier Prüfberichte), Anlass: Rollladen Essen/Wohnen live. Jeder Fund mit eigenem Prüfstand-Fall (661 Prüfungen).
+
+**Gerüst**
+- Sperre (`IPS_SemaphoreEnter`) um Lesen → Rechnen → Speichern in `process()` (aufgeteilt in `evaluateRow()`/`applyResult()`), um `Sent` und die Ruhezeit-Warteschlange; nie während eines Schaltbefehls gehalten. Fehler in einem Automatismus halten die anderen nicht mehr auf.
+- Echo-Erkennung: `Sent` als Liste je Variable (alle Befehle der letzten 15 s, nicht verbraucht), Zwischenwerte zwischen altem und Zielwert gelten als eigenes Echo, Toleranz am Wertebereich (Ganzzahl mind. 1). `VM_UPDATE` ohne Wertänderung (`$Data[1]`) wird bei Ausgängen und der Anwesenheitsquelle ignoriert.
+- `cleanupChanged()`: abgeschaltete, gelöschte, auf Probelauf gestellte oder umgebaute Automatismen stellen abgesenkte Sollwerte zurück (`AUTOMATLogik::cleanup()`), Zustand beginnt neu (Attribut `Fp`).
+- Hausmodus per `SetValue` von außen wird erkannt (`ModeKnown`, `announceMode()`).
+- Ruhezeit: Kappung auf 50 wird geloggt, Zustellfehler einzeln abgefangen.
+- Duplizieren: Vollständigkeit je Kopie statt über alle.
+
+**Arten**
+- Heizung nach Hausmodus: Handbedienung nur an einer echten fremden Änderung (nicht am Tick); fährt nicht in ein von „Fenster offen“ gehaltenes Thermostat (`ctx['held']`); Grundwert bleibt über Handeingriff und Moduswechsel gemerkt.
+- Fenster offen: stellt alle gemerkten Sollwerte zurück (auch entfernte), merkt ohne Messwert nichts.
+- Rollladen: Protokoll nennt gesendete und schon stehende; Nachkontrolle nach 3 min mit einem zweiten Versuch, danach Störungsmeldung; Aussperrschutz über Mitternacht (`waitDay`); Schließzeiten vor 12 Uhr als Problem gemeldet. Status „Zu-Befehl gesendet“.
+- Alarm: „Rollladen öffnen“ nutzt den `rl_auf` eines Rollladen-Automatismus mit demselben Rollladen (`ctx['rlOpen']`).
+- Bewegungslicht: Nachlauf erst nach Bewegungsende auch nach Handeinschaltung, Dauerlicht-Ende, Sperre; Melderzustand wird während Sperre/Dauerlicht nachgeführt (kein falscher Funkverlust). Vorwarnung höchstens halbe Dauer (auch Treppenlicht). Sperre in der Vorwarn-Sekunde schaltet Schalter wieder ein.
+- Dämmerung: Ausschaltzeit nur dann auf den Folgetag, wenn sie vor Einschalten und vor Mittag liegt; sonst heute nicht schalten (statt fast 24 h an).
+- Zeitschaltuhr: Zufallsversatz je Starttag (`jits`), Ende trotz weicher Sperre, Hand-Wiedereinschalten im Fenster, Status berücksichtigt das Fenster von gestern.
+- Aufwachlicht: Zeitstempel mit Datum in der Zukunft nur an seinem Tag; beginnt beim aktuellen Pegel; Einschlaflicht „bei Nacht“ ohne Kalendertag-Sperre (6 h Abstand).
+- Sommer-Lüften: meldet, sobald Lage und Fensterzustand passen, auch nach dem Umschlag. Lüften: erste Erinnerung auch nach weicher Sperre, Problem bei „Wieder gut unter“ ≥ „Erinnern ab“. Ausfall-Wächter: nach Pause/Sperre/fehlendem Messwert neu beginnen, Alarmphasen nicht als „längste Pause“.
+- Taster: „aus/falsch/0“ ausdrücklich zuordenbar. Gehen-Check: schaltet nur schaltbare Variablen, Leistungswerte bleiben „noch an“. Anwesenheit: Ergebnis bei jedem Lauf (nach Probelauf richtig).
+- Erkennung: Rollladen-Fahrbefehle (`~ShutterMoveStop/Step`) sind keine Position; Riegel/Schnappverschluss eines Schlosses keine Kontakte. Feiertage Schweiz: Karfreitag, Ostermontag, Pfingstmontag, Stephanstag ergänzt.
+
+**Bewusst offen** (Verdacht, live zu prüfen): `AutomationsHidden` nach Löschen ohne Filter, leere Kennung bei „+“, Wächter-Vergleich bei Matter-Kontakten (bewusst roher Wert), eingefrorene Leistungswerte beim Ausfall-Wächter, Abend-Modus bei Gewitter.
+
 ## 0.1.46 (Build 47) — 17.10.2026
 
 - Fehlerbehebung Kontakt-Richtung: Erkennung je Variable statt Häkchen je Automatismus. `AUTOMATErkennung::contactInverted()` erkennt zusätzlich Matter „Boolean State“ (Ident `BooleanState…`, wahr = Kontakt = geschlossen); `context()` füllt `ctx['inv']` für alle Kontaktfelder (`CONTACT_FIELDS`), `AUTOMATLogik::contactInvert()` nutzt das vor dem Häkchen (kein doppeltes Umdrehen). Gilt für Fenster offen, Gehen-Check, Sommer-Lüften, Rollladen-Aussperrschutz, Lüftungserinnerung. Live gefunden bei Dietmar: geschlossene Matter-Terrassentür hielt den Rollladen Essen oben.
