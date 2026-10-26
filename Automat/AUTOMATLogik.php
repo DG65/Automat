@@ -90,6 +90,8 @@ class AUTOMATLogik
                 return self::rollladen($row, $st, $ev, $ctx, $res);
             case 'standby':
                 return self::standby($row, $st, $ev, $ctx, $res);
+            case 'ruecksetzen':
+                return self::ruecksetzen($row, $st, $ev, $ctx, $res);
             case 'lueften':
                 return self::lueften($row, $st, $ev, $ctx, $res);
             case 'heizung':
@@ -2298,6 +2300,82 @@ class AUTOMATLogik
             $res['status'] = '⬇️ Zu — öffnet ' . ($upRef === 2 ? 'bei „Tag“, frühestens ' . date('H:i', $earliest) . ' Uhr' : 'um ' . self::fmtClock($upAt, $now));
             $res['due'] = $upRef === 2 ? $now + 60 : $upAt;
         }
+        return $res;
+    }
+
+    // ------------------------------------------------------------------
+    // Melder zurücksetzen
+    // ------------------------------------------------------------------
+
+    /**
+     * Ersetzt die frühere „Zwangsschaltung“ (Ablaufpläne mit Passwort/JSON-RPC, Dietmar 26.10.2026): Steht ein Melder
+     * auf „wahr“ und kam seit der Haltezeit keine neue Meldung, wird er auf „falsch“ gesetzt. Gemessen ab der LETZTEN
+     * Meldung — ein Melder, der bei Anwesenheit regelmäßig „wahr“ wiederholt, wird nicht dazwischen zurückgesetzt.
+     */
+    private static function ruecksetzen(array $row, array $st, array $ev, array $ctx, array $res): array
+    {
+        $now = (int)$ctx['now'];
+        $mel = AUTOMATKatalog::vars($row, 'mr_mel');
+        $halt = max(5, (int)($row['mr_halt'] ?? 60));
+        $st += ['t' => [], 'hist' => []];
+        $res['raw'] = true; // Sensorvariablen haben keine Aktion — direkt setzen
+        $vid = (int)($ev['vid'] ?? 0);
+        if (($ev['k'] ?? '') === 'trigger' && in_array($vid, $mel, true)) {
+            if (self::isTrue($ev['v'] ?? false)) {
+                $st['t'][(string)$vid] = $now;
+            } else {
+                unset($st['t'][(string)$vid]);
+            }
+        }
+        foreach ($mel as $m) {
+            $on = self::isTrue($ctx['val'][$m] ?? false);
+            if ($on && !isset($st['t'][(string)$m])) {
+                // Steht schon auf „wahr“ (erster Lauf, Neustart): letzte Meldung als Beginn
+                $st['t'][(string)$m] = (int)($ctx['upd'][$m] ?? $now);
+            } elseif (!$on) {
+                unset($st['t'][(string)$m]);
+            }
+        }
+        $hard = self::hardBlock($ctx);
+        $done = [];
+        if ($hard === '') {
+            foreach ($st['t'] as $k => $t) {
+                if ($now - (int)$t >= $halt) {
+                    $res['cmd'][] = [(int)$k, false];
+                    $done[] = self::nameOf((int)$k, $ctx);
+                    $st['hist'][] = [$now, (int)$k];
+                    unset($st['t'][$k]);
+                }
+            }
+        }
+        $st['hist'] = array_values(array_filter((array)$st['hist'], function ($h) use ($now) {
+            return (int)$h[0] >= strtotime('-7 days', $now);
+        }));
+        if (count($done) > 0) {
+            $res['log'] = implode(', ', $done) . ': seit ' . $halt . ' s keine neue Meldung auf „wahr“ — zurückgesetzt.';
+        }
+        $res['st'] = $st;
+        $next = null;
+        foreach ($st['t'] as $t) {
+            $next = $next === null ? (int)$t + $halt : min($next, (int)$t + $halt);
+        }
+        if ($next !== null && $hard === '') {
+            $res['due'] = $next;
+        }
+        $cnt = count($st['hist']);
+        $per = [];
+        foreach ($st['hist'] as $h) {
+            $n = self::nameOf((int)$h[1], $ctx);
+            $per[$n] = ($per[$n] ?? 0) + 1;
+        }
+        arsort($per);
+        $top = array_slice($per, 0, 3, true);
+        $res['status'] = $hard !== '' ? self::hardStatus($hard)
+            : (count($st['t']) > 0 ? '⏳ ' . count($st['t']) . ' Melder auf „wahr“ — Rücksetzen um ' . date('H:i:s', (int)$next) . ' Uhr, falls keine neue Meldung kommt'
+                : '✅ Alle Melder ruhig')
+            . ($cnt > 0 ? ' · in 7 Tagen ' . $cnt . '× zurückgesetzt (' . implode(', ', array_map(function ($n, $c) {
+                return $n . ' ' . $c . '×';
+            }, array_keys($top), $top)) . ')' : '');
         return $res;
     }
 

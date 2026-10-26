@@ -83,7 +83,7 @@ function IPS_GetVariable($id): array
 function IPS_GetVariableList(): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['kind'] === 2)); }
 function IPS_GetInstanceList(): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['kind'] === 1)); }
 function GetValue($id) { return $GLOBALS['OBJ'][(int)$id]['value']; }
-function SetValue($id, $v): bool { $GLOBALS['OBJ'][(int)$id]['value'] = $v; $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'SetValue']; return true; }
+function SetValue($id, $v): bool { if (!empty($GLOBALS['OBJ'][(int)$id]['ro'])) { trigger_error('Variable is marked as read-only and cannot be changed', E_USER_WARNING); return false; } $GLOBALS['OBJ'][(int)$id]['value'] = $v; $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'SetValue']; return true; }
 function HasAction($id): bool { return (bool)$GLOBALS['OBJ'][(int)$id]['action']; }
 function RequestAction($id, $v): bool
 {
@@ -2966,6 +2966,34 @@ $m->RequestAction('tile', json_encode(['a' => 'run', 'uid' => 'arolm1', 'v' => '
 check('Kachel ⬆: öffnet (~Shutter: 0 = offen)', GetValue(1231) === 0, json_encode(GetValue(1231)));
 $tileItems = (new ReflectionMethod('Automat', 'tilePayload'))->invoke($m)['items'] ?? [];
 check('Kachel bietet ⬆/⬇ beim Rollladen an', ($tileItems[0]['run'] ?? '') === 'updown', json_encode($tileItems[0]['run'] ?? null));
+// Melder zurücksetzen (Ersatz der Zwangsschaltung, Dietmar 26.10.2026)
+mkinst(1240, 'Sensor HWR');
+mkvar(1241, VARIABLETYPE_BOOLEAN, false, 'Binärsensor', 1240, false, '~Motion');
+mkinst(1242, 'Sensor Vorrat');
+mkvar(1243, VARIABLETYPE_BOOLEAN, false, 'Binärsensor', 1242, false, '~Motion');
+$GLOBALS['OBJ'][1243]['ro'] = true; // Instanz mit „Variablen sperren“
+$mr = AUTOMATKatalog::defaults('ruecksetzen') + ['Uid' => 'amrst1', 'Name' => 'Melder zurücksetzen', 'Enabled' => true];
+$mr['mr_mel1'] = 1241;
+$mr['mr_mel2'] = 1243;
+$m->props['Automations'] = json_encode([$mr]);
+$m->ApplyChanges();
+at('18:00:00');
+fire($m, 1241, true);
+$GLOBALS['CLOCK'] += 50;
+fire($m, 1241, true); // Melder wiederholt „wahr“ (Anwesenheit)
+$GLOBALS['CLOCK'] += 30;
+$m->Tick();
+check('Melder wiederholt „wahr“: Haltezeit zählt ab der letzten Meldung — noch kein Zurücksetzen', GetValue(1241) === true);
+$GLOBALS['CLOCK'] += 31;
+$m->Tick();
+check('60 s ohne neue Meldung: auf „falsch“ zurückgesetzt (direkt, ohne Passwort/JSON-RPC)', GetValue(1241) === false);
+check('… im Protokoll vermerkt', strpos(json_encode(json_decode((string)$m->attrs['Protocol'], true), JSON_UNESCAPED_UNICODE), 'zurückgesetzt') !== false);
+fire($m, 1243, true);
+$GLOBALS['CLOCK'] += 61;
+$m->Tick();
+check('Gesperrte Variable („Variablen sperren“): klarer Hinweis, was zu tun ist', GetValue(1243) === true && strpos((string)$m->attrs['Protocol'], 'Variablen sperren') !== false, mb_substr((string)$m->attrs['Protocol'], 0, 400));
+$GLOBALS['OBJ'][1243]['ro'] = false;
+SetValue(1243, false);
 check('Nie verschachtelt gesperrt, am Ende alles freigegeben', ($GLOBALS['SEMMAX'] ?? 0) === 1 && array_sum($GLOBALS['SEM'] ?? []) === 0, json_encode([$GLOBALS['SEMMAX'] ?? null, $GLOBALS['SEM'] ?? null]));
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

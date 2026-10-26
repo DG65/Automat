@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.53' => [
+            '🔁 Neu: „Melder zurücksetzen“ — setzt Bewegungs-/Alarmmelder auf „falsch“, wenn sie auf „wahr“ stehen und seit der Haltezeit (Standard 60 s) keine neue Meldung kam, z. B. weil die „keine Bewegung“-Meldung im Funk verloren ging. Ersetzt Ablaufpläne/Skripte mit Passwort oder JSON-RPC. Der Status zählt je Melder, wie oft zurückgesetzt wurde. Hinweis: Bei Z-Wave-Instanzen mit „Variablen sperren“ lehnt Symcon das Setzen ab — Automat sagt das im Protokoll.',
+        ],
         '0.1.52' => [
             '🔃 Rollläden: Automat nimmt die Richtung jetzt je Rollladen aus dessen Profil — „~Shutter“: 0 = offen, „~Shutter.Reversed“: 0 = zu. Gemischte Aktoren (z. B. Z-Wave und Shelly) in einem Automatismus fahren damit alle richtig herum. Die Werte „offen/zu“ im Automatismus gelten nur noch für Rollläden ohne dieses Profil. Gilt auch für „Rollladen öffnen“ beim Wasser-/Rauchalarm.',
         ],
@@ -710,8 +713,9 @@ class Automat extends IPSModule
             $res['self'] = null;
         }
         foreach ($res['cmd'] as [$vid, $value]) {
-            if (!$this->switchVariable((int)$vid, $value, $row['Type'] === 'szene' ? $uid : '')) {
-                $failed[] = $this->varLabel((int)$vid);
+            $why = '';
+            if (!$this->switchVariable((int)$vid, $value, $row['Type'] === 'szene' ? $uid : '', !empty($res['raw']), $why)) {
+                $failed[] = $this->varLabel((int)$vid) . ($why !== '' ? ' (' . $why . ')' : '');
             }
         }
         $this->countStats($uid, count($res['cmd']) > 0, count($res['msg']) > 0);
@@ -803,6 +807,13 @@ class Automat extends IPSModule
             foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
                 if (IPS_VariableExists($cv) && AUTOMATErkennung::contactInverted($this->varInfo($cv))) {
                     $ctx['inv'][$cv] = true;
+                }
+            }
+        }
+        if ($row['Type'] === 'ruecksetzen') {
+            foreach (AUTOMATKatalog::vars($row, 'mr_mel') as $mv) {
+                if (IPS_VariableExists($mv)) {
+                    $ctx['upd'][$mv] = (int)(IPS_GetVariable($mv)['VariableUpdated'] ?? 0) ?: null;
                 }
             }
         }
@@ -926,7 +937,7 @@ class Automat extends IPSModule
 
     /** Schalten einer Zielvariable; merkt sich den Wert, damit das Echo nicht als Handbedienung zählt. */
     /** $origin: Kennung einer Szene, die schaltet — andere Automatismen sehen das als „zentral“, nicht als Handbedienung. */
-    private function switchVariable(int $vid, $value, string $origin = ''): bool
+    private function switchVariable(int $vid, $value, string $origin = '', bool $raw = false, string &$why = ''): bool
     {
         if (!IPS_VariableExists($vid)) {
             return false;
@@ -953,6 +964,23 @@ class Automat extends IPSModule
             $parent = IPS_GetParent($vid);
             if (HasAction($vid)) {
                 $ok = (bool)RequestAction($vid, $value);
+            } elseif ($raw) {
+                // Sensorwert direkt setzen (Melder zurücksetzen). Hat die Instanz „Variablen sperren“ an, lehnt Symcon ab.
+                $warn = '';
+                set_error_handler(function ($no, $str) use (&$warn) {
+                    $warn = $str;
+                    return true;
+                });
+                try {
+                    $ok = (bool)SetValue($vid, $value);
+                } finally {
+                    restore_error_handler();
+                }
+                if (!$ok) {
+                    $error = stripos($warn, 'read-only') !== false || stripos($warn, 'schreibgeschützt') !== false
+                        ? 'Variable ist gesperrt — in der Instanz „' . IPS_GetName($parent) . '“ „Variablen sperren“ ausschalten'
+                        : ($warn !== '' ? $warn : 'Setzen abgelehnt');
+                }
             } elseif ($parent > 0 && $parent !== $this->InstanceID && IPS_InstanceExists($parent)) {
                 // Variable einer fremden Instanz ohne Aktion: SetValue würde nur die Anzeige ändern, nicht das Gerät.
                 $error = 'gehört zur Instanz „' . IPS_GetName($parent) . '“ und hat keine Aktion — nicht schaltbar, bitte die schaltbare Variable des Geräts wählen';
@@ -965,6 +993,7 @@ class Automat extends IPSModule
         if (!$ok) {
             // Dauerhaft loggen, nicht nur ins Debug (SUITE.md „Sichtbare Rückmeldung“ Regel 5).
             $this->LogMessage('Schalten fehlgeschlagen: ' . $this->varLabel($vid) . ' → ' . AUTOMATLogik::fmtNum($value) . ($error !== '' ? ' (' . $error . ')' : ''), KL_WARNING);
+            $why = $error;
         }
         return $ok;
     }

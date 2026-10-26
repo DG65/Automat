@@ -162,6 +162,11 @@ class AUTOMATKatalog
             'desc'  => 'Wechselt der Hausmodus (z. B. auf „Nacht“ oder „Abwesend“), schaltet eine Gruppe von Geräten aus, ein oder auf einen Wert — z. B. beim Gehen alles aus, abends die Stimmungsbeleuchtung an. Nur beim Wechsel, danach darf wieder jeder schalten.',
             'needs' => ['light'],
         ],
+        'ruecksetzen' => [
+            'label' => 'Melder zurücksetzen', 'icon' => '🔁', 'cat' => 'ueberwachung', 'light' => false,
+            'desc'  => 'Setzt Bewegungs-/Alarmmelder auf „falsch“ zurück, wenn sie auf „wahr“ stehen und seit der Haltezeit keine neue Meldung mehr kam — z. B. weil die „keine Bewegung“-Meldung im Funk verloren ging. Danach lösen Licht und Ereignisse beim nächsten Erkennen wieder aus. Die Haltezeit sollte länger sein als die Zeit, nach der der Melder selbst zurückfällt.',
+            'needs' => ['motion'],
+        ],
     ];
     public const SZ_ACTIONS = [0 => 'ausschalten', 1 => 'einschalten', 2 => 'auf einen Wert setzen'];
     public const TG_ACTIONS = [0 => 'nichts', 1 => 'umschalten (an ↔ aus)', 2 => 'einschalten', 3 => 'ausschalten', 4 => 'auf einen Wert setzen', 5 => 'Hausmodus setzen (Wert 0 Tag … 4 Urlaub)'];
@@ -511,6 +516,12 @@ class AUTOMATKatalog
                     ['k' => 'info', 'c' => 'Meldung'],
                     ['n' => 'sz_push', 'k' => 'bool', 'c' => 'Melden, was geschaltet wurde (wie, legst du unter „🔔 Meldungen“ fest)', 'd' => false],
                 ];
+            case 'ruecksetzen':
+                return [
+                    ['k' => 'info', 'c' => 'Melder'],
+                    ['n' => 'mr_mel', 'k' => 'vars', 'max' => 16, 'c' => 'Melder (wahr = Bewegung/Auslösung)', 'req' => true],
+                    ['n' => 'mr_halt', 'k' => 'int', 'c' => 'Zurücksetzen, wenn so lange keine neue Meldung kam (länger als die eigene Rückfallzeit des Melders)', 'd' => 60, 'suffix' => ' s', 'min' => 5, 'max' => 3600],
+                ];
             case 'fertig':
                 return [
                     ['k' => 'info', 'c' => 'Leistungsmessung des Geräts'],
@@ -780,6 +791,9 @@ class AUTOMATKatalog
                 break;
             case 'szene':
                 $out = self::vars($row, 'sz_out');
+                break;
+            case 'ruecksetzen':
+                $in = self::vars($row, 'mr_mel'); // nur „in“: das eigene Zurücksetzen kommt als Melder-Meldung zurück
                 break;
             case 'gehen':
                 $read = array_merge(self::vars($row, 'gc_kon'), self::vars($row, 'gc_geraet'));
@@ -1091,6 +1105,10 @@ class AUTOMATKatalog
                 break;
             case 'standby':
                 $p[] = 'unter ' . (float)($row['sb_schwelle'] ?? 5) . ' W für ' . (int)($row['sb_dauer'] ?? 30) . ' min → aus';
+                break;
+            case 'ruecksetzen':
+                $p[] = count(self::vars($row, 'mr_mel')) . ' Melder';
+                $p[] = 'zurück nach ' . (int)($row['mr_halt'] ?? 60) . ' s ohne neue Meldung';
                 break;
             case 'lueften':
                 $p[] = 'ab ' . self::num((float)($row['lf_hoch'] ?? 65)) . ', gut unter ' . self::num((float)($row['lf_ok'] ?? 55));

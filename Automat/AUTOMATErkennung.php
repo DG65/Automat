@@ -523,6 +523,15 @@ class AUTOMATErkennung
             $fill($row, 'gc_kon', array_column($gk, 'vid'));
             $add('gehen', '', 'Gehen-Check', $row, count($gk) . ' Fenster-/Türkontakt(e) gefunden (' . $labels($gk, 4) . ') — beim Wechsel auf „Abwesend“/„Urlaub“ meldet er, was noch offen ist', array_column($gk, 'vid'));
         }
+        // Melder zurücksetzen: alle Bewegungsmelder in einem Automatismus (Absicherung gegen verlorene „keine Bewegung“)
+        $mot = $byR('motion');
+        if (count($mot) > 0) {
+            $row = AUTOMATKatalog::defaults('ruecksetzen');
+            $row['Name'] = 'Melder zurücksetzen';
+            $row['Room'] = '';
+            $fill($row, 'mr_mel', array_column($mot, 'vid'));
+            $add('ruecksetzen', '', 'Melder zurücksetzen', $row, count($mot) . ' Bewegungsmelder (' . $labels($mot, 4) . ') — setzt einen Melder zurück, der 60 s ohne neue Meldung auf „wahr“ steht (z. B. verlorene „keine Bewegung“-Meldung)', array_column($mot, 'vid'));
+        }
         // Türklingel
         foreach (array_slice($byR('bell'), 0, 2) as $it) {
             $row = AUTOMATKatalog::defaults('klingel');

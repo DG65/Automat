@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.53 (Build 54) — 26.10.2026
+
+- Neue Art `ruecksetzen` „Melder zurücksetzen“ (Präfix `mr_`): Melder auf „wahr“ ohne neue Meldung seit `mr_halt` (Standard 60 s, gemessen ab der letzten Meldung bzw. `VariableUpdated`) → `SetValue(false)`. Schreibweg `switchVariable(..., raw)` für Variablen ohne Aktion; gesperrte Variablen („Variablen sperren“ der Z-Wave-Instanz, Symcon: „read-only“) ergeben einen klaren Hinweis. Status mit Zählern je Melder (7 Tage). „Entdecken“ schlägt sie für alle Bewegungsmelder vor. Anlass: Dietmar hat Ablaufpläne „Zwangsschaltung Aus“ mit Klartext-Passwort/JSON-RPC gelöscht; Sensoren gleichzeitig auf Rückfall 30 s / Totzeit 8 s / 2 Impulse umgestellt.
+
 ## 0.1.52 (Build 53) — 17.10.2026
 
 - Rollladen-Richtung je Gerät: `shutterDir()` liest das Profil (`~Shutter` → offen 0 / zu Höchstwert; `~Shutter.Reversed` → offen Höchstwert / zu 0) und gibt es als `ctx['rlDir']` an Rollladen und Alarm; `AUTOMATLogik::shutterTarget()` nutzt es vor `rl_auf`/`rl_zu` bzw. `al_hochwert`. Nachkontrolle mit Zielwert je Rollladen. Live Dietmar: Z-Wave-Jalousien (~Shutter) und Shelly (~Shutter.Reversed) mit einheitlich „offen 100 / zu 0“ — die Z-Wave-Jalousien fuhren abends auf statt zu.
