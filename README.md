@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.54-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.55-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -15,7 +15,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.1.54 (Beta im Module Store, 699 Prüfungen):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.1.55 (Beta im Module Store, 700 Prüfungen):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 

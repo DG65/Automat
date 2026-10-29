@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.55' => [
+            '🪟 Formular: Aufbau nach der einheitlichen Regel aller DG65-Module: „📖 Dokumentation & Hilfe“ steht jetzt fest oben nach „Neu“ und lässt sich nicht mehr verschieben oder ausblenden. Hattest du sie ausgeblendet, ist sie wieder da. Alle Fachbereiche wählst du wie bisher selbst.',
+        ],
         '0.1.54' => [
             '⏱ Wächter mit Hysterese: Bei „größer als“/„kleiner als“ lässt sich eine zweite Schwelle eintragen, ab der der Zustand wieder als „in Ordnung“ gilt — z. B. melden unter 20 GB freiem Speicher, erst wieder meldebereit über 30 GB. Ein Wert, der um die Grenze pendelt, meldet so nur einmal.',
         ],
@@ -4184,10 +4187,10 @@ class Automat extends IPSModule
     }
 
     // =====================================================================
-    //  Formular: Aufbau (wie Batteriewächter, zusätzlich „Ausgeblendet“)
+    //  Formular: Aufbau (SUITE.md 3a, Referenz Batteriewächter)
     // =====================================================================
 
-    private const LAYOUT_KEYS = ['doc', 'automations', 'discover', 'catalog', 'mode', 'notify', 'protocol'];
+    private const LAYOUT_KEYS = ['automations', 'discover', 'catalog', 'mode', 'notify', 'protocol'];
 
     /** Reihenfolge und Zustand je Bereich: key => ['open' => std|open|closed|hidden, 'pos' => int]. */
     private function formLayout(): array
@@ -4222,7 +4225,7 @@ class Automat extends IPSModule
     private function layoutPanels(): array
     {
         return [
-            'doc' => $this->DocPanel(), 'automations' => $this->AutomationsPanel(), 'discover' => $this->DiscoverPanel(),
+            'automations' => $this->AutomationsPanel(), 'discover' => $this->DiscoverPanel(),
             'catalog' => $this->CatalogPanel(), 'mode' => $this->ModePanel(), 'notify' => $this->NotifyPanel(), 'protocol' => $this->ProtocolPanel(),
         ];
     }
@@ -4242,7 +4245,7 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🪟  Formular: Aufbau' . (count($hidden) > 0 ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
             'items' => [
                 ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen aufgeklappt sind, in welcher Reihenfolge sie stehen und welche du gar nicht sehen willst — z. B. „Katalog“ oder „Entdecken“, wenn alles eingerichtet ist. Symcon merkt sich das Auf- und Zuklappen nicht selbst. Wirkt nach „Übernehmen“ beim nächsten Öffnen.'],
-                ['type' => 'Label', 'caption' => 'Kein Haken heißt Standard (wie das Modul es vorsieht). Sind mehrere Haken gesetzt, gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt. Oben (Wozu, Neu) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
+                ['type' => 'Label', 'caption' => 'Kein Haken heißt Standard (wie das Modul es vorsieht). Sind mehrere Haken gesetzt, gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt. Oben (Wozu, Neu, Dokumentation & Hilfe) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
                 ['type' => 'Label', 'caption' => count($hidden) > 0
                     ? '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.'
                     : 'ℹ️ Nichts ausgeblendet.'],
@@ -4325,7 +4328,7 @@ class Automat extends IPSModule
             $middle[] = $p;
         }
         $elements = array_values(array_filter(array_merge(
-            [$this->PurposeIntro(), $this->NewsBanner()],
+            [$this->PurposeIntro(), $this->NewsBanner(), $this->DocPanel()],
             $middle,
             [$this->LayoutPanel($layout, $panels), $this->ForumHint(), $this->LicenseHint()]
         )));

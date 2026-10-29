@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.55 (Build 56) — 29.10.2026
+
+- Formular: Aufbau an SUITE.md 3a angeglichen: `doc` aus `LAYOUT_KEYS` entfernt, „Dokumentation & Hilfe“ fest nach Wozu/Neu (nicht mehr wählbar/ausblendbar); gespeicherte `doc`-Zeilen werden als unbekannter Schlüssel ignoriert. Erklärtext nennt Doku bei den festen Bereichen. Prüfstand: Doku fest oben, unbekannter Schlüssel, Reset mit 6 Bereichen. Fachpanels in `actions` gibt es nicht.
+
 ## 0.1.54 (Build 55) — 29.10.2026
 
 - Wächter: neues Feld `wa_frei` (nur bei „größer als“/„kleiner als“) — Freigabe-Schwelle (Hysterese). Nach einer Meldung gilt der Zustand erst als vorbei (Entwarnung, wieder meldebereit), wenn der Wert über/unter diese Schwelle zurück ist (`AUTOMATLogik::waechterFrei()`). Anlass: Frigate-Speicher-Meldung (FrigateHub #45351), Wunsch Dietmar.
