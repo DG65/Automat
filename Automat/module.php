@@ -69,6 +69,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.1.54' => [
+            '⏱ Wächter mit Hysterese: Bei „größer als“/„kleiner als“ lässt sich eine zweite Schwelle eintragen, ab der der Zustand wieder als „in Ordnung“ gilt — z. B. melden unter 20 GB freiem Speicher, erst wieder meldebereit über 30 GB. Ein Wert, der um die Grenze pendelt, meldet so nur einmal.',
+        ],
         '0.1.53' => [
             '🔁 Neu: „Melder zurücksetzen“ — setzt Bewegungs-/Alarmmelder auf „falsch“, wenn sie auf „wahr“ stehen und seit der Haltezeit (Standard 60 s) keine neue Meldung kam, z. B. weil die „keine Bewegung“-Meldung im Funk verloren ging. Ersetzt Ablaufpläne/Skripte mit Passwort oder JSON-RPC. Der Status zählt je Melder, wie oft zurückgesetzt wurde. Hinweis: Bei Z-Wave-Instanzen mit „Variablen sperren“ lehnt Symcon das Setzen ab — Automat sagt das im Protokoll.',
         ],

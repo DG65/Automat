@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.54 (Build 55) — 29.10.2026
+
+- Wächter: neues Feld `wa_frei` (nur bei „größer als“/„kleiner als“) — Freigabe-Schwelle (Hysterese). Nach einer Meldung gilt der Zustand erst als vorbei (Entwarnung, wieder meldebereit), wenn der Wert über/unter diese Schwelle zurück ist (`AUTOMATLogik::waechterFrei()`). Anlass: Frigate-Speicher-Meldung (FrigateHub #45351), Wunsch Dietmar.
+
 ## 0.1.53 (Build 54) — 26.10.2026
 
 - Neue Art `ruecksetzen` „Melder zurücksetzen“ (Präfix `mr_`): Melder auf „wahr“ ohne neue Meldung seit `mr_halt` (Standard 60 s, gemessen ab der letzten Meldung bzw. `VariableUpdated`) → `SetValue(false)`. Schreibweg `switchVariable(..., raw)` für Variablen ohne Aktion; gesperrte Variablen („Variablen sperren“ der Z-Wave-Instanz, Symcon: „read-only“) ergeben einen klaren Hinweis. Status mit Zählern je Melder (7 Tage). „Entdecken“ schlägt sie für alle Bewegungsmelder vor. Anlass: Dietmar hat Ablaufpläne „Zwangsschaltung Aus“ mit Klartext-Passwort/JSON-RPC gelöscht; Sensoren gleichzeitig auf Rückfall 30 s / Totzeit 8 s / 2 Impulse umgestellt.

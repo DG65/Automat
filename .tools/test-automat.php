@@ -618,6 +618,35 @@ $r = step($fi, $st, ['k' => 'trigger', 'vid' => 500, 'v' => true], ['val' => [50
 check('Invertiert: „wahr“ = geschlossen → keine Absenkung', $r['cmd'] === [] && $st['ph'] === 'zu');
 
 heading('A5. Wächter „bleibt zu lange so“');
+// Hysterese (Wunsch Dietmar 29.10.2026: Frigate-Speicher unter 20 GB — einmal melden, erst nach > 30 GB wieder)
+$wh = AUTOMATKatalog::defaults('waechter') + ['Uid' => 'awfrg1', 'Name' => 'Frigate-Speicher'];
+$wh['wa_var'] = 8800;
+$wh['wa_op'] = 3;
+$wh['wa_wert'] = '20';
+$wh['wa_frei'] = '30';
+$wh['wa_dauer'] = 5;
+$wh['wa_ende'] = false;
+$sh = [];
+at('10:00:00');
+step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 19.5]]);
+at('10:05:00');
+$r = step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 19.0]]);
+check('Speicher 5 min unter 20 GB: eine Meldung', count($r['msg']) === 1);
+at('10:30:00');
+$r1 = step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 23.0]]);
+at('11:00:00');
+$r2 = step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 18.0]]);
+at('11:10:00');
+$r3 = step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 17.0]]);
+check('Pendelt um die Grenze (23 → 18 GB): keine neue Meldung, bleibt „gemeldet“', $r1['msg'] === [] && $r2['msg'] === [] && $r3['msg'] === [] && $sh['ph'] === 'alarm');
+at('12:00:00');
+step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 31.0]]);
+check('Über 30 GB: wieder in Ordnung', $sh['ph'] === 'normal');
+at('13:00:00');
+step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 19.0]]);
+at('13:05:00');
+$r = step($wh, $sh, ['k' => 'tick'], ['val' => [8800 => 19.0]]);
+check('… danach wieder unter 20 GB: neue Meldung', count($r['msg']) === 1);
 $w = AUTOMATKatalog::defaults('waechter');
 $w['Name'] = 'Haustür';
 $w['wa_var'] = 700;

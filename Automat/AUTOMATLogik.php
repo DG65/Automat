@@ -1184,6 +1184,9 @@ class AUTOMATLogik
                 $st['last'] = $now;
                 $res['log'] = 'Erinnerung gesendet.';
             }
+        } elseif ($st['ph'] === 'alarm' && !self::waechterFrei($row, $v)) {
+            // Hysterese: Erst wenn der Wert deutlich zurück ist, gilt es als vorbei — sonst gäbe es bei einem Wert,
+            // der um die Grenze pendelt, jedes Mal eine neue Meldung (Wunsch Dietmar 29.10.2026, Frigate-Speicher)
         } else {
             if ($st['ph'] === 'alarm' && !empty($row['wa_ende']) && $hard === '') {
                 $res['msg'][] = ['✅ ' . $name, $varName . ' ist wieder in Ordnung (aktuell ' . self::fmtNum($v) . ').'];
@@ -1203,11 +1206,24 @@ class AUTOMATLogik
             }
         } elseif ($st['ph'] === 'alarm') {
             $res['due'] = $wdh > 0 ? (int)$st['last'] + $wdh : null;
-            $res['status'] = '🔔 Gemeldet — ' . $varName . ' ' . $cmpText . ' seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr';
+            $frei = trim((string)($row['wa_frei'] ?? ''));
+            $res['status'] = '🔔 Gemeldet — ' . $varName . ' ' . $cmpText . ' seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr'
+                . (!$cond && $frei !== '' ? ' — wieder in Ordnung ' . ($op === 3 ? 'ab ' : 'unter ') . $frei . ' (aktuell ' . self::fmtNum($v) . ')' : '');
         } else {
             $res['status'] = $hard !== '' ? self::hardStatus($hard) : ($v === null ? '❔ Variable fehlt' : '✅ In Ordnung (' . self::fmtNum($v) . ')');
         }
         return $res;
+    }
+
+    /** Ist der Wert über die Freigabe-Schwelle („Hysterese“) zurück? Ohne Angabe: sofort. */
+    public static function waechterFrei(array $row, $v): bool
+    {
+        $op = (int)($row['wa_op'] ?? 4);
+        $frei = str_replace(',', '.', trim((string)($row['wa_frei'] ?? '')));
+        if ($frei === '' || !is_numeric($frei) || !in_array($op, [2, 3], true) || !is_numeric($v)) {
+            return true;
+        }
+        return $op === 3 ? (float)$v >= (float)$frei : (float)$v <= (float)$frei;
     }
 
     // ------------------------------------------------------------------
