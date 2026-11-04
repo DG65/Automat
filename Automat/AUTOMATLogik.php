@@ -53,7 +53,7 @@ class AUTOMATLogik
                 }
             }
         }
-        return [$cmd, count($cmd) > 0 ? 'Sollwert zurück auf ' . implode(', ', array_unique($vals)) . '.' : ''];
+        return [$cmd, count($cmd) > 0 ? AUTOMATText::t('Setpoint back to %s.', implode(', ', array_unique($vals))) : ''];
     }
 
     public static function step(array $row, array $st, array $ev, array $ctx): array
@@ -111,7 +111,7 @@ class AUTOMATLogik
             case 'zeitschalt':
                 return self::zeitschalt($row, $st, $ev, $ctx, $res);
         }
-        $res['status'] = '❔ Unbekannter Typ';
+        $res['status'] = AUTOMATText::t('❔ Unknown type');
         return $res;
     }
 
@@ -123,10 +123,10 @@ class AUTOMATLogik
     public static function hardBlock(array $ctx): string
     {
         if (!empty($ctx['paused'])) {
-            return 'alle Automatismen pausiert';
+            return AUTOMATText::t('all automations paused');
         }
         if (!empty($ctx['locked'])) {
-            return 'gesperrt';
+            return AUTOMATText::t('locked');
         }
         return '';
     }
@@ -136,10 +136,10 @@ class AUTOMATLogik
     {
         $mode = (int)($ctx['mode'] ?? 0);
         if (array_key_exists('m' . $mode, $row) && !$row['m' . $mode]) {
-            return 'im Hausmodus „' . (AUTOMATKatalog::modes()[$mode] ?? $mode) . '“ nicht aktiv';
+            return AUTOMATText::t('not active in house mode "%s"', AUTOMATKatalog::modes()[$mode] ?? $mode);
         }
         if (isset($ctx['condOk']) && !$ctx['condOk']) {
-            return 'Bedingung nicht erfüllt';
+            return AUTOMATText::t('condition not met');
         }
         return '';
     }
@@ -251,7 +251,7 @@ class AUTOMATLogik
             : ($rest >= 60 ? floor($rest / 60) . ':' . sprintf('%02d', $rest % 60) . ' min' : $rest . ' s');
         $day = date('Y-m-d', $ts) === date('Y-m-d', $now) ? '' : date('d.m.Y ', $ts);
         // Sekunden nur bei kurzen Zeiten (Treppenlicht); bei Stunden Abstand stören sie („schließt um 18:41:36“)
-        return $day . date($rest >= 3600 ? 'H:i' : 'H:i:s', $ts) . ' Uhr (in ' . $txt . ')';
+        return AUTOMATText::t('%s (in %s)', $day . date($rest >= 3600 ? 'H:i' : 'H:i:s', $ts), $txt);
     }
 
     /** Restzeit kurz: „45 s", „1:35 min", „2 h 05 min"; '' wenn vorbei. */
@@ -273,7 +273,7 @@ class AUTOMATLogik
     public static function fmtNum($v): string
     {
         if (is_bool($v)) {
-            return $v ? 'an' : 'aus';
+            return $v ? AUTOMATText::t('on') : AUTOMATText::t('off');
         }
         if (is_float($v)) {
             return rtrim(rtrim(number_format($v, 2, ',', ''), '0'), ',');
@@ -283,7 +283,7 @@ class AUTOMATLogik
 
     private static function hardStatus(string $why): string
     {
-        return '⏸ ' . ucfirst($why) . ' — schaltet nichts';
+        return AUTOMATText::t('⏸ %s — switches nothing', ucfirst($why));
     }
 
     // ------------------------------------------------------------------
@@ -310,13 +310,13 @@ class AUTOMATLogik
             $soft = self::softBlock($row, $ctx);
             if ($st['ph'] === 'aus') {
                 if ($soft !== '') {
-                    $res['log'] = $why . ' — nicht eingeschaltet: ' . $soft . '.';
+                    $res['log'] = AUTOMATText::t('%s — not switched on: %s.', $why, $soft);
                     return;
                 }
                 $res['cmd'] = array_merge($res['cmd'], self::onCmds($outs, $row, $ctx, 'zl'));
                 $st['ph'] = 'an';
                 $st['until'] = $now + $dauer;
-                $res['log'] = $why . ' — Licht an, aus um ' . date('H:i:s', $st['until']) . ' Uhr.';
+                $res['log'] = AUTOMATText::t('%s — light on, off at %s.', $why, date('H:i:s', $st['until']));
                 return;
             }
             if (empty($row['zl_nachtrigger'])) {
@@ -327,25 +327,25 @@ class AUTOMATLogik
             }
             $st['ph'] = 'an';
             $st['until'] = $now + $dauer;
-            $res['log'] = $why . ' — Zeit verlängert bis ' . date('H:i:s', $st['until']) . ' Uhr.';
+            $res['log'] = AUTOMATText::t('%s — time extended until %s.', $why, date('H:i:s', $st['until']));
         };
 
         if ($k === 'run') {
-            $start('Von Hand über Automat ausgelöst');
+            $start(AUTOMATText::t('Triggered manually via Automat'));
         } elseif ($k === 'trigger' && in_array($vid, $trg, true) && self::isTrue($ev['v'] ?? false)) {
-            $start('Taster/Auslöser betätigt');
+            $start(AUTOMATText::t('Button/trigger pressed'));
         } elseif ($k === 'output' && empty($ev['own']) && in_array($vid, $outs, true)) {
             if (self::isTrue($ev['v'] ?? false)) {
                 if ($st['ph'] === 'aus') {
                     // Von Hand (oder von außen) eingeschaltet: Treppenlicht-Prinzip — die Zeit läuft trotzdem.
                     $st['ph'] = 'an';
                     $st['until'] = $now + $dauer;
-                    $res['log'] = 'Licht wurde eingeschaltet — geht um ' . date('H:i:s', $st['until']) . ' Uhr wieder aus.';
+                    $res['log'] = AUTOMATText::t('Light was switched on — goes off again at %s.', date('H:i:s', $st['until']));
                 }
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
                 $st['ph'] = 'aus';
                 $st['until'] = 0;
-                $res['log'] = !empty($ev['central']) ? 'Zentral ausgeschaltet (' . (string)$ev['central'] . ') — Zeit abgebrochen.' : 'Licht wurde von Hand ausgeschaltet — Zeit abgebrochen.';
+                $res['log'] = !empty($ev['central']) ? AUTOMATText::t('Switched off centrally (%s) — time cancelled.', (string)$ev['central']) : AUTOMATText::t('Light was switched off manually — time cancelled.');
             }
         }
         $res['st'] = $st;
@@ -371,7 +371,7 @@ class AUTOMATLogik
                 }
             }
             if ($st['ph'] !== 'aus' && $st['ph'] !== 'gesperrt') {
-                $res['log'] = 'Automatik ' . $hard . ' — laufende Zeit abgebrochen, Licht bleibt wie es ist.';
+                $res['log'] = AUTOMATText::t('Automation %s — running time cancelled, light stays as it is.', $hard);
             }
             $st['ph'] = 'gesperrt';
             $st['until'] = 0;
@@ -384,24 +384,24 @@ class AUTOMATLogik
             $st['ph'] = self::anyOn($outs, $ctx) ? 'an' : 'aus';
             // Meldet ein Melder noch Bewegung, läuft der Nachlauf erst danach (sonst Licht aus bei Bewegung)
             $st['until'] = $st['ph'] === 'an' && !$active ? $now + $dauer : 0;
-            $res['log'] = 'Sperre aufgehoben' . ($st['ph'] === 'an' ? ($st['until'] > 0 ? ' — Licht ist an, geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.' : ' — Licht ist an, Bewegung erkannt.') : '.');
+            $res['log'] = $st['ph'] === 'an' ? ($st['until'] > 0 ? AUTOMATText::t('Lock lifted — light is on, goes off at %s.', date('H:i:s', $st['until'])) : AUTOMATText::t('Lock lifted — light is on, motion detected.')) : AUTOMATText::t('Lock lifted.');
         }
         if (!empty($ctx['permanent'])) {
             if ($st['ph'] !== 'dauer') {
                 $res['cmd'] = self::onCmds($outs, $row, $ctx, $p);
-                $res['log'] = 'Dauerlicht eingeschaltet.';
+                $res['log'] = AUTOMATText::t('Permanent light switched on.');
             }
             $st['ph'] = 'dauer';
             $st['until'] = 0;
             $res['st'] = $st;
-            $res['status'] = '🔆 Dauerlicht';
+            $res['status'] = AUTOMATText::t('🔆 Permanent light');
             $res['done'] = true;
             return $res;
         }
         if ($st['ph'] === 'dauer') {
             $st['ph'] = 'an';
             $st['until'] = $active ? 0 : $now + $dauer;
-            $res['log'] = 'Dauerlicht beendet — ' . ($active ? 'Bewegung erkannt, Nachlauf startet danach.' : 'Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.');
+            $res['log'] = $active ? AUTOMATText::t('Permanent light ended — motion detected, follow-up time starts afterwards.') : AUTOMATText::t('Permanent light ended — light goes off at %s.', date('H:i:s', $st['until']));
         }
         $res['st'] = $st;
         return $res;
@@ -426,43 +426,43 @@ class AUTOMATLogik
             $res['cmd'] = array_merge($res['cmd'], self::warnCmds($outs, $row, $ctx, $p, $hasSwitch));
             $st['ph'] = $hasSwitch ? 'flash' : 'warn';
             $st['fl'] = $now + 1;
-            $res['log'] = $res['log'] ?? 'Vorwarnung — Licht geht um ' . date('H:i:s', (int)$st['until']) . ' Uhr aus.';
+            $res['log'] = $res['log'] ?? AUTOMATText::t('Pre-warning — light goes off at %s.', date('H:i:s', (int)$st['until']));
         }
         if (in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] > 0 && $now >= (int)$st['until']) {
             $res['cmd'] = array_merge($res['cmd'], self::offCmds($outs, $ctx));
             $st['ph'] = 'aus';
             $st['until'] = 0;
-            $res['log'] = 'Zeit abgelaufen — Licht aus.';
+            $res['log'] = AUTOMATText::t('Time elapsed — light off.');
         }
         $res['st'] = $st;
         switch ($st['ph']) {
             case 'an':
                 if ((int)$st['until'] > 0) {
                     $res['due'] = $vorwarn > 0 && (int)$st['until'] - $vorwarn > $now ? (int)$st['until'] - $vorwarn : (int)$st['until'];
-                    $res['status'] = '💡 An — aus um ' . self::fmtClock((int)$st['until'], $now);
+                    $res['status'] = AUTOMATText::t('💡 On — off at %s', self::fmtClock((int)$st['until'], $now));
                     $res['end'] = (int)$st['until'];
                 } else {
-                    $res['status'] = '💡 An — Bewegung erkannt, Nachlauf startet danach';
+                    $res['status'] = AUTOMATText::t('💡 On — motion detected, follow-up time starts afterwards');
                 }
                 break;
             case 'flash':
                 $res['due'] = (int)$st['fl'];
-                $res['status'] = '⚠️ Vorwarnung — aus um ' . self::fmtClock((int)$st['until'], $now);
+                $res['status'] = AUTOMATText::t('⚠️ Pre-warning — off at %s', self::fmtClock((int)$st['until'], $now));
                 $res['end'] = (int)$st['until'];
                 break;
             case 'warn':
                 $res['due'] = (int)$st['until'];
-                $res['status'] = '⚠️ Vorwarnung — aus um ' . self::fmtClock((int)$st['until'], $now);
+                $res['status'] = AUTOMATText::t('⚠️ Pre-warning — off at %s', self::fmtClock((int)$st['until'], $now));
                 $res['end'] = (int)$st['until'];
                 break;
             case 'hand':
                 $res['due'] = (int)($st['hu'] ?? 0) ?: null;
-                $res['status'] = '✋ Von Hand ausgeschaltet — Automatik pausiert bis ' . date('H:i', (int)($st['hu'] ?? $now)) . ' Uhr';
+                $res['status'] = AUTOMATText::t('✋ Switched off manually — automation paused until %s', date('H:i', (int)($st['hu'] ?? $now)));
                 $res['end'] = (int)($st['hu'] ?? 0) ?: null;
                 break;
             default:
                 $soft = self::softBlock($row, $ctx);
-                $res['status'] = $soft !== '' ? '🌙 Bereit, aber ' . $soft : '⚪ Aus — bereit';
+                $res['status'] = $soft !== '' ? AUTOMATText::t('🌙 Ready, but %s', $soft) : AUTOMATText::t('⚪ Off — ready');
         }
         return $res;
     }
@@ -608,14 +608,14 @@ class AUTOMATLogik
             $gap = $now - (int)$st['offAt'];
             $st['offAt'] = 0;
             $st['fo'][] = $now;
-            $txt = 'Fehlabschaltung: Licht ' . $how . ' ' . AUTOMATKatalog::dur($gap) . ' nach dem automatischen Ausschalten wieder an.';
+            $txt = AUTOMATText::t('False switch-off: light switched back on %s, %s after the automatic switch-off.', $how, AUTOMATKatalog::dur($gap));
             if ($learnOn) {
                 $old = self::effectiveNachlauf(['bl_nachlauf' => $base, 'bl_nachlaufmax' => $maxN, 'bl_lernen' => true], $st);
                 // Höchstwert = $maxN (schon auf das Vierfache des Grundwerts begrenzt)
                 $st['learnN'] = min($maxN, max($base, (int)round($old * 1.5)));
                 $st['lastDecay'] = $now;
                 $nach = $st['learnN'];
-                $txt .= $st['learnN'] > $old ? ' Nachlauf gelernt: ' . AUTOMATKatalog::dur($old) . ' → ' . AUTOMATKatalog::dur($st['learnN']) . '.' : ' Nachlauf ist schon beim Höchstwert ' . AUTOMATKatalog::dur($maxN) . '.';
+                $txt .= ' ' . ($st['learnN'] > $old ? AUTOMATText::t('Follow-up time learned: %s → %s.', AUTOMATKatalog::dur($old), AUTOMATKatalog::dur($st['learnN'])) : AUTOMATText::t('Follow-up time is already at its maximum %s.', AUTOMATKatalog::dur($maxN)));
             }
             $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
         };
@@ -644,25 +644,25 @@ class AUTOMATLogik
                         $luxVal = $luxVid > 0 && array_key_exists($luxVid, $ctx['val'] ?? []) ? (float)$ctx['val'][$luxVid] : null;
                         $luxMax = (float)($row['bl_luxschwelle'] ?? 30);
                         if ($soft !== '') {
-                            $res['log'] = 'Bewegung — nicht eingeschaltet: ' . $soft . '.';
+                            $res['log'] = AUTOMATText::t('Motion — not switched on: %s.', $soft);
                         } elseif ($luxVal !== null && $luxVal >= $luxMax && ((int)$st['offAt'] <= 0 || $now - (int)$st['offAt'] > $window)) {
                             // Helligkeit zählt nur in den ersten Minuten nach dem eigenen Ausschalten nicht — vorher galt
                             // das ab dem letzten automatischen Aus für immer (Licht ging mittags bei 70–540 lx an, Dietmar 16.10.2026).
-                            $res['log'] = 'Bewegung — nicht eingeschaltet: hell genug (' . self::fmtNum($luxVal) . ' lx ≥ ' . self::fmtNum($luxMax) . ' lx).';
+                            $res['log'] = AUTOMATText::t('Motion — not switched on: bright enough (%s lx ≥ %s lx).', self::fmtNum($luxVal), self::fmtNum($luxMax));
                         } elseif (self::anyOn($outs, $ctx)) {
-                            $res['log'] = 'Bewegung — Licht war schon an (von Hand oder anderer Steuerung), wird nicht übernommen.';
+                            $res['log'] = AUTOMATText::t('Motion — light was already on (manually or by another control), not taken over.');
                         } else {
                             // Kurz nach dem eigenen Ausschalten zählt die Helligkeit nicht (Restlicht/Nachleuchten): sonst bliebe es nach einer Fehlabschaltung dunkel.
                             $res['cmd'] = self::onCmds($outs, $row, $ctx, 'bl');
                             $st['ph'] = 'an';
-                            $res['log'] = 'Bewegung — Licht an.';
-                            $noteReOn('durch Bewegung');
+                            $res['log'] = AUTOMATText::t('Motion — light on.');
+                            $noteReOn(AUTOMATText::t('by motion'));
                             $st['until'] = $impuls ? $now + $nach : 0;
                         }
                     } else {
                         if ($st['ph'] === 'warn' || $st['ph'] === 'flash') {
                             $res['cmd'] = self::onCmds($outs, $row, $ctx, 'bl');
-                            $res['log'] = 'Bewegung während der Vorwarnung — Licht bleibt an.';
+                            $res['log'] = AUTOMATText::t('Motion during pre-warning — light stays on.');
                         }
                         $st['ph'] = 'an';
                         $st['until'] = $impuls ? $now + $nach : 0;
@@ -670,17 +670,18 @@ class AUTOMATLogik
                 }
             } elseif (in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0 && count($hintNames) === 0) {
                 $st['until'] = $now + $nach;
-                $res['log'] = 'Keine Bewegung mehr — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus'
-                    . ($nach > $base ? ' (gelernter Nachlauf ' . AUTOMATKatalog::dur($nach) . ', eingestellt ' . AUTOMATKatalog::dur($base) . ').' : '.');
+                $res['log'] = $nach > $base
+                    ? AUTOMATText::t('No more motion — light goes off at %s (learned follow-up time %s, set %s).', date('H:i:s', $st['until']), AUTOMATKatalog::dur($nach), AUTOMATKatalog::dur($base))
+                    : AUTOMATText::t('No more motion — light goes off at %s.', date('H:i:s', $st['until']));
             }
         } elseif ($k === 'output' && empty($ev['own']) && in_array($vid, $outs, true)) {
             if (self::isTrue($ev['v'] ?? false)) {
                 if ($st['ph'] === 'aus' || $st['ph'] === 'hand') {
                     $st['ph'] = 'an';
-                    $noteReOn('von Hand');
+                    $noteReOn(AUTOMATText::t('manually'));
                     // Meldet ein Melder noch Bewegung, startet der Nachlauf erst mit „keine Bewegung“
                     $st['until'] = $activeNow ? 0 : $now + max($nach, $handPause);
-                    $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Licht wurde von Hand eingeschaltet — ' . ($st['until'] > 0 ? 'geht um ' . date('H:i:s', $st['until']) . ' Uhr aus, Bewegung verlängert.' : 'Bewegung erkannt, Nachlauf startet danach.');
+                    $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . ($st['until'] > 0 ? AUTOMATText::t('Light was switched on manually — goes off at %s, motion extends.', date('H:i:s', $st['until'])) : AUTOMATText::t('Light was switched on manually — motion detected, follow-up time starts afterwards.'));
                 }
             } elseif (!self::anyOn($outs, $ctx) && in_array($st['ph'], ['an', 'warn', 'flash'], true)) {
                 $st['offAt'] = 0; // von Hand aus: kein Lernanlass
@@ -688,22 +689,22 @@ class AUTOMATLogik
                     // Zentral-Aus/Szene: kein Handeingriff — keine Pause, die nächste Bewegung schaltet wieder ein.
                     $st['ph'] = 'aus';
                     $st['until'] = 0;
-                    $res['log'] = 'Zentral ausgeschaltet (' . (string)$ev['central'] . ') — nächste Bewegung schaltet wieder ein.';
+                    $res['log'] = AUTOMATText::t('Switched off centrally (%s) — next motion switches on again.', (string)$ev['central']);
                 } elseif ($handPause > 0) {
                     $st['ph'] = 'hand';
                     $st['hu'] = $now + $handPause;
                     $st['until'] = 0;
-                    $res['log'] = 'Licht wurde von Hand ausgeschaltet — Bewegung schaltet bis ' . date('H:i', $st['hu']) . ' Uhr nicht wieder ein.';
+                    $res['log'] = AUTOMATText::t('Light was switched off manually — motion will not switch it on again until %s.', date('H:i', $st['hu']));
                 } else {
                     $st['ph'] = 'aus';
                     $st['until'] = 0;
-                    $res['log'] = 'Licht wurde von Hand ausgeschaltet.';
+                    $res['log'] = AUTOMATText::t('Light was switched off manually.');
                 }
             }
         }
         if ($st['ph'] === 'hand' && $now >= (int)$st['hu']) {
             $st['ph'] = 'aus';
-            $res['log'] = $res['log'] ?? 'Pause nach Handbedienung vorbei — Bewegung schaltet wieder.';
+            $res['log'] = $res['log'] ?? AUTOMATText::t('Pause after manual operation over — motion switches again.');
         }
         // Melder-Rückfall: meldet ein Melder zu lange nichts Neues, gilt er als „keine Bewegung“ —
         // Funkmelder (z. B. Z-Wave) verlieren gelegentlich genau diese Meldung, dann bliebe das Licht an.
@@ -719,17 +720,17 @@ class AUTOMATLogik
                     $st['act'][$m] = false;
                     unset($st['since'][$m]);
                     $res['lost'][] = $m;
-                    $lost[] = ((string)($ctx['names'][$m] ?? ('#' . $m))) . ' (seit ' . self::fmtDuration(max(60, $limit)) . ')';
+                    $lost[] = AUTOMATText::t('%s (for %s)', (string)($ctx['names'][$m] ?? ('#' . $m)), self::fmtDuration(max(60, $limit)));
                 } else {
                     $t = (int)$st['since'][$m] + $limit;
                     $nextFallback = $nextFallback === null ? $t : min($nextFallback, $t);
                 }
             }
             if (count($lost) > 0) {
-                $txt = 'Melder ' . implode(', ', $lost) . ' meldet nichts mehr — gilt als „keine Bewegung“ (Meldung vermutlich unterwegs verloren).';
+                $txt = AUTOMATText::t('Sensor %s reports nothing anymore — counts as "no motion" (message probably lost on the way).', implode(', ', $lost));
                 if (!in_array(true, $st['act'], true) && count($hintNames) === 0 && in_array($st['ph'], ['an', 'warn', 'flash'], true) && (int)$st['until'] === 0) {
                     $st['until'] = $now + $nach;
-                    $txt .= ' Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+                    $txt .= ' ' . AUTOMATText::t('Light goes off at %s.', date('H:i:s', $st['until']));
                 }
                 $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
             }
@@ -743,12 +744,14 @@ class AUTOMATLogik
                     }
                     $st['ph'] = 'an';
                     $st['until'] = 0;
-                    $txt = 'Anwesenheit (' . implode(', ', $hintNames) . ') — Licht bleibt an.';
+                    $txt = AUTOMATText::t('Presence (%s) — light stays on.', implode(', ', $hintNames));
                     $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
                 }
             } elseif ((int)$st['until'] === 0 && ($impuls || !in_array(true, $st['act'], true))) {
                 $st['until'] = $now + $nach;
-                $txt = ($k === 'trigger' && in_array($vid, $hints, true) ? 'Anzeichen für Anwesenheit vorbei' : 'Keine Bewegung und kein Anzeichen mehr') . ' — Licht geht um ' . date('H:i:s', $st['until']) . ' Uhr aus.';
+                $txt = $k === 'trigger' && in_array($vid, $hints, true)
+                    ? AUTOMATText::t('Signs of presence over — light goes off at %s.', date('H:i:s', $st['until']))
+                    : AUTOMATText::t('No more motion and no more signs — light goes off at %s.', date('H:i:s', $st['until']));
                 $res['log'] = $res['log'] !== null ? $res['log'] . ' ' . $txt : $txt;
             }
         }
@@ -759,7 +762,7 @@ class AUTOMATLogik
             $res['st']['offAt'] = $now; // automatisch aus — Wieder-An in den nächsten Minuten wäre eine Fehlabschaltung
         }
         if (count($hintNames) > 0 && $res['st']['ph'] === 'an') {
-            $res['status'] = '💡 An — Anwesenheit: ' . implode(', ', $hintNames);
+            $res['status'] = AUTOMATText::t('💡 On — presence: %s', implode(', ', $hintNames));
         }
         if ($nextFallback !== null && ($res['due'] === null || $nextFallback < $res['due'])) {
             $res['due'] = $nextFallback;
@@ -888,14 +891,14 @@ class AUTOMATLogik
             && !self::isTrue($ev['v'] ?? false) && $st['on'] && !self::anyOn($outs, $ctx)) {
             $st['on'] = false;
             $st['manual'] = $key;
-            $res['log'] = (!empty($ev['central']) ? 'Zentral ausgeschaltet (' . (string)$ev['central'] . ')' : 'Von Hand ausgeschaltet') . ' — bis zum nächsten Schaltfenster bleibt es aus.';
+            $res['log'] = !empty($ev['central']) ? AUTOMATText::t('Switched off centrally (%s) — stays off until the next switching window.', (string)$ev['central']) : AUTOMATText::t('Switched off manually — stays off until the next switching window.');
         }
 
         if ($win === null) {
             if ($st['on']) {
                 if ($aus !== 3) {
                     $res['cmd'] = self::offCmds($outs, $ctx);
-                    $res['log'] = 'Ausschaltzeit erreicht — aus.';
+                    $res['log'] = AUTOMATText::t('Switch-off time reached — off.');
                 }
                 $st['on'] = false;
             }
@@ -911,18 +914,18 @@ class AUTOMATLogik
                 if ($want) {
                     $soft = self::softBlock($row, $ctx);
                     if ($soft !== '') {
-                        $res['status'] = '🌙 Würde jetzt einschalten, aber ' . $soft;
+                        $res['status'] = AUTOMATText::t('🌙 Would switch on now, but %s', $soft);
                     } else {
                         $res['cmd'] = self::onCmds($outs, $row, $ctx, 'dz');
                         $st['on'] = true;
-                        $res['log'] = ($ein === 2 ? 'Dunkel geworden (' . self::fmtNum($lux) . ' lx)' : ($ein === 0 ? 'Sonnenuntergang' : 'Einschaltzeit')) . ' — an.';
+                        $res['log'] = $ein === 2 ? AUTOMATText::t('Got dark (%s lx) — on.', self::fmtNum($lux)) : ($ein === 0 ? AUTOMATText::t('Sunset — on.') : AUTOMATText::t('Switch-on time — on.'));
                     }
                 }
             } elseif ($aus === 2 && $lux !== null && $lux > $hi) {
                 $res['cmd'] = self::offCmds($outs, $ctx);
                 $st['on'] = false;
                 $st['manual'] = $key; // im selben Fenster nicht wieder einschalten
-                $res['log'] = 'Hell geworden (' . self::fmtNum($lux) . ' lx) — aus.';
+                $res['log'] = AUTOMATText::t('Got bright (%s lx) — off.', self::fmtNum($lux));
             }
         }
 
@@ -949,14 +952,14 @@ class AUTOMATLogik
         $res['st'] = $st;
         if ($res['status'] === '') {
             if ($st['on']) {
-                $res['status'] = '💡 An' . ($win !== null && $aus !== 3 && $aus !== 2 ? ' — aus um ' . self::fmtClock($win[1], $now) : '');
+                $res['status'] = $win !== null && $aus !== 3 && $aus !== 2 ? AUTOMATText::t('💡 On — off at %s', self::fmtClock($win[1], $now)) : AUTOMATText::t('💡 On');
                 $res['end'] = $win !== null && $aus !== 3 && $aus !== 2 ? $win[1] : null;
             } elseif ($win !== null && $st['manual'] === $key) {
-                $res['status'] = '✋ Von Hand aus — wieder ab dem nächsten Schaltfenster';
+                $res['status'] = AUTOMATText::t('✋ Off manually — again from the next switching window');
             } elseif ($win !== null && $ein === 2) {
-                $res['status'] = '⚪ Aus — wartet auf Dunkelheit' . ($lux !== null ? ' (' . self::fmtNum($lux) . ' lx)' : ' (Helligkeitssensor fehlt)');
+                $res['status'] = $lux !== null ? AUTOMATText::t('⚪ Off — waiting for darkness (%s lx)', self::fmtNum($lux)) : AUTOMATText::t('⚪ Off — waiting for darkness (brightness sensor missing)');
             } else {
-                $res['status'] = '⚪ Aus' . ($next !== null ? ' — nächste Schaltung ' . self::fmtClock($next, $now) : '');
+                $res['status'] = $next !== null ? AUTOMATText::t('⚪ Off — next switching %s', self::fmtClock($next, $now)) : AUTOMATText::t('⚪ Off');
                 $res['end'] = $next;
             }
         }
@@ -1002,7 +1005,7 @@ class AUTOMATLogik
         $hard = self::hardBlock($ctx);
         if ($hard !== '') {
             if ($st['ph'] === 'ab') {
-                $res['log'] = 'Automatik ' . $hard . ' — Sollwert zurück auf ' . $restore() . '.';
+                $res['log'] = AUTOMATText::t('Automation %s — setpoint back to %s.', $hard, $restore());
             }
             $st['ph'] = 'zu';
             $res['st'] = $st;
@@ -1019,7 +1022,7 @@ class AUTOMATLogik
                 // merken (das soll beim Schließen gelten) und wieder absenken.
                 $st['saved'][$vid] = $v;
                 $res['cmd'][] = [$vid, $absenk];
-                $res['log'] = 'Sollwert wurde bei offenem Fenster auf ' . self::fmtNum($v) . ' °C geändert — gemerkt, bleibt abgesenkt.';
+                $res['log'] = AUTOMATText::t('Setpoint was changed to %s °C while the window was open — remembered, stays lowered.', self::fmtNum($v));
             }
         }
 
@@ -1027,13 +1030,13 @@ class AUTOMATLogik
             if ($st['ph'] === 'zu') {
                 $soft = self::softBlock($row, $ctx);
                 if ($soft !== '') {
-                    $res['status'] = '🪟 Offen — keine Absenkung: ' . $soft;
+                    $res['status'] = AUTOMATText::t('🪟 Open — no lowering: %s', $soft);
                     $res['st'] = $st;
                     return $res;
                 }
                 $st['ph'] = 'wartet';
                 $st['until'] = $now + $verz;
-                $res['log'] = 'Fenster geöffnet' . ($verz > 0 ? ' — senke ab, falls noch offen um ' . date('H:i:s', $st['until']) . ' Uhr.' : '.');
+                $res['log'] = $verz > 0 ? AUTOMATText::t('Window opened — lowering if still open at %s.', date('H:i:s', $st['until'])) : AUTOMATText::t('Window opened.');
             }
             if ($st['ph'] === 'wartet' && $now >= (int)$st['until']) {
                 $st['saved'] = [];
@@ -1048,14 +1051,14 @@ class AUTOMATLogik
                     $res['cmd'][] = [$s, $absenk];
                 }
                 $st['ph'] = 'ab';
-                $res['log'] = 'Fenster offen — Sollwert von ' . implode(', ', array_unique($from)) . ' auf ' . self::fmtNum($absenk) . ' °C abgesenkt.';
+                $res['log'] = AUTOMATText::t('Window open — setpoint lowered from %s to %s °C.', implode(', ', array_unique($from)), self::fmtNum($absenk));
             }
         } else {
             if ($st['ph'] === 'wartet') {
                 $st['ph'] = 'zu';
-                $res['log'] = 'Fenster vor Ablauf der Verzögerung geschlossen — keine Absenkung.';
+                $res['log'] = AUTOMATText::t('Window closed before the delay elapsed — no lowering.');
             } elseif ($st['ph'] === 'ab') {
-                $res['log'] = (!empty($ev['startup']) ? 'Beim Start nachgeholt: alle Fenster zu, Thermostat stand noch abgesenkt' : 'Fenster geschlossen') . ' — Sollwert zurück auf ' . $restore() . '.';
+                $res['log'] = !empty($ev['startup']) ? AUTOMATText::t('Caught up at startup: all windows closed, thermostat was still lowered — setpoint back to %s.', $restore()) : AUTOMATText::t('Window closed — setpoint back to %s.', $restore());
                 $st['ph'] = 'zu';
             }
         }
@@ -1063,14 +1066,14 @@ class AUTOMATLogik
         switch ($st['ph']) {
             case 'wartet':
                 $res['due'] = (int)$st['until'];
-                $res['status'] = '🪟 Offen — Absenkung um ' . self::fmtClock((int)$st['until'], $now);
+                $res['status'] = AUTOMATText::t('🪟 Open — lowering at %s', self::fmtClock((int)$st['until'], $now));
                 $res['end'] = (int)$st['until'];
                 break;
             case 'ab':
-                $res['status'] = '🪟 Offen — abgesenkt auf ' . self::fmtNum($absenk) . ' °C';
+                $res['status'] = AUTOMATText::t('🪟 Open — lowered to %s °C', self::fmtNum($absenk));
                 break;
             default:
-                $res['status'] = '✅ Alles zu';
+                $res['status'] = AUTOMATText::t('✅ All closed');
         }
         return $res;
     }
@@ -1130,7 +1133,7 @@ class AUTOMATLogik
     public static function fmtDuration(int $sec): string
     {
         if ($sec >= 86400) {
-            return round($sec / 86400, 1) . ' Tagen';
+            return AUTOMATText::t('%s days', round($sec / 86400, 1));
         }
         if ($sec >= 3600) {
             $h = intdiv($sec, 3600);
@@ -1148,7 +1151,7 @@ class AUTOMATLogik
         $ref = (string)($row['wa_wert'] ?? '');
         $dauer = max(0, (int)($row['wa_dauer'] ?? 15)) * 60;
         $wdh = max(0, (int)($row['wa_wdh'] ?? 0)) * 60;
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Wächter';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Watchdog');
         $varName = (string)($ctx['names'][$vid] ?? ('#' . $vid));
         $st += ['ph' => 'normal', 'since' => 0, 'last' => 0];
         $v = $ctx['val'][$vid] ?? null;
@@ -1164,7 +1167,7 @@ class AUTOMATLogik
             if ($t !== '') {
                 return $t;
             }
-            return $varName . ' ' . $cmpText . ' — seit ' . self::fmtDuration(max(60, $now - $since)) . ' (aktuell ' . ($labels[self::valueKey($v)] ?? self::fmtNum($v)) . ').';
+            return AUTOMATText::t('%s %s — for %s (currently %s).', $varName, $cmpText, self::fmtDuration(max(60, $now - $since)), $labels[self::valueKey($v)] ?? self::fmtNum($v));
         };
 
         if ($cond) {
@@ -1177,20 +1180,20 @@ class AUTOMATLogik
                     $res['msg'][] = ['⏱ ' . $name, $text((int)$st['since'])];
                     $st['ph'] = 'alarm';
                     $st['last'] = $now;
-                    $res['log'] = 'Gemeldet: ' . $text((int)$st['since']);
+                    $res['log'] = AUTOMATText::t('Notified: %s', $text((int)$st['since']));
                 }
             } elseif ($st['ph'] === 'alarm' && $wdh > 0 && $now >= (int)$st['last'] + $wdh && $blocked === '') {
-                $res['msg'][] = ['⏱ ' . $name . ' (Erinnerung)', $text((int)$st['since'])];
+                $res['msg'][] = [AUTOMATText::t('⏱ %s (reminder)', $name), $text((int)$st['since'])];
                 $st['last'] = $now;
-                $res['log'] = 'Erinnerung gesendet.';
+                $res['log'] = AUTOMATText::t('Reminder sent.');
             }
         } elseif ($st['ph'] === 'alarm' && !self::waechterFrei($row, $v)) {
             // Hysterese: Erst wenn der Wert deutlich zurück ist, gilt es als vorbei — sonst gäbe es bei einem Wert,
             // der um die Grenze pendelt, jedes Mal eine neue Meldung (Wunsch Dietmar 29.10.2026, Frigate-Speicher)
         } else {
             if ($st['ph'] === 'alarm' && !empty($row['wa_ende']) && $hard === '') {
-                $res['msg'][] = ['✅ ' . $name, $varName . ' ist wieder in Ordnung (aktuell ' . self::fmtNum($v) . ').'];
-                $res['log'] = 'Entwarnung gesendet.';
+                $res['msg'][] = ['✅ ' . $name, AUTOMATText::t('%s is OK again (currently %s).', $varName, self::fmtNum($v))];
+                $res['log'] = AUTOMATText::t('All-clear sent.');
             }
             $st['ph'] = 'normal';
             $st['since'] = 0;
@@ -1199,18 +1202,18 @@ class AUTOMATLogik
         if ($st['ph'] === 'zaehlt') {
             $res['due'] = (int)$st['since'] + $dauer;
             $res['end'] = (int)$st['since'] + $dauer;
-            $res['status'] = '⏳ ' . $varName . ' ' . $cmpText . ' — Meldung um ' . self::fmtClock((int)$st['since'] + $dauer, $now)
-                . ($blocked !== '' ? ' (wird nicht gemeldet: ' . $blocked . ')' : '');
+            $res['status'] = AUTOMATText::t('⏳ %s %s — notification at %s', $varName, $cmpText, self::fmtClock((int)$st['since'] + $dauer, $now))
+                . ($blocked !== '' ? ' ' . AUTOMATText::t('(will not be notified: %s)', $blocked) : '');
             if ($now >= (int)$st['since'] + $dauer) {
                 $res['due'] = $now + 60;
             }
         } elseif ($st['ph'] === 'alarm') {
             $res['due'] = $wdh > 0 ? (int)$st['last'] + $wdh : null;
             $frei = trim((string)($row['wa_frei'] ?? ''));
-            $res['status'] = '🔔 Gemeldet — ' . $varName . ' ' . $cmpText . ' seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr'
-                . (!$cond && $frei !== '' ? ' — wieder in Ordnung ' . ($op === 3 ? 'ab ' : 'unter ') . $frei . ' (aktuell ' . self::fmtNum($v) . ')' : '');
+            $res['status'] = AUTOMATText::t('🔔 Notified — %s %s since %s', $varName, $cmpText, date('d.m.Y H:i', (int)$st['since']))
+                . (!$cond && $frei !== '' ? ($op === 3 ? AUTOMATText::t(' — OK again from %s (currently %s)', $frei, self::fmtNum($v)) : AUTOMATText::t(' — OK again below %s (currently %s)', $frei, self::fmtNum($v))) : '');
         } else {
-            $res['status'] = $hard !== '' ? self::hardStatus($hard) : ($v === null ? '❔ Variable fehlt' : '✅ In Ordnung (' . self::fmtNum($v) . ')');
+            $res['status'] = $hard !== '' ? self::hardStatus($hard) : ($v === null ? AUTOMATText::t('❔ Variable missing') : AUTOMATText::t('✅ OK (%s)', self::fmtNum($v)));
         }
         return $res;
     }
@@ -1238,7 +1241,7 @@ class AUTOMATLogik
         $fertig = (float)($row['gf_fertig'] ?? 5);
         $minlauf = max(0, (int)($row['gf_minlauf'] ?? 5)) * 60;
         $nach = max(0, (int)($row['gf_nach'] ?? 3)) * 60;
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Gerät';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Appliance');
         $st += ['ph' => 'aus', 'start' => 0, 'below' => 0];
         $p = array_key_exists($vid, $ctx['val'] ?? []) ? (float)$ctx['val'][$vid] : null;
         if ($p !== null) {
@@ -1246,7 +1249,7 @@ class AUTOMATLogik
                 if ($st['ph'] === 'aus') {
                     $st['ph'] = 'laeuft';
                     $st['start'] = $now;
-                    $res['log'] = 'Läuft (' . self::fmtNum($p) . ' W).';
+                    $res['log'] = AUTOMATText::t('Running (%s W).', self::fmtNum($p));
                 } elseif ($st['ph'] === 'auslauf') {
                     $st['ph'] = 'laeuft';
                 }
@@ -1257,7 +1260,7 @@ class AUTOMATLogik
                         $st['below'] = $now;
                     } else {
                         $st['ph'] = 'aus';
-                        $res['log'] = 'Nur kurze Leistungsspitze — zählt nicht als Lauf.';
+                        $res['log'] = AUTOMATText::t('Only a short power peak — does not count as a run.');
                     }
                 }
             }
@@ -1266,12 +1269,12 @@ class AUTOMATLogik
             $hard = self::hardBlock($ctx);
             $blocked = $hard !== '' ? $hard : self::softBlock($row, $ctx);
             $t = trim((string)($row['gf_text'] ?? ''));
-            $text = $t !== '' ? $t : $name . ' ist fertig (Laufzeit ' . self::fmtDuration(max(60, (int)$st['below'] - (int)$st['start'])) . ').';
+            $text = $t !== '' ? $t : AUTOMATText::t('%s is finished (running time %s).', $name, self::fmtDuration(max(60, (int)$st['below'] - (int)$st['start'])));
             if ($blocked === '') {
                 $res['msg'][] = ['🧺 ' . $name, $text];
-                $res['log'] = 'Fertig gemeldet.';
+                $res['log'] = AUTOMATText::t('Finished, notified.');
             } else {
-                $res['log'] = 'Fertig — nicht gemeldet: ' . $blocked . '.';
+                $res['log'] = AUTOMATText::t('Finished — not notified: %s.', $blocked);
             }
             $st['ph'] = 'aus';
             $st['last'] = $now;
@@ -1279,15 +1282,15 @@ class AUTOMATLogik
         $res['st'] = $st;
         switch ($st['ph']) {
             case 'laeuft':
-                $res['status'] = '▶️ Läuft seit ' . date('H:i', (int)$st['start']) . ' Uhr' . ($p !== null ? ' (' . self::fmtNum($p) . ' W)' : '');
+                $res['status'] = $p !== null ? AUTOMATText::t('▶️ Running since %s (%s W)', date('H:i', (int)$st['start']), self::fmtNum($p)) : AUTOMATText::t('▶️ Running since %s', date('H:i', (int)$st['start']));
                 break;
             case 'auslauf':
                 $res['due'] = (int)$st['below'] + $nach;
-                $res['status'] = '⏳ Fast fertig — Meldung um ' . self::fmtClock((int)$st['below'] + $nach, $now);
+                $res['status'] = AUTOMATText::t('⏳ Almost finished — notification at %s', self::fmtClock((int)$st['below'] + $nach, $now));
                 $res['end'] = (int)$st['below'] + $nach;
                 break;
             default:
-                $res['status'] = !empty($st['last']) ? '⚪ Aus — zuletzt fertig ' . date('d.m.Y H:i', (int)$st['last']) . ' Uhr' : '⚪ Aus';
+                $res['status'] = !empty($st['last']) ? AUTOMATText::t('⚪ Off — last finished %s', date('d.m.Y H:i', (int)$st['last'])) : AUTOMATText::t('⚪ Off');
         }
         return $res;
     }
@@ -1367,21 +1370,21 @@ class AUTOMATLogik
     {
         $h = mb_strtolower($raw);
         if (strpos($h, 'login denied') !== false || strpos($h, 'authentication') !== false || strpos($h, 'auth failed') !== false || strpos($h, '535') !== false) {
-            $why = 'Anmeldung abgelehnt: Benutzername oder Passwort der SMTP-Instanz stimmen nicht (bei Anbietern mit Zwei-Faktor-Anmeldung braucht es ein App-Passwort)';
+            $why = AUTOMATText::t('Login denied: user name or password of the SMTP instance is wrong (providers with two-factor authentication need an app password)');
         } elseif (strpos($h, 'resolve') !== false || strpos($h, 'getaddrinfo') !== false) {
-            $why = 'Server nicht gefunden: Servername der SMTP-Instanz prüfen';
+            $why = AUTOMATText::t('Server not found: check the server name of the SMTP instance');
         } elseif (strpos($h, 'timed out') !== false || strpos($h, 'timeout') !== false) {
-            $why = 'Zeitüberschreitung: der Mailserver antwortet nicht (Server, Port und Netzwerk prüfen)';
+            $why = AUTOMATText::t('Timeout: the mail server does not respond (check server, port and network)');
         } elseif (strpos($h, 'refused') !== false) {
-            $why = 'Verbindung abgelehnt: Server oder Port der SMTP-Instanz prüfen';
+            $why = AUTOMATText::t('Connection refused: check server or port of the SMTP instance');
         } elseif (strpos($h, 'certificate') !== false || strpos($h, 'ssl') !== false || strpos($h, 'tls') !== false) {
-            $why = 'Verschlüsselung oder Zertifikat: SSL-Einstellung und Port der SMTP-Instanz prüfen';
+            $why = AUTOMATText::t('Encryption or certificate: check SSL setting and port of the SMTP instance');
         } elseif (strpos($h, 'recipient') !== false || strpos($h, 'rcpt') !== false) {
-            $why = 'Empfänger abgelehnt: Empfängeradresse prüfen';
+            $why = AUTOMATText::t('Recipient rejected: check the recipient address');
         } else {
-            $why = 'Meldung des SMTP-Moduls';
+            $why = AUTOMATText::t('Message from the SMTP module');
         }
-        return $why . ' („' . $raw . '“)';
+        return AUTOMATText::t('%s ("%s")', $why, $raw);
     }
 
     /**
@@ -1446,40 +1449,40 @@ class AUTOMATLogik
         };
         $list = [];
         if ($land === 'AT') {
-            $list = [$fix(1, 1) => 'Neujahr', $fix(1, 6) => 'Heilige Drei Könige', $rel(1) => 'Ostermontag', $fix(5, 1) => 'Staatsfeiertag',
-                $rel(39) => 'Christi Himmelfahrt', $rel(50) => 'Pfingstmontag', $rel(60) => 'Fronleichnam', $fix(8, 15) => 'Mariä Himmelfahrt',
-                $fix(10, 26) => 'Nationalfeiertag', $fix(11, 1) => 'Allerheiligen', $fix(12, 8) => 'Mariä Empfängnis', $fix(12, 25) => 'Christtag', $fix(12, 26) => 'Stefanitag'];
+            $list = [$fix(1, 1) => 'New Year\'s Day', $fix(1, 6) => 'Epiphany', $rel(1) => 'Easter Monday', $fix(5, 1) => 'State Holiday',
+                $rel(39) => 'Ascension Day', $rel(50) => 'Whit Monday', $rel(60) => 'Corpus Christi', $fix(8, 15) => 'Assumption Day',
+                $fix(10, 26) => 'National Holiday', $fix(11, 1) => 'All Saints\' Day', $fix(12, 8) => 'Immaculate Conception', $fix(12, 25) => 'Christmas Day', $fix(12, 26) => 'St. Stephen\'s Day'];
         } elseif ($land === 'CH') {
             // Bundesweit nur 1.8.; dazu die in fast allen Kantonen geltenden Feiertage (kantonale Unterschiede möglich)
-            $list = [$fix(1, 1) => 'Neujahr', $rel(-2) => 'Karfreitag', $rel(1) => 'Ostermontag', $rel(39) => 'Auffahrt',
-                $rel(50) => 'Pfingstmontag', $fix(8, 1) => 'Bundesfeier', $fix(12, 25) => 'Weihnachten', $fix(12, 26) => 'Stephanstag'];
+            $list = [$fix(1, 1) => 'New Year\'s Day', $rel(-2) => 'Good Friday', $rel(1) => 'Easter Monday', $rel(39) => 'Ascension',
+                $rel(50) => 'Whit Monday', $fix(8, 1) => 'Swiss National Day', $fix(12, 25) => 'Christmas', $fix(12, 26) => 'Saint Stephen\'s Day'];
         } else {
-            $list = [$fix(1, 1) => 'Neujahr', $rel(-2) => 'Karfreitag', $rel(1) => 'Ostermontag', $fix(5, 1) => 'Tag der Arbeit',
-                $rel(39) => 'Christi Himmelfahrt', $rel(50) => 'Pfingstmontag', $fix(10, 3) => 'Tag der Deutschen Einheit',
-                $fix(12, 25) => '1. Weihnachtstag', $fix(12, 26) => '2. Weihnachtstag'];
+            $list = [$fix(1, 1) => 'New Year\'s Day', $rel(-2) => 'Good Friday', $rel(1) => 'Easter Monday', $fix(5, 1) => 'Labour Day',
+                $rel(39) => 'Ascension Day', $rel(50) => 'Whit Monday', $fix(10, 3) => 'German Unity Day',
+                $fix(12, 25) => 'First Day of Christmas', $fix(12, 26) => 'Second Day of Christmas'];
             $in = function (string $l) use ($land): bool {
                 return in_array($land, explode(',', $l), true);
             };
             if ($in('BW,BY,ST')) {
-                $list[$fix(1, 6)] = 'Heilige Drei Könige';
+                $list[$fix(1, 6)] = 'Epiphany';
             }
             if ($in('BE,MV')) {
-                $list[$fix(3, 8)] = 'Frauentag';
+                $list[$fix(3, 8)] = 'International Women\'s Day';
             }
             if ($in('BW,BY,HE,NW,RP,SL')) {
-                $list[$rel(60)] = 'Fronleichnam';
+                $list[$rel(60)] = 'Corpus Christi';
             }
             if ($in('SL')) {
-                $list[$fix(8, 15)] = 'Mariä Himmelfahrt';
+                $list[$fix(8, 15)] = 'Assumption Day';
             }
             if ($in('TH')) {
-                $list[$fix(9, 20)] = 'Weltkindertag';
+                $list[$fix(9, 20)] = 'World Children\'s Day';
             }
             if ($in('BB,MV,SN,ST,TH,HB,HH,NI,SH')) {
-                $list[$fix(10, 31)] = 'Reformationstag';
+                $list[$fix(10, 31)] = 'Reformation Day';
             }
             if ($in('BW,BY,NW,RP,SL')) {
-                $list[$fix(11, 1)] = 'Allerheiligen';
+                $list[$fix(11, 1)] = 'All Saints\' Day';
             }
             if ($in('SN')) {
                 // Buß- und Bettag: Mittwoch vor dem 23. November
@@ -1487,10 +1490,11 @@ class AUTOMATLogik
                 while ((int)date('N', $t) !== 3) {
                     $t = mktime(12, 0, 0, 11, (int)date('j', $t) - 1, $y);
                 }
-                $list[date('Y-m-d', $t)] = 'Buß- und Bettag';
+                $list[date('Y-m-d', $t)] = 'Day of Repentance and Prayer';
             }
         }
-        return $list[$ymd] ?? '';
+        // Namen stehen englisch in der Liste, die Anzeige übersetzt sie (deutsche Originale in locale.json)
+        return isset($list[$ymd]) ? AUTOMATText::t($list[$ymd]) : '';
     }
 
     /** Taupunkt in °C (Magnus-Formel). */
@@ -1509,7 +1513,7 @@ class AUTOMATLogik
     {
         $now = (int)$ctx['now'];
         $st += ['last' => '', 'lastTs' => 0, 'bad' => false];
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Gehen-Check';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Leaving check');
         $hard = self::hardBlock($ctx);
         if (($ev['k'] ?? '') === 'run') {
             // Probe-Check von Hand: wie beim Gehen, ohne den Hausmodus zu ändern
@@ -1527,7 +1531,7 @@ class AUTOMATLogik
         if (($ev['k'] ?? '') === 'mode' && !empty($row['gc_m' . (int)($ev['to'] ?? -1)])) {
             $to = (int)$ev['to'];
             if ($hard !== '') {
-                $res['log'] = 'Hausmodus „' . AUTOMATKatalog::modes()[$to] . '“ — nicht geprüft: ' . $hard . '.';
+                $res['log'] = AUTOMATText::t('House mode "%s" — not checked: %s.', AUTOMATKatalog::modes()[$to], $hard);
             } else {
                 $open = self::activeOf(AUTOMATKatalog::vars($row, 'gc_kon'), $ctx, !empty($row['gc_invert']));
                 $on = [];
@@ -1551,28 +1555,30 @@ class AUTOMATLogik
                 }
                 $parts = [];
                 if ($open) {
-                    $parts[] = 'offen: ' . implode(', ', $open);
+                    $parts[] = AUTOMATText::t('open: %s', implode(', ', $open));
                 }
                 if ($off) {
-                    $parts[] = 'ausgeschaltet: ' . implode(', ', $off);
+                    $parts[] = AUTOMATText::t('switched off: %s', implode(', ', $off));
                 }
                 if ($on) {
-                    $parts[] = 'noch an: ' . implode(', ', $on);
+                    $parts[] = AUTOMATText::t('still on: %s', implode(', ', $on));
                 }
-                $txt = $parts ? implode('; ', $parts) : 'alles zu und aus';
+                $txt = $parts ? implode('; ', $parts) : AUTOMATText::t('everything closed and off');
                 $st['last'] = AUTOMATKatalog::modes()[$to] . ' — ' . $txt;
                 $st['lastTs'] = $now;
                 $st['bad'] = count($open) > 0 || count($on) > 0; // was noch an ist, wurde nicht ausgeschaltet
-                $res['log'] = 'Gehen-Check bei „' . AUTOMATKatalog::modes()[$to] . '“: ' . $txt . '.';
+                $res['log'] = AUTOMATText::t('Leaving check at "%s": %s.', AUTOMATKatalog::modes()[$to], $txt);
                 if (!empty($row['gc_push']) && ($parts || !empty($row['gc_ok']))) {
-                    $res['msg'][] = [($parts ? '🚪 ' : '✅ ') . $name, ($parts ? 'Beim ' . ($to === AUTOMATKatalog::MODE_NIGHT ? 'Zubettgehen' : 'Gehen') . ' — ' . $txt : ucfirst($txt)) . '.'];
+                    $res['msg'][] = [($parts ? '🚪 ' : '✅ ') . $name, $parts
+                        ? ($to === AUTOMATKatalog::MODE_NIGHT ? AUTOMATText::t('When going to bed — %s.', $txt) : AUTOMATText::t('When leaving — %s.', $txt))
+                        : ucfirst($txt) . '.'];
                 }
             }
         }
         $res['st'] = $st;
         $res['status'] = $hard !== '' ? self::hardStatus($hard)
-            : ($st['last'] === '' ? '💤 Prüft beim nächsten Wechsel des Hausmodus'
-                : ($st['bad'] ? '⚠️ ' : '✅ ') . 'Zuletzt ' . date('d.m.Y H:i', (int)$st['lastTs']) . ' — ' . $st['last']);
+            : ($st['last'] === '' ? AUTOMATText::t('💤 Checks at the next house mode change')
+                : ($st['bad'] ? '⚠️ ' : '✅ ') . AUTOMATText::t('Last %s — %s', date('d.m.Y H:i', (int)$st['lastTs']), $st['last']));
         return $res;
     }
 
@@ -1585,14 +1591,14 @@ class AUTOMATLogik
         $now = (int)$ctx['now'];
         $mode = (int)($ctx['mode'] ?? 0);
         $st += ['last' => 0, 'until' => 0, 'lights' => [], 'vol' => []];
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Türklingel';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Doorbell');
         $hard = self::hardBlock($ctx);
         // Handeingriff während der Klingelzeit: dieses Gerät nicht mehr zurückstellen
         if (($ev['k'] ?? '') === 'output' && empty($ev['own'])) {
             $k = (string)(int)($ev['vid'] ?? 0);
             if (isset($st['lights'][$k]) || isset($st['vol'][$k])) {
                 unset($st['lights'][$k], $st['vol'][$k]);
-                $res['log'] = self::nameOf((int)$k, $ctx) . ' von Hand verstellt — bleibt so.';
+                $res['log'] = AUTOMATText::t('%s adjusted manually — stays that way.', self::nameOf((int)$k, $ctx));
             }
         }
         $in = (int)($row['kl_taster'] ?? 0);
@@ -1604,9 +1610,9 @@ class AUTOMATLogik
             if (!$repeat && !in_array($key, ['', 'false', '0'], true) && $now - (int)$st['last'] >= 10) {
                 $st['last'] = $now;
                 $away = in_array($mode, [AUTOMATKatalog::MODE_AWAY, AUTOMATKatalog::MODE_HOLIDAY], true);
-                $res['log'] = 'Es hat geklingelt' . ($away ? ' (niemand zu Hause)' : '') . '.';
+                $res['log'] = $away ? AUTOMATText::t('The doorbell rang (nobody at home).') : AUTOMATText::t('The doorbell rang.');
                 if (!empty($row['kl_push'])) {
-                    $res['msg'][] = ['🛎 ' . $name . ($away ? ' — niemand zu Hause' : ''), 'Es hat um ' . date('H:i', $now) . ' Uhr geklingelt.'];
+                    $res['msg'][] = [$away ? AUTOMATText::t('🛎 %s — nobody at home', $name) : '🛎 ' . $name, AUTOMATText::t('The doorbell rang at %s.', date('H:i', $now))];
                 }
                 if ((int)($row['kl_bild'] ?? 0) >= AUTOMATKatalog::$minId) {
                     $res['media'] = (int)$row['kl_bild'];
@@ -1643,7 +1649,7 @@ class AUTOMATLogik
                 $res['cmd'][] = [(int)$k, (float)$v];
             }
             if ($st['lights'] || $st['vol']) {
-                $res['log'] = 'Klingelzeit vorbei — Licht aus, Lautstärke zurück.';
+                $res['log'] = AUTOMATText::t('Doorbell time over — light off, volume back.');
             }
             $st['lights'] = [];
             $st['vol'] = [];
@@ -1655,9 +1661,9 @@ class AUTOMATLogik
         } elseif ((int)$st['until'] > 0) {
             $res['due'] = (int)$st['until'];
             $res['end'] = (int)$st['until'];
-            $res['status'] = '🛎 Geklingelt — zurück um ' . self::fmtClock((int)$st['until'], $now);
+            $res['status'] = AUTOMATText::t('🛎 Rang — back at %s', self::fmtClock((int)$st['until'], $now));
         } else {
-            $res['status'] = (int)$st['last'] > 0 ? '🛎 Zuletzt geklingelt ' . date('d.m.Y H:i', (int)$st['last']) . ' Uhr' : '💤 Wartet aufs Klingeln';
+            $res['status'] = (int)$st['last'] > 0 ? AUTOMATText::t('🛎 Last rang %s', date('d.m.Y H:i', (int)$st['last'])) : AUTOMATText::t('💤 Waiting for the doorbell');
         }
         return $res;
     }
@@ -1676,11 +1682,11 @@ class AUTOMATLogik
         $ti = $val('sl_innen');
         $ta = $val('sl_aussen');
         $st += ['ph' => '', 'sent' => [], 'told' => ''];
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Sommer-Lüften';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Summer ventilation');
         $hard = self::hardBlock($ctx);
         if ($ti === null || $ta === null || $hard !== '') {
             $res['st'] = $st;
-            $res['status'] = $hard !== '' ? self::hardStatus($hard) : '❔ Temperatur innen oder außen fehlt';
+            $res['status'] = $hard !== '' ? self::hardStatus($hard) : AUTOMATText::t('❔ Indoor or outdoor temperature missing');
             return $res;
         }
         $min = (float)($row['sl_min'] ?? 23);
@@ -1703,7 +1709,9 @@ class AUTOMATLogik
             $st['ph'] = '';
         }
         $new = $close ? 'close' : ($vent ? 'open' : '');
-        $txt = 'innen ' . self::fmtNum($ti) . ' °C, außen ' . self::fmtNum($ta) . ' °C' . ($dp ? ' (Taupunkt innen ' . self::fmtNum(round($dpi, 1)) . ', außen ' . self::fmtNum(round($dpa, 1)) . ' °C)' : '');
+        $txt = $dp
+            ? AUTOMATText::t('indoor %s °C, outdoor %s °C (dew point indoor %s, outdoor %s °C)', self::fmtNum($ti), self::fmtNum($ta), self::fmtNum(round($dpi, 1)), self::fmtNum(round($dpa, 1)))
+            : AUTOMATText::t('indoor %s °C, outdoor %s °C', self::fmtNum($ti), self::fmtNum($ta));
         if ($new !== '' && $new !== $st['ph']) {
             $st['ph'] = $new;
         }
@@ -1721,18 +1729,18 @@ class AUTOMATLogik
             if ($relevant && $soft === '' && $cool) {
                 $st['told'] = $cur;
                 $st['sent'][$new] = $now;
-                $res['log'] = ($new === 'close' ? 'Draußen wärmer' : 'Draußen kühler') . ' — ' . $txt . '.';
+                $res['log'] = $new === 'close' ? AUTOMATText::t('Warmer outside — %s.', $txt) : AUTOMATText::t('Cooler outside — %s.', $txt);
                 if (!empty($row['sl_push'])) {
                     $res['msg'][] = $new === 'close'
-                        ? ['☀️ ' . $name, 'Fenster schließen' . (count($open) > 0 ? ' (' . implode(', ', $open) . ')' : '') . ' — draußen ist es wärmer' . ($dp && $dpa > $dpi + 1.0 ? ' bzw. feuchter' : '') . ': ' . $txt . '.']
-                        : ['🌬 ' . $name, 'Jetzt lüften lohnt sich — draußen ist es kühler' . ($dp ? ' und trockener' : '') . ': ' . $txt . '.'];
+                        ? ['☀️ ' . $name, AUTOMATText::t('Close windows%s — it is warmer%s outside: %s.', count($open) > 0 ? ' (' . implode(', ', $open) . ')' : '', $dp && $dpa > $dpi + 1.0 ? AUTOMATText::t(' or more humid') : '', $txt)]
+                        : ['🌬 ' . $name, $dp ? AUTOMATText::t('Ventilating now is worthwhile — it is cooler and drier outside: %s.', $txt) : AUTOMATText::t('Ventilating now is worthwhile — it is cooler outside: %s.', $txt)];
                 }
             }
         }
         $res['st'] = $st;
-        $res['status'] = $st['ph'] === 'close' ? '☀️ Draußen wärmer — Fenster zu lassen: ' . $txt
-            : ($st['ph'] === 'open' ? '🌬 Draußen kühler — lüften lohnt: ' . $txt
-                : ($warm ? '✅ Kein Handlungsbedarf: ' : '💤 Innen unter ' . self::fmtNum($min) . ' °C: ') . $txt);
+        $res['status'] = $st['ph'] === 'close' ? AUTOMATText::t('☀️ Warmer outside — keep windows closed: %s', $txt)
+            : ($st['ph'] === 'open' ? AUTOMATText::t('🌬 Cooler outside — ventilating is worthwhile: %s', $txt)
+                : ($warm ? AUTOMATText::t('✅ No action needed: %s', $txt) : AUTOMATText::t('💤 Indoor below %s °C: %s', self::fmtNum($min), $txt)));
         return $res;
     }
 
@@ -1758,7 +1766,7 @@ class AUTOMATLogik
                 $st['since'] = 0;
             }
             $res['st'] = $st;
-            $res['status'] = $hard !== '' ? self::hardStatus($hard) : '❔ Leistung unbekannt';
+            $res['status'] = $hard !== '' ? self::hardStatus($hard) : AUTOMATText::t('❔ Power unknown');
             return $res;
         }
         $active = $p >= $schwelle;
@@ -1768,9 +1776,9 @@ class AUTOMATLogik
         $stale = $upd !== null && $now - (int)$upd >= max($dauer, 6 * 3600);
         if ($stale && empty($st['staleTold'])) {
             $st['staleTold'] = true;
-            $res['log'] = $name . ': Messwert seit ' . self::fmtDuration($now - (int)$upd) . ' nicht aktualisiert — Messsteckdose offline?';
+            $res['log'] = AUTOMATText::t('%s: measured value not updated for %s — metering plug offline?', $name, self::fmtDuration($now - (int)$upd));
             if (!empty($row['af_push'])) {
-                $res['msg'][] = ['🧊 ' . $name, $res['log'] . ' Der Wächter sieht so keinen Ausfall. Bitte nachsehen.'];
+                $res['msg'][] = ['🧊 ' . $name, $res['log'] . ' ' . AUTOMATText::t('The watchdog cannot detect a failure this way. Please check.')];
             }
         } elseif (!$stale) {
             $st['staleTold'] = false;
@@ -1783,10 +1791,10 @@ class AUTOMATLogik
             }
             if ($st['ph'] === 'ok' && $now - (int)$st['since'] >= $dauer) {
                 $st['ph'] = 'alarm';
-                $what = $runMode ? 'läuft seit ' . self::fmtDuration($now - (int)$st['since']) . ' am Stück' : 'zieht seit ' . self::fmtDuration($now - (int)$st['since']) . ' keinen Strom mehr';
+                $what = $runMode ? AUTOMATText::t('has been running for %s without a break', self::fmtDuration($now - (int)$st['since'])) : AUTOMATText::t('has drawn no power for %s', self::fmtDuration($now - (int)$st['since']));
                 $res['log'] = $name . ' ' . $what . ' (' . self::fmtNum($p) . ' W).';
                 if (!empty($row['af_push'])) {
-                    $res['msg'][] = ['🧊 ' . $name, $name . ' ' . $what . ' (' . self::fmtNum($p) . ' W). Bitte nachsehen.'];
+                    $res['msg'][] = ['🧊 ' . $name, $name . ' ' . $what . ' (' . self::fmtNum($p) . ' W). ' . AUTOMATText::t('Please check.')];
                 }
             }
         } else {
@@ -1801,26 +1809,26 @@ class AUTOMATLogik
             $st['since'] = 0;
             if ($st['ph'] === 'alarm') {
                 $st['ph'] = 'ok';
-                $res['log'] = 'Entwarnung: ' . $name . ($runMode ? ' läuft nicht mehr.' : ' zieht wieder Strom.');
+                $res['log'] = $runMode ? AUTOMATText::t('All clear: %s is no longer running.', $name) : AUTOMATText::t('All clear: %s is drawing power again.', $name);
                 if (!empty($row['af_ende']) && !empty($row['af_push'])) {
-                    $res['msg'][] = ['✅ ' . $name, 'Entwarnung: ' . $name . ($runMode ? ' läuft nicht mehr.' : ' zieht wieder Strom (' . self::fmtNum($p) . ' W).')];
+                    $res['msg'][] = ['✅ ' . $name, $runMode ? AUTOMATText::t('All clear: %s is no longer running.', $name) : AUTOMATText::t('All clear: %s is drawing power again (%s W).', $name, self::fmtNum($p))];
                 }
             }
         }
         $longest = $st['gaps'] ? max($st['gaps']) : 0;
-        $norm = $longest > 0 ? ' · bisher längste' . ($runMode ? 'r Lauf ' : ' Pause ') . self::fmtDuration($longest) : '';
+        $norm = $longest > 0 ? ($runMode ? AUTOMATText::t(' · longest run so far %s', self::fmtDuration($longest)) : AUTOMATText::t(' · longest pause so far %s', self::fmtDuration($longest))) : '';
         $res['st'] = $st;
         if ($st['ph'] === 'alarm') {
-            $res['status'] = '⚠️ ' . ($runMode ? 'Läuft zu lange' : 'Kein Strom') . ' seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr' . $norm;
+            $res['status'] = ($runMode ? AUTOMATText::t('⚠️ Running too long since %s', date('d.m.Y H:i', (int)$st['since'])) : AUTOMATText::t('⚠️ No power since %s', date('d.m.Y H:i', (int)$st['since']))) . $norm;
         } else {
             if ((int)$st['since'] > 0) {
                 $res['due'] = (int)$st['since'] + $dauer;
             }
-            $warn = $longest > $dauer ? ' — ⚠️ Grenze liegt unter dem bisher längsten Wert, Fehlalarme möglich' : '';
+            $warn = $longest > $dauer ? AUTOMATText::t(' — ⚠️ limit is below the longest value so far, false alarms possible') : '';
             if ($stale) {
-                $warn .= ' — ⚠️ Messwert seit ' . self::fmtDuration($now - (int)$upd) . ' nicht aktualisiert';
+                $warn .= AUTOMATText::t(' — ⚠️ measured value not updated for %s', self::fmtDuration($now - (int)$upd));
             }
-            $res['status'] = '✅ ' . ($active ? 'Läuft (' . self::fmtNum($p) . ' W)' : 'Aus (' . self::fmtNum($p) . ' W)') . $norm . $warn;
+            $res['status'] = ($active ? AUTOMATText::t('✅ Running (%s W)', self::fmtNum($p)) : AUTOMATText::t('✅ Off (%s W)', self::fmtNum($p))) . $norm . $warn;
         }
         return $res;
     }
@@ -1901,7 +1909,7 @@ class AUTOMATLogik
                 && $key !== null && $st['on'] && !self::isTrue($ev['v'] ?? false)) {
                 $st['on'] = false;
                 $st['manual'] = $key;
-                $res['log'] = 'Von Hand ausgeschaltet — bleibt aus bis zum nächsten Schaltzeitpunkt.';
+                $res['log'] = AUTOMATText::t('Switched off manually — stays off until the next switching time.');
             } elseif (($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $outs, true)
                 && $key !== null && !$st['on'] && self::isTrue($ev['v'] ?? false)) {
                 // Im Fenster von Hand wieder eingeschaltet: am Fensterende wieder normal ausschalten
@@ -1913,7 +1921,7 @@ class AUTOMATLogik
                 $setAll($key !== null);
                 $st['on'] = $key !== null;
                 $st['manual'] = '';
-                $res['log'] = 'Von Hand ausgelöst — ' . ($key !== null ? 'im Schaltfenster: ein.' : 'außerhalb des Schaltfensters: aus.');
+                $res['log'] = $key !== null ? AUTOMATText::t('Triggered manually — within the switching window: on.') : AUTOMATText::t('Triggered manually — outside the switching window: off.');
             } elseif ($first) {
                 $st['on'] = $key !== null; // beim Einrichten nichts nachholen, nur den Zustand übernehmen
             } elseif ($hard === '') {
@@ -1921,11 +1929,11 @@ class AUTOMATLogik
                 if ($key !== null && !$st['on'] && $st['manual'] !== $key && $soft === '') {
                     $setAll(true);
                     $st['on'] = true;
-                    $res['log'] = 'Schaltzeit — ein.';
+                    $res['log'] = AUTOMATText::t('Switching time — on.');
                 } elseif ($key === null && $st['on']) {
                     $setAll(false);
                     $st['on'] = false;
-                    $res['log'] = 'Schaltzeit — aus.';
+                    $res['log'] = AUTOMATText::t('Switching time — off.');
                 }
             }
             foreach ([self::addDays($today, -1), $today, self::addDays($today, 1)] as $d) {
@@ -1944,12 +1952,12 @@ class AUTOMATLogik
             $t = $want ? $a : self::timeOn((string)($row['zs_aus'] ?? AUTOMATKatalog::time(8, 0)), $today) + $jit;
             if (($ev['k'] ?? '') === 'run') {
                 $setAll($want);
-                $res['log'] = 'Von Hand ausgelöst — ' . ($want ? 'ein.' : 'aus.');
+                $res['log'] = $want ? AUTOMATText::t('Triggered manually — on.') : AUTOMATText::t('Triggered manually — off.');
             } elseif ($first) {
                 $st['did'][$today] = $now >= $t;
             } elseif (self::zsDay($row, $today, $hol) && $now >= $t && $now - $t < 3600 && empty($st['did'][$today]) && $hard === '' && $soft === '') {
                 $setAll($want);
-                $res['log'] = 'Schaltzeit — ' . ($want ? 'ein.' : 'aus.');
+                $res['log'] = $want ? AUTOMATText::t('Switching time — on.') : AUTOMATText::t('Switching time — off.');
                 $st['did'][$today] = true;
             }
             $st['did'] = array_slice((array)$st['did'], -3, null, true);
@@ -1962,13 +1970,13 @@ class AUTOMATLogik
         }
         $res['st'] = $st;
         $res['due'] = $next !== null ? min($next, $now + 3600) : $now + 3600;
-        $hn = !empty($hol[$today]) ? ' (heute Feiertag: ' . $hol[$today] . ')' : '';
+        $hn = !empty($hol[$today]) ? AUTOMATText::t(' (public holiday today: %s)', $hol[$today]) : '';
         if ($hard !== '') {
             $res['status'] = self::hardStatus($hard);
         } elseif ($modus === 0 && $st['on']) {
-            $res['status'] = '💡 Ein' . ($next !== null ? ' — aus um ' . self::fmtClock($next, $now) : '') . $hn;
+            $res['status'] = ($next !== null ? AUTOMATText::t('💡 Switched on — off at %s', self::fmtClock($next, $now)) : AUTOMATText::t('💡 Switched on')) . $hn;
         } else {
-            $res['status'] = ($soft !== '' ? '🌙 ' . $soft . ' — ' : '⏰ ') . ($next !== null ? 'Nächste Schaltung ' . self::fmtClock($next, $now) : 'Keine Schaltung in den nächsten zwei Tagen') . $hn;
+            $res['status'] = ($soft !== '' ? '🌙 ' . $soft . ' — ' : '⏰ ') . ($next !== null ? AUTOMATText::t('Next switching %s', self::fmtClock($next, $now)) : AUTOMATText::t('No switching in the next two days')) . $hn;
         }
         return $res;
     }
@@ -2059,10 +2067,10 @@ class AUTOMATLogik
         $now = (int)$ctx['now'];
         $res['urgent'] = true;
         $st += ['ph' => 'ok', 'since' => 0, 'last' => 0, 'who' => []];
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Alarm';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Alarm');
         if (!empty($ctx['locked'])) {
             $res['st'] = $st;
-            $res['status'] = '⏸ Gesperrt — reagiert nicht auf Alarm';
+            $res['status'] = AUTOMATText::t('⏸ Locked — does not react to alarms');
             return $res;
         }
         $who = self::activeOf(AUTOMATKatalog::vars($row, 'al_mel'), $ctx, !empty($row['al_invert']));
@@ -2074,39 +2082,39 @@ class AUTOMATLogik
             $did = [];
             foreach (AUTOMATKatalog::vars($row, 'al_licht') as $vid) {
                 $res['cmd'][] = [$vid, self::onValue($vid, 100, $ctx)];
-                $did['Licht an'][] = self::nameOf($vid, $ctx);
+                $did[AUTOMATText::t('Light on')][] = self::nameOf($vid, $ctx);
             }
             foreach (AUTOMATKatalog::vars($row, 'al_hoch') as $vid) {
                 // Steuert ein Rollladen-Automatismus denselben Rollladen, gilt dessen „offen“-Wert (täglich erprobt) —
                 // ein falsch herum eingetragener Wert würde beim Rauchalarm sonst den Fluchtweg schließen.
                 $res['cmd'][] = [$vid, isset($ctx['rlDir'][$vid]) ? (float)$ctx['rlDir'][$vid]['open'] : (array_key_exists($vid, $ctx['rlOpen'] ?? []) ? (float)$ctx['rlOpen'][$vid] : (float)($row['al_hochwert'] ?? 0))];
-                $did['Rollladen auf'][] = self::nameOf($vid, $ctx);
+                $did[AUTOMATText::t('Shutter up')][] = self::nameOf($vid, $ctx);
             }
             foreach (AUTOMATKatalog::vars($row, 'al_aus') as $vid) {
                 $res['cmd'][] = [$vid, self::offValue($vid, $ctx)];
-                $did['aus'][] = self::nameOf($vid, $ctx);
+                $did[AUTOMATText::t('off')][] = self::nameOf($vid, $ctx);
             }
             $what = [];
             foreach ($did as $k => $l) {
                 $what[] = $k . ': ' . implode(', ', $l);
             }
-            $res['log'] = '🚨 Alarm von ' . implode(', ', $who) . ($what ? ' — ' . implode('; ', $what) : '') . '.';
+            $res['log'] = $what ? AUTOMATText::t('🚨 Alarm from %s — %s.', implode(', ', $who), implode('; ', $what)) : AUTOMATText::t('🚨 Alarm from %s.', implode(', ', $who));
             if (!empty($row['al_push'])) {
-                $res['msg'][] = ['🚨 ' . $name, 'ALARM: ' . implode(', ', $who) . ' (' . date('H:i', $now) . ' Uhr)' . ($what ? '. ' . implode('; ', $what) : '') . '.'];
+                $res['msg'][] = ['🚨 ' . $name, $what ? AUTOMATText::t('ALARM: %s (%s). %s.', implode(', ', $who), date('H:i', $now), implode('; ', $what)) : AUTOMATText::t('ALARM: %s (%s).', implode(', ', $who), date('H:i', $now))];
             }
         } elseif (count($who) > 0) {
             $added = array_values(array_diff($who, (array)$st['who']));
             if (count($added) > 0) {
                 // Weiterer Melder während eines laufenden Alarms (z. B. Rauch breitet sich aus) — sofort melden
-                $res['log'] = '🚨 Weiterer Melder: ' . implode(', ', $added) . '.';
+                $res['log'] = AUTOMATText::t('🚨 Additional sensor: %s.', implode(', ', $added));
                 if (!empty($row['al_push'])) {
-                    $res['msg'][] = ['🚨 ' . $name, 'ALARM jetzt auch: ' . implode(', ', $added) . ' (' . date('H:i', $now) . ' Uhr). Alle: ' . implode(', ', $who) . '.'];
+                    $res['msg'][] = ['🚨 ' . $name, AUTOMATText::t('ALARM now also: %s (%s). All: %s.', implode(', ', $added), date('H:i', $now), implode(', ', $who))];
                 }
             }
             if ($wdh > 0 && $now >= (int)$st['last'] + $wdh) {
                 $st['last'] = $now;
                 if (!empty($row['al_push'])) {
-                    $res['msg'][] = ['🚨 ' . $name . ' (Erinnerung)', 'Alarm besteht weiter seit ' . date('H:i', (int)$st['since']) . ' Uhr: ' . implode(', ', $who) . '.'];
+                    $res['msg'][] = [AUTOMATText::t('🚨 %s (reminder)', $name), AUTOMATText::t('Alarm still active since %s: %s.', date('H:i', (int)$st['since']), implode(', ', $who))];
                 }
             }
             if ($wdh > 0) {
@@ -2114,16 +2122,16 @@ class AUTOMATLogik
             }
         } elseif ($st['ph'] === 'alarm') {
             $st['ph'] = 'ok';
-            $res['log'] = '✅ Entwarnung — kein Melder meldet mehr Alarm. Geschaltetes bleibt so (bitte selbst zurückstellen).';
+            $res['log'] = AUTOMATText::t('✅ All clear — no sensor reports an alarm anymore. Switched devices stay as they are (please reset them yourself).');
             if (!empty($row['al_ende']) && !empty($row['al_push'])) {
-                $res['msg'][] = ['✅ ' . $name, 'Entwarnung: kein Melder meldet mehr Alarm (' . date('H:i', $now) . ' Uhr). Ventile und Geräte bitte selbst wieder einschalten.'];
+                $res['msg'][] = ['✅ ' . $name, AUTOMATText::t('All clear: no sensor reports an alarm anymore (%s). Please switch valves and devices back on yourself.', date('H:i', $now))];
             }
         }
         $st['who'] = $who;
         $res['st'] = $st;
         $res['status'] = $st['ph'] === 'alarm'
-            ? '🚨 Alarm seit ' . date('H:i', (int)$st['since']) . ' Uhr — ' . implode(', ', $who)
-            : '✅ Kein Alarm';
+            ? AUTOMATText::t('🚨 Alarm since %s — %s', date('H:i', (int)$st['since']), implode(', ', $who))
+            : AUTOMATText::t('✅ No alarm');
         return $res;
     }
 
@@ -2190,7 +2198,7 @@ class AUTOMATLogik
         // und kein Befehl käme mehr an (live 17.10.2026: Wohnzimmer oben, Anzeige 0 — auch von Hand ging nichts).
         // Ziel je Rollladen: Richtung aus dessen Profil (~Shutter: 0 = offen; ~Shutter.Reversed: 0 = zu), sonst die
         // Werte im Automatismus — so passen gemischte Aktoren (Z-Wave + Shelly) in EINEM Automatismus (live 17.10.2026)
-        $set = function (bool $close, string $verb) use ($outs, $ctx, $row, &$res, &$st, $now): string {
+        $set = function (bool $close) use ($outs, $ctx, $row, &$res, &$st, $now): string {
             $sent = [];
             $already = [];
             $targets = [];
@@ -2205,7 +2213,12 @@ class AUTOMATLogik
                 }
             }
             $st['chk'] = count($sent) > 0 ? ['at' => $now + 180, 't' => $targets, 'n' => 0] : null;
-            return 'Rollläden ' . $verb . ': ' . implode(', ', $sent) . (count($already) > 0 ? ' (laut Anzeige stand' . (count($already) > 1 ? 'en' : '') . ' ' . implode(', ', $already) . ' schon so — Befehl trotzdem gesendet)' : '') . '.';
+            $list = implode(', ', $sent);
+            $known = implode(', ', $already);
+            return ($close ? AUTOMATText::t('Shutters closed: %s', $list) : AUTOMATText::t('Shutters opened: %s', $list))
+                . (count($already) > 0 ? ' ' . (count($already) > 1
+                    ? AUTOMATText::t('(according to the display, %s were already there — command sent anyway)', $known)
+                    : AUTOMATText::t('(according to the display, %s was already there — command sent anyway)', $known)) : '') . '.';
         };
         // Aussperrschutz von gestern Abend: nach Mitternacht noch schließen, sobald die Tür zu ist — aber nicht mehr,
         // wenn morgens das Öffnen ansteht. Vorher blieb „wartet“ für immer stehen (Status falsch, nächste Meldung fehlte).
@@ -2222,20 +2235,20 @@ class AUTOMATLogik
                 $what = $downReady ? 'down' : 'up';
             }
             if ($what === 'down' && count($open) > 0) {
-                $res['log'] = 'Schließen von Hand angefordert — nicht geschlossen, offen: ' . implode(', ', $open) . ' (Aussperrschutz).';
+                $res['log'] = AUTOMATText::t('Close requested manually — not closed, open: %s (lock-out protection).', implode(', ', $open));
             } elseif ($what === 'down') {
-                $res['log'] = 'Von Hand ausgelöst — ' . $set(true, 'geschlossen');
+                $res['log'] = AUTOMATText::t('Triggered manually — %s', $set(true));
                 $st['down'] = $today;
                 $st['up'] = $today;
                 $st['wait'] = false;
             } else {
-                $res['log'] = 'Von Hand ausgelöst — ' . $set(false, 'geöffnet');
+                $res['log'] = AUTOMATText::t('Triggered manually — %s', $set(false));
                 $st['up'] = $today;
             }
             $ev = ['k' => 'tick'];
         }
         if ($hard === '' && $soft === '' && $st['wait'] && $st['waitDay'] === $yesterday && count($open) === 0) {
-            $res['log'] = 'Tür jetzt zu — ' . $set(true, 'geschlossen');
+            $res['log'] = AUTOMATText::t('Door closed now — %s', $set(true));
             $st['wait'] = false;
             $st['down'] = $yesterday; // gehört zur Nacht davor — morgens wird normal geöffnet
         }
@@ -2260,15 +2273,15 @@ class AUTOMATLogik
                 foreach ($off as $vid) {
                     $res['cmd'][] = [$vid, $chkT($vid)];
                 }
-                $res['log'] = 'Nachkontrolle: ' . implode(', ', array_map(function ($v) use ($ctx) {
+                $res['log'] = AUTOMATText::t('Follow-up check: %s not at target — command sent again.', implode(', ', array_map(function ($v) use ($ctx) {
                     return self::nameOf($v, $ctx);
-                }, $off)) . ' steht nicht am Ziel — Befehl erneut gesendet.';
+                }, $off)));
                 $st['chk']['at'] = $now + 180;
                 $st['chk']['n'] = 1;
             } else {
-                $res['log'] = '⚠️ ' . implode(', ', array_map(function ($v) use ($ctx) {
+                $res['log'] = AUTOMATText::t('⚠️ %s did not respond to the second command either.', implode(', ', array_map(function ($v) use ($ctx) {
                     return self::nameOf($v, $ctx);
-                }, $off)) . ' hat auch auf den zweiten Befehl nicht reagiert.';
+                }, $off)));
                 $res['fault'] = $res['log'];
                 $st['chk'] = null;
             }
@@ -2277,21 +2290,22 @@ class AUTOMATLogik
             if ($downReady && $st['down'] !== $today) {
                 if (count($open) > 0) {
                     if (!$st['wait']) {
-                        $res['log'] = 'Schließen aufgehalten — offen: ' . implode(', ', $open) . ' (Aussperrschutz). Schließt, sobald zu.';
+                        $res['log'] = AUTOMATText::t('Closing held back — open: %s (lock-out protection). Closes as soon as closed.', implode(', ', $open));
                         if (!empty($row['rl_push'])) {
-                            $res['msg'][] = ['🪟 ' . (trim((string)($row['Name'] ?? '')) ?: 'Rollladen'), 'Bleibt oben, weil offen: ' . implode(', ', $open) . '. Schließt, sobald zu.'];
+                            $res['msg'][] = ['🪟 ' . (trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Shutter')), AUTOMATText::t('Stays up because open: %s. Closes as soon as closed.', implode(', ', $open))];
                         }
                     }
                     $st['wait'] = true;
                     $st['waitDay'] = $today;
                 } else {
-                    $res['log'] = ($st['wait'] ? 'Tür jetzt zu — ' : '') . $set(true, 'geschlossen');
+                    $closed = $set(true);
+                    $res['log'] = $st['wait'] ? AUTOMATText::t('Door closed now — %s', $closed) : $closed;
                     $st['down'] = $today;
                     $st['wait'] = false;
                     $st['up'] = $today; // heute nicht mehr öffnen
                 }
             } elseif ($upReady && $st['up'] !== $today && !$downReady) {
-                $res['log'] = $set(false, 'geöffnet');
+                $res['log'] = $set(false);
                 $st['up'] = $today;
             }
         }
@@ -2299,21 +2313,22 @@ class AUTOMATLogik
         if ($hard !== '') {
             $res['status'] = self::hardStatus($hard);
         } elseif ($st['wait']) {
-            $res['status'] = '⏳ Bleibt oben — offen: ' . implode(', ', $open);
+            $res['status'] = AUTOMATText::t('⏳ Stays up — open: %s', implode(', ', $open));
             $res['due'] = $now + 60;
         } elseif (is_array($st['chk'])) {
-            $res['status'] = '⏳ Befehl gesendet — Nachkontrolle um ' . date('H:i', (int)$st['chk']['at']) . ' Uhr';
+            $res['status'] = AUTOMATText::t('⏳ Command sent — follow-up check at %s', date('H:i', (int)$st['chk']['at']));
             $res['due'] = (int)$st['chk']['at'];
         } elseif ($soft !== '') {
-            $res['status'] = '🌙 Pausiert: ' . $soft;
+            $res['status'] = AUTOMATText::t('🌙 Paused: %s', $soft);
         } elseif ($st['down'] === $today) {
-            $res['status'] = '⬇️ Zu-Befehl gesendet (heute Abend) — öffnet morgen früh';
+            $res['status'] = AUTOMATText::t('⬇️ Close command sent (this evening) — opens tomorrow morning');
         } elseif ($st['up'] === $today) {
-            $res['status'] = '⬆️ Offen' . (in_array($downRef, [0, 1], true) ? ' — schließt um ' . self::fmtClock(min($downTs, $latest), $now) : ' — schließt bei ' . ($downRef === 2 ? 'Dunkelheit' : '„Nacht“') . ', spätestens ' . date('H:i', $latest) . ' Uhr')
-                . ($downRef === 2 && ($ctx['dark'] ?? null) === null ? ' (⚠️ kein Helligkeitssensor unter „🏠 Hausmodus“ — nur „spätestens“ gilt)' : '');
+            $res['status'] = (in_array($downRef, [0, 1], true) ? AUTOMATText::t('⬆️ Open — closes at %s', self::fmtClock(min($downTs, $latest), $now))
+                : ($downRef === 2 ? AUTOMATText::t('⬆️ Open — closes when dark, at the latest %s', date('H:i', $latest)) : AUTOMATText::t('⬆️ Open — closes at "Night", at the latest %s', date('H:i', $latest))))
+                . ($downRef === 2 && ($ctx['dark'] ?? null) === null ? ' ' . AUTOMATText::t('(⚠️ no brightness sensor under "🏠 House mode" — only "at the latest" applies)') : '');
             $res['due'] = in_array($downRef, [0, 1], true) ? min($downTs, $latest) : $now + 60;
         } else {
-            $res['status'] = '⬇️ Zu — öffnet ' . ($upRef === 2 ? 'bei „Tag“, frühestens ' . date('H:i', $earliest) . ' Uhr' : 'um ' . self::fmtClock($upAt, $now));
+            $res['status'] = $upRef === 2 ? AUTOMATText::t('⬇️ Closed — opens at "Day", at the earliest %s', date('H:i', $earliest)) : AUTOMATText::t('⬇️ Closed — opens at %s', self::fmtClock($upAt, $now));
             $res['due'] = $upRef === 2 ? $now + 60 : $upAt;
         }
         return $res;
@@ -2368,7 +2383,7 @@ class AUTOMATLogik
             return (int)$h[0] >= strtotime('-7 days', $now);
         }));
         if (count($done) > 0) {
-            $res['log'] = implode(', ', $done) . ': seit ' . $halt . ' s keine neue Meldung auf „wahr“ — zurückgesetzt.';
+            $res['log'] = AUTOMATText::t('%s: no new "true" report for %s s — reset.', implode(', ', $done), $halt);
         }
         $res['st'] = $st;
         $next = null;
@@ -2387,11 +2402,11 @@ class AUTOMATLogik
         arsort($per);
         $top = array_slice($per, 0, 3, true);
         $res['status'] = $hard !== '' ? self::hardStatus($hard)
-            : (count($st['t']) > 0 ? '⏳ ' . count($st['t']) . ' Melder auf „wahr“ — Rücksetzen um ' . date('H:i:s', (int)$next) . ' Uhr, falls keine neue Meldung kommt'
-                : '✅ Alle Melder ruhig')
-            . ($cnt > 0 ? ' · in 7 Tagen ' . $cnt . '× zurückgesetzt (' . implode(', ', array_map(function ($n, $c) {
+            : (count($st['t']) > 0 ? AUTOMATText::t('⏳ %s sensor(s) at "true" — reset at %s if no new report arrives', count($st['t']), date('H:i:s', (int)$next))
+                : AUTOMATText::t('✅ All sensors quiet'))
+            . ($cnt > 0 ? AUTOMATText::t(' · reset %s× in 7 days (%s)', $cnt, implode(', ', array_map(function ($n, $c) {
                 return $n . ' ' . $c . '×';
-            }, array_keys($top), $top)) . ')' : '');
+            }, array_keys($top), $top))) : '');
         return $res;
     }
 
@@ -2418,15 +2433,15 @@ class AUTOMATLogik
         }
         if ($p === null) {
             $res['st'] = $st;
-            $res['status'] = '❔ Leistung unbekannt';
+            $res['status'] = AUTOMATText::t('❔ Power unknown');
             return $res;
         }
         if (!$on) {
             $st['below'] = 0;
-            $res['status'] = '⚪ Aus';
+            $res['status'] = AUTOMATText::t('⚪ Off');
         } elseif ($p >= $schwelle) {
             $st['below'] = 0;
-            $res['status'] = '▶️ In Betrieb (' . self::fmtNum($p) . ' W)';
+            $res['status'] = AUTOMATText::t('▶️ In operation (%s W)', self::fmtNum($p));
         } else {
             if ((int)$st['below'] === 0) {
                 $st['below'] = $now;
@@ -2435,16 +2450,16 @@ class AUTOMATLogik
             $soft = self::softBlock($row, $ctx);
             if ($now >= $at && $soft === '') {
                 $res['cmd'][] = [$ov, self::offValue($ov, $ctx)];
-                $res['log'] = 'Seit ' . self::fmtDuration($now - (int)$st['below']) . ' im Standby (' . self::fmtNum($p) . ' W) — ausgeschaltet.';
+                $res['log'] = AUTOMATText::t('In standby for %s (%s W) — switched off.', self::fmtDuration($now - (int)$st['below']), self::fmtNum($p));
                 if (!empty($row['sb_push'])) {
-                    $res['msg'][] = ['🔌 ' . (trim((string)($row['Name'] ?? '')) ?: self::nameOf($ov, $ctx)), 'War ' . self::fmtDuration($now - (int)$st['below']) . ' im Standby — ausgeschaltet.'];
+                    $res['msg'][] = ['🔌 ' . (trim((string)($row['Name'] ?? '')) ?: self::nameOf($ov, $ctx)), AUTOMATText::t('Was in standby for %s — switched off.', self::fmtDuration($now - (int)$st['below']))];
                 }
                 $st['below'] = 0;
-                $res['status'] = '⚪ Ausgeschaltet (Standby)';
+                $res['status'] = AUTOMATText::t('⚪ Switched off (standby)');
             } else {
                 $res['due'] = $at;
                 $res['end'] = $at;
-                $res['status'] = '💤 Standby (' . self::fmtNum($p) . ' W)' . ($soft !== '' ? ' — schaltet nicht ab: ' . $soft : ' — aus um ' . self::fmtClock($at, $now));
+                $res['status'] = $soft !== '' ? AUTOMATText::t('💤 Standby (%s W) — does not switch off: %s', self::fmtNum($p), $soft) : AUTOMATText::t('💤 Standby (%s W) — off at %s', self::fmtNum($p), self::fmtClock($at, $now));
             }
         }
         $res['st'] = $st;
@@ -2466,12 +2481,12 @@ class AUTOMATLogik
         $wdh = max(0, (int)($row['lf_wdh'] ?? 30)) * 60;
         $kon = AUTOMATKatalog::vars($row, 'lf_kon');
         $open = self::activeOf($kon, $ctx, !empty($row['lf_konInvert']));
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Lüften';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Ventilate');
         $st += ['ph' => 'ok', 'since' => 0, 'last' => 0];
         $hard = self::hardBlock($ctx);
         if ($hard !== '' || $v === null) {
             $res['st'] = $st;
-            $res['status'] = $hard !== '' ? self::hardStatus($hard) : '❔ Messwert fehlt';
+            $res['status'] = $hard !== '' ? self::hardStatus($hard) : AUTOMATText::t('❔ Measured value missing');
             return $res;
         }
         $soft = self::softBlock($row, $ctx);
@@ -2493,13 +2508,13 @@ class AUTOMATLogik
             // Erste Erinnerung — auch nachträglich, wenn sie beim Überschreiten wegen Sperre/Hausmodus nicht ging
             $st['told'] = true;
             $st['last'] = $now;
-            $res['log'] = 'Luft zu schlecht: ' . $txt . ' — Erinnerung zum Lüften.';
-            $res['msg'][] = ['💨 ' . $name, 'Bitte lüften: ' . $txt . '.'];
+            $res['log'] = AUTOMATText::t('Air too poor: %s — reminder to ventilate.', $txt);
+            $res['msg'][] = ['💨 ' . $name, AUTOMATText::t('Please ventilate: %s.', $txt)];
         } elseif ($st['ph'] === 'hoch') {
             if ($v < $ok) {
                 $st['ph'] = 'ok';
                 if (count($kon) === 0 || count($open) > 0) {
-                    $msg = count($open) > 0 ? 'Luft wieder gut (' . self::fmtNum($v) . ') — ' . implode(', ', $open) . ' kann wieder zu.' : 'Luft wieder gut (' . self::fmtNum($v) . ').';
+                    $msg = count($open) > 0 ? AUTOMATText::t('Air good again (%s) — %s can be closed again.', self::fmtNum($v), implode(', ', $open)) : AUTOMATText::t('Air good again (%s).', self::fmtNum($v));
                     $res['log'] = $msg;
                     if ($soft === '') {
                         $res['msg'][] = ['✅ ' . $name, $msg];
@@ -2508,7 +2523,7 @@ class AUTOMATLogik
             } elseif (count($open) === 0 && $wdh > 0 && $now >= (int)$st['last'] + $wdh) {
                 $st['last'] = $now;
                 if ($soft === '') {
-                    $res['msg'][] = ['💨 ' . $name . ' (Erinnerung)', 'Immer noch zu hoch: ' . $txt . '.'];
+                    $res['msg'][] = [AUTOMATText::t('💨 %s (reminder)', $name), AUTOMATText::t('Still too high: %s.', $txt)];
                 }
             }
         }
@@ -2516,16 +2531,16 @@ class AUTOMATLogik
         switch ($st['ph']) {
             case 'steigt':
                 $res['due'] = (int)$st['since'] + $dauer;
-                $res['status'] = '⏳ Zu hoch: ' . self::fmtNum($v) . ' — Erinnerung um ' . self::fmtClock((int)$st['since'] + $dauer, $now);
+                $res['status'] = AUTOMATText::t('⏳ Too high: %s — reminder at %s', self::fmtNum($v), self::fmtClock((int)$st['since'] + $dauer, $now));
                 break;
             case 'hoch':
-                $res['status'] = count($open) > 0 ? '🪟 Wird gelüftet: ' . self::fmtNum($v) . ' (gut unter ' . self::fmtNum($ok) . ')' : '💨 Bitte lüften: ' . self::fmtNum($v);
+                $res['status'] = count($open) > 0 ? AUTOMATText::t('🪟 Being ventilated: %s (good below %s)', self::fmtNum($v), self::fmtNum($ok)) : AUTOMATText::t('💨 Please ventilate: %s', self::fmtNum($v));
                 if (count($open) === 0 && $wdh > 0) {
                     $res['due'] = (int)$st['last'] + $wdh;
                 }
                 break;
             default:
-                $res['status'] = '✅ Luft gut: ' . self::fmtNum($v);
+                $res['status'] = AUTOMATText::t('✅ Air good: %s', self::fmtNum($v));
         }
         return $res;
     }
@@ -2573,7 +2588,7 @@ class AUTOMATLogik
             if (isset($set[$hk]) && abs((float)($ev['v'] ?? 0) - (float)$set[$hk]) > 0.05) {
                 unset($set[$hk]);
                 $st['hand'][$hk] = true; // Grundwert ($saved) bleibt gemerkt — gilt beim Heimkommen
-                $logs[] = self::nameOf((int)$ev['vid'], $ctx) . ' von Hand auf ' . self::fmtNum((float)($ev['v'] ?? 0)) . ' °C gestellt — bleibt so';
+                $logs[] = AUTOMATText::t('%s set manually to %s °C — stays that way', self::nameOf((int)$ev['vid'], $ctx), self::fmtNum((float)($ev['v'] ?? 0)));
             }
         }
         foreach ($soll as $vid) {
@@ -2604,14 +2619,14 @@ class AUTOMATLogik
                 }
                 if (($force || (isset($set[$k]) && abs($cur - (float)$set[$k]) <= 0.05)) && abs($cur - (float)$saved[$k]) > 0.05) {
                     $res['cmd'][] = [$vid, (float)$saved[$k]];
-                    $logs[] = self::nameOf($vid, $ctx) . ' zurück auf ' . self::fmtNum((float)$saved[$k]) . ' °C';
+                    $logs[] = AUTOMATText::t('%s back to %s °C', self::nameOf($vid, $ctx), self::fmtNum((float)$saved[$k]));
                 }
                 unset($saved[$k], $set[$k]);
             }
         }
         $lowered = $target !== null && count($res['cmd']) > 0;
         if ($lowered) {
-            $logs[] = count($res['cmd']) . ' Sollwert(e) auf ' . self::fmtNum($target) . ' °C abgesenkt („' . AUTOMATKatalog::modes()[$mode] . '“)';
+            $logs[] = AUTOMATText::t('%s setpoint(s) lowered to %s °C ("%s")', count($res['cmd']), self::fmtNum($target), AUTOMATKatalog::modes()[$mode]);
         }
         if ($logs) {
             $res['log'] = implode('; ', $logs) . '.';
@@ -2622,9 +2637,9 @@ class AUTOMATLogik
         if ($hard !== '') {
             $res['status'] = self::hardStatus($hard);
         } elseif ($target !== null && count($set) > 0) {
-            $res['status'] = '🌡 Abgesenkt auf ' . self::fmtNum($target) . ' °C („' . AUTOMATKatalog::modes()[$mode] . '“)';
+            $res['status'] = AUTOMATText::t('🌡 Lowered to %s °C ("%s")', self::fmtNum($target), AUTOMATKatalog::modes()[$mode]);
         } else {
-            $res['status'] = '✅ Normalbetrieb';
+            $res['status'] = AUTOMATText::t('✅ Normal operation');
         }
         return $res;
     }
@@ -2639,7 +2654,7 @@ class AUTOMATLogik
         $in = (int)($row['tg_in'] ?? 0);
         $st += ['last' => ''];
         $res['st'] = $st;
-        $res['status'] = $st['last'] !== '' ? '🔘 Zuletzt: ' . $st['last'] : '🔘 Wartet auf einen Tastendruck';
+        $res['status'] = $st['last'] !== '' ? AUTOMATText::t('🔘 Last: %s', $st['last']) : AUTOMATText::t('🔘 Waiting for a button press');
         if (($ev['k'] ?? '') !== 'trigger' || (int)($ev['vid'] ?? 0) !== $in) {
             return $res;
         }
@@ -2656,7 +2671,8 @@ class AUTOMATLogik
         if ($key === '' || (($key === 'false' || $key === '0') && !in_array($key, array_merge(...array_values($wants)), true))) {
             return $res; // Loslassen bzw. Rücksetzen
         }
-        foreach (['k' => 'kurz', 'd' => 'doppelt', 'l' => 'lang'] as $p => $label) {
+        foreach (['k' => 'short', 'd' => 'double', 'l' => 'long'] as $p => $label) {
+            $label = AUTOMATText::t($label);
             $want = $wants[$p];
             if (!in_array($key, $want, true)) {
                 continue;
@@ -2668,7 +2684,7 @@ class AUTOMATLogik
                 return $res;
             }
             if ($hard !== '' || $soft !== '') {
-                $res['log'] = ucfirst($label) . ' gedrückt — nichts getan: ' . ($hard ?: $soft) . '.';
+                $res['log'] = AUTOMATText::t('%s pressed — nothing done: %s.', ucfirst($label), $hard ?: $soft);
                 return $res;
             }
             $z = (int)($row['tg_' . $p . 'ziel'] ?? 0);
@@ -2677,32 +2693,32 @@ class AUTOMATLogik
                 case 1:
                     $isOn = self::isTrue($ctx['val'][$z] ?? false);
                     $res['cmd'][] = [$z, $isOn ? self::offValue($z, $ctx) : self::onValue($z, 100, $ctx)];
-                    $did = self::nameOf($z, $ctx) . ($isOn ? ' aus' : ' an');
+                    $did = $isOn ? AUTOMATText::t('%s off', self::nameOf($z, $ctx)) : AUTOMATText::t('%s on', self::nameOf($z, $ctx));
                     break;
                 case 2:
                     $res['cmd'][] = [$z, self::onValue($z, 100, $ctx)];
-                    $did = self::nameOf($z, $ctx) . ' an';
+                    $did = AUTOMATText::t('%s on', self::nameOf($z, $ctx));
                     break;
                 case 3:
                     $res['cmd'][] = [$z, self::offValue($z, $ctx)];
-                    $did = self::nameOf($z, $ctx) . ' aus';
+                    $did = AUTOMATText::t('%s off', self::nameOf($z, $ctx));
                     break;
                 case 4:
                     $res['cmd'][] = [$z, $zw];
-                    $did = self::nameOf($z, $ctx) . ' auf ' . self::fmtNum($zw);
+                    $did = AUTOMATText::t('%s to %s', self::nameOf($z, $ctx), self::fmtNum($zw));
                     break;
                 default:
                     $m = max(0, min(4, (int)round($zw)));
                     $res['mode'] = $m;
-                    $did = 'Hausmodus „' . AUTOMATKatalog::modes()[$m] . '“';
+                    $did = AUTOMATText::t('House mode "%s"', AUTOMATKatalog::modes()[$m]);
             }
             $st['last'] = $label . ' → ' . $did . ' (' . date('H:i', $now) . ')';
             $res['st'] = $st;
-            $res['log'] = ucfirst($label) . ' gedrückt — ' . $did . '.';
-            $res['status'] = '🔘 Zuletzt: ' . $st['last'];
+            $res['log'] = AUTOMATText::t('%s pressed — %s.', ucfirst($label), $did);
+            $res['status'] = AUTOMATText::t('🔘 Last: %s', $st['last']);
             return $res;
         }
-        $res['log'] = 'Unbekannter Tasterwert „' . (string)($ev['v'] ?? '') . '“ — im Dialog bei kurz/doppelt/lang eintragen.';
+        $res['log'] = AUTOMATText::t('Unknown button value "%s" — enter it in the dialog under short/double/long.', (string)($ev['v'] ?? ''));
         return $res;
     }
 
@@ -2744,7 +2760,7 @@ class AUTOMATLogik
         $hard = self::hardBlock($ctx);
         if ($hard !== '') {
             if ($st['ph'] === 'ramp') {
-                $res['log'] = 'Rampe abgebrochen: ' . $hard . '.';
+                $res['log'] = AUTOMATText::t('Ramp cancelled: %s.', $hard);
             }
             $st['ph'] = 'idle';
             $res['st'] = $st;
@@ -2753,7 +2769,7 @@ class AUTOMATLogik
         }
         if ($st['ph'] === 'ramp' && ($ev['k'] ?? '') === 'output' && empty($ev['own']) && in_array((int)($ev['vid'] ?? 0), $outs, true)) {
             $st['ph'] = 'idle';
-            $res['log'] = 'Licht von Hand verstellt — Rampe beendet.';
+            $res['log'] = AUTOMATText::t('Light adjusted manually — ramp ended.');
         }
         // Wann heute?
         $at = null;
@@ -2797,13 +2813,13 @@ class AUTOMATLogik
             }
             // Aufwachen beginnt beim aktuellen Pegel — ein schon helles Licht wird nicht erst auf 1 % gedimmt
             $st['from'] = max(1, $from);
-            $res['log'] = ($up ? 'Aufwachlicht' : 'Einschlaflicht') . ' startet — bis ' . date('H:i', (int)$st['t1']) . ' Uhr.';
+            $res['log'] = $up ? AUTOMATText::t('Wake-up light starts — until %s.', date('H:i', (int)$st['t1'])) : AUTOMATText::t('Fall-asleep light starts — until %s.', date('H:i', (int)$st['t1']));
             if (!$up && $from === 0) {
                 $st['ph'] = 'idle';
-                $res['log'] = 'Einschlaflicht: Licht ist schon aus — nichts zu tun.';
+                $res['log'] = AUTOMATText::t('Fall-asleep light: light is already off — nothing to do.');
             } elseif ($up && $from >= $ziel) {
                 $st['ph'] = 'idle';
-                $res['log'] = 'Aufwachlicht: Licht ist schon ' . $from . ' % hell — nichts zu tun.';
+                $res['log'] = AUTOMATText::t('Wake-up light: light is already %s %% bright — nothing to do.', $from);
             }
         }
         if ($st['ph'] === 'ramp') {
@@ -2827,21 +2843,21 @@ class AUTOMATLogik
             }
             if ($f >= 1.0) {
                 $st['ph'] = 'idle';
-                $res['log'] = ($up ? 'Aufwachlicht fertig — ' . $ziel . ' %.' : 'Einschlaflicht fertig — aus.');
-                $res['status'] = $up ? '🌅 Fertig — ' . $ziel . ' %' : '🌙 Fertig — aus';
+                $res['log'] = $up ? AUTOMATText::t('Wake-up light finished — %s %%.', $ziel) : AUTOMATText::t('Fall-asleep light finished — off.');
+                $res['status'] = $up ? AUTOMATText::t('🌅 Finished — %s %%', $ziel) : AUTOMATText::t('🌙 Finished — off');
             } else {
                 $res['due'] = min($t1, $now + 30);
                 $res['end'] = $t1;
-                $res['status'] = ($up ? '🌅 Wird heller: ' : '🌙 Wird dunkler: ') . $pct . ' % (bis ' . date('H:i', $t1) . ' Uhr)';
+                $res['status'] = $up ? AUTOMATText::t('🌅 Getting brighter: %s %% (until %s)', $pct, date('H:i', $t1)) : AUTOMATText::t('🌙 Getting darker: %s %% (until %s)', $pct, date('H:i', $t1));
             }
         } else {
             if ($start === 2) {
-                $res['status'] = '💤 Startet beim Wechsel auf „Nacht“';
+                $res['status'] = AUTOMATText::t('💤 Starts on change to "Night"');
             } elseif ($begin === null) {
-                $res['status'] = '❔ Keine Weckzeit';
+                $res['status'] = AUTOMATText::t('❔ No wake-up time');
             } else {
                 $next = $begin > $now ? $begin : null;
-                $res['status'] = $next !== null && $dayOk ? '💤 Startet um ' . date('H:i', $next) . ' Uhr' : '💤 Heute erledigt oder kein Tag dafür';
+                $res['status'] = $next !== null && $dayOk ? AUTOMATText::t('💤 Starts at %s', date('H:i', $next)) : AUTOMATText::t('💤 Done today or not a day for it');
                 if ($next !== null && $dayOk) {
                     $res['due'] = $next;
                 }
@@ -2868,7 +2884,7 @@ class AUTOMATLogik
         $st += ['pend' => -1, 'at' => 0, 'last' => '', 'lastTs' => 0];
         $hard = self::hardBlock($ctx);
         $modeName = AUTOMATKatalog::modes()[$mode] ?? (string)$mode;
-        $name = trim((string)($row['Name'] ?? '')) ?: 'Szene';
+        $name = trim((string)($row['Name'] ?? '')) ?: AUTOMATText::t('Scene');
         if (($ev['k'] ?? '') === 'run') {
             // Von Hand über Automat: jetzt ausführen, ohne Verzögerung und unabhängig vom Hausmodus
             $st['pend'] = $mode;
@@ -2878,15 +2894,15 @@ class AUTOMATLogik
         if (($ev['k'] ?? '') === 'mode') {
             $to = (int)($ev['to'] ?? $mode);
             if ((int)$st['pend'] >= 0 && (int)$st['pend'] !== $to) {
-                $res['log'] = 'Hausmodus wechselte vor Ablauf der Verzögerung auf „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — „' . (AUTOMATKatalog::modes()[(int)$st['pend']] ?? '') . '“-Schaltung entfällt.';
+                $res['log'] = AUTOMATText::t('House mode changed to "%s" before the delay elapsed — "%s" switching cancelled.', AUTOMATKatalog::modes()[$to] ?? $to, AUTOMATKatalog::modes()[(int)$st['pend']] ?? '');
                 $st['pend'] = -1;
                 $st['at'] = 0;
             }
             if (!empty($row['sz_m' . $to])) {
                 if ($hard !== '') {
-                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — nicht geschaltet: ' . $hard . '.';
+                    $res['log'] = AUTOMATText::t('House mode "%s" — not switched: %s.', AUTOMATKatalog::modes()[$to] ?? $to, $hard);
                 } elseif (isset($ctx['condOk']) && !$ctx['condOk']) {
-                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — nicht geschaltet: Bedingung nicht erfüllt.';
+                    $res['log'] = AUTOMATText::t('House mode "%s" — not switched: %s.', AUTOMATKatalog::modes()[$to] ?? $to, AUTOMATText::t('condition not met'));
                 } else {
                     $st['pend'] = $to;
                     $st['at'] = $now + max(0, (int)($row['sz_verz'] ?? 0)) * 60;
@@ -2898,9 +2914,9 @@ class AUTOMATLogik
             $st['pend'] = -1;
             $st['at'] = 0;
             if ($mode !== $pend) {
-                $res['log'] = 'Hausmodus ist nicht mehr „' . (AUTOMATKatalog::modes()[$pend] ?? $pend) . '“ — Schaltung entfällt.';
+                $res['log'] = AUTOMATText::t('House mode is no longer "%s" — switching cancelled.', AUTOMATKatalog::modes()[$pend] ?? $pend);
             } elseif ($hard !== '') {
-                $res['log'] = 'Nicht geschaltet: ' . $hard . '.';
+                $res['log'] = AUTOMATText::t('Not switched: %s.', $hard);
             } else {
                 $aktion = (int)($row['sz_aktion'] ?? 0);
                 $changed = [];
@@ -2921,13 +2937,15 @@ class AUTOMATLogik
                         $changed[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
                     }
                 }
-                $verb = AUTOMATKatalog::tr(AUTOMATKatalog::SZ_ACTIONS)[$aktion] ?? 'geschaltet';
-                $verbPast = [0 => 'ausgeschaltet', 1 => 'eingeschaltet', 2 => 'auf ' . self::fmtNum((float)($row['sz_wert'] ?? 0)) . ' gesetzt'][$aktion] ?? 'geschaltet';
-                $res['log'] = 'Hausmodus „' . $modeName . '“: ' . (count($changed) > 0 ? count($changed) . ' Gerät(e) ' . $verbPast . ' (' . implode(', ', $changed) . ').' : 'alle Geräte standen schon richtig — nichts zu ' . $verb . '.');
-                $st['last'] = $modeName . ': ' . (count($changed) > 0 ? count($changed) . ' ' . $verbPast : 'nichts zu tun');
+                $verb = AUTOMATKatalog::tr(AUTOMATKatalog::SZ_ACTIONS)[$aktion] ?? AUTOMATText::t('switched');
+                $verbPast = [0 => AUTOMATText::t('switched off'), 1 => AUTOMATText::t('switched on'), 2 => AUTOMATText::t('set to %s', self::fmtNum((float)($row['sz_wert'] ?? 0)))][$aktion] ?? AUTOMATText::t('switched');
+                $res['log'] = count($changed) > 0
+                    ? AUTOMATText::t('House mode "%s": %s device(s) %s (%s).', $modeName, count($changed), $verbPast, implode(', ', $changed))
+                    : AUTOMATText::t('House mode "%s": all devices were already correct — nothing to %s.', $modeName, $verb);
+                $st['last'] = $modeName . ': ' . (count($changed) > 0 ? count($changed) . ' ' . $verbPast : AUTOMATText::t('nothing to do'));
                 $st['lastTs'] = $now;
                 if (count($changed) > 0 && !empty($row['sz_push'])) {
-                    $res['msg'][] = ['🌙 ' . $name, 'Hausmodus „' . $modeName . '“: ' . implode(', ', $changed) . ' ' . $verbPast . '.'];
+                    $res['msg'][] = ['🌙 ' . $name, AUTOMATText::t('House mode "%s": %s %s.', $modeName, implode(', ', $changed), $verbPast)];
                 }
             }
         }
@@ -2937,9 +2955,9 @@ class AUTOMATLogik
         } elseif ((int)$st['pend'] >= 0) {
             $res['due'] = (int)$st['at'];
             $res['end'] = (int)$st['at'];
-            $res['status'] = '⏳ „' . (AUTOMATKatalog::modes()[(int)$st['pend']] ?? '') . '“: schaltet um ' . self::fmtClock((int)$st['at'], $now);
+            $res['status'] = AUTOMATText::t('⏳ "%s": switches at %s', AUTOMATKatalog::modes()[(int)$st['pend']] ?? '', self::fmtClock((int)$st['at'], $now));
         } else {
-            $res['status'] = $st['last'] !== '' ? '✅ Zuletzt ' . date('d.m.Y H:i', (int)$st['lastTs']) . ' — ' . $st['last'] : '💤 Wartet auf den nächsten Wechsel des Hausmodus';
+            $res['status'] = $st['last'] !== '' ? '✅ ' . AUTOMATText::t('Last %s — %s', date('d.m.Y H:i', (int)$st['lastTs']), $st['last']) : AUTOMATText::t('💤 Waiting for the next house mode change');
         }
         return $res;
     }
@@ -2964,7 +2982,7 @@ class AUTOMATLogik
         $hard = self::hardBlock($ctx);
         if ($hard !== '') {
             $res['st'] = $st;
-            $res['status'] = self::hardStatus($hard) . ' (Ergebnis bleibt ' . ($st['ph'] === 'weg' ? '„niemand da“' : '„jemand da“') . ')';
+            $res['status'] = self::hardStatus($hard) . ' ' . ($st['ph'] === 'weg' ? AUTOMATText::t('(result stays "nobody there")') : AUTOMATText::t('(result stays "somebody there")'));
             return $res;
         }
         if ($first) {
@@ -2975,13 +2993,13 @@ class AUTOMATLogik
         if (count($home) > 0) {
             if ($st['ph'] !== 'da') {
                 $res['self'] = true;
-                $res['log'] = ($st['ph'] === 'weg' ? 'Jemand ist nach Hause gekommen' : 'Doch wieder jemand da') . ' (' . implode(', ', $came ?: $home) . ').';
+                $res['log'] = $st['ph'] === 'weg' ? AUTOMATText::t('Somebody came home (%s).', implode(', ', $came ?: $home)) : AUTOMATText::t('Somebody is there again after all (%s).', implode(', ', $came ?: $home));
                 if ($st['ph'] === 'weg' && !empty($row['an_push'])) {
-                    $res['msg'][] = ['🏠 Heimgekommen', implode(', ', $came ?: $home) . ' ist nach Hause gekommen.'];
+                    $res['msg'][] = [AUTOMATText::t('🏠 Came home'), AUTOMATText::t('%s came home.', implode(', ', $came ?: $home))];
                 }
                 $st['since'] = $now;
             } elseif (count($came) > 0 || count($left) > 0) {
-                $res['log'] = trim((count($came) > 0 ? implode(', ', $came) . ' gekommen. ' : '') . (count($left) > 0 ? implode(', ', $left) . ' gegangen. ' : '') . 'Zu Hause: ' . implode(', ', $home) . '.');
+                $res['log'] = trim((count($came) > 0 ? AUTOMATText::t('%s arrived.', implode(', ', $came)) . ' ' : '') . (count($left) > 0 ? AUTOMATText::t('%s left.', implode(', ', $left)) . ' ' : '') . AUTOMATText::t('At home: %s.', implode(', ', $home)));
             }
             $st['ph'] = 'da';
             $st['until'] = 0;
@@ -2989,15 +3007,16 @@ class AUTOMATLogik
             if ($st['ph'] === 'da') {
                 $st['ph'] = 'wartet';
                 $st['until'] = $now + $wait;
-                $res['log'] = (count($left) > 0 ? implode(', ', $left) . ' gegangen — ' : '') . 'alle weg' . ($wait > 0 ? ', „niemand da“ ab ' . date('H:i', $st['until']) . ' Uhr, falls niemand zurückkommt.' : '.');
+                $allGone = $wait > 0 ? AUTOMATText::t('everybody gone, "nobody there" from %s if nobody comes back.', date('H:i', $st['until'])) : AUTOMATText::t('everybody gone.');
+                $res['log'] = count($left) > 0 ? AUTOMATText::t('%s left — %s', implode(', ', $left), $allGone) : $allGone;
             }
             if ($st['ph'] === 'wartet' && $now >= (int)$st['until']) {
                 $st['ph'] = 'weg';
                 $st['since'] = $now;
                 $res['self'] = false;
-                $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . 'Niemand mehr zu Hause.';
+                $res['log'] = ($res['log'] !== null ? $res['log'] . ' ' : '') . AUTOMATText::t('Nobody at home anymore.');
                 if (!empty($row['an_push'])) {
-                    $res['msg'][] = ['🚪 Alle weg', 'Niemand mehr zu Hause (seit ' . date('H:i', $now) . ' Uhr).'];
+                    $res['msg'][] = [AUTOMATText::t('🚪 Everybody gone'), AUTOMATText::t('Nobody at home anymore (since %s).', date('H:i', $now))];
                 }
             }
         }
@@ -3008,15 +3027,15 @@ class AUTOMATLogik
         $res['self'] = $st['ph'] !== 'weg';
         switch ($st['ph']) {
             case 'da':
-                $res['status'] = '🏠 Zu Hause: ' . implode(', ', $home);
+                $res['status'] = AUTOMATText::t('🏠 At home: %s', implode(', ', $home));
                 break;
             case 'wartet':
                 $res['due'] = (int)$st['until'];
                 $res['end'] = (int)$st['until'];
-                $res['status'] = '🚪 Alle weg — „niemand da“ um ' . self::fmtClock((int)$st['until'], $now);
+                $res['status'] = AUTOMATText::t('🚪 Everybody gone — "nobody there" at %s', self::fmtClock((int)$st['until'], $now));
                 break;
             default:
-                $res['status'] = '🚪 Niemand zu Hause seit ' . date('d.m.Y H:i', (int)$st['since']) . ' Uhr';
+                $res['status'] = AUTOMATText::t('🚪 Nobody at home since %s', date('d.m.Y H:i', (int)$st['since']));
         }
         return $res;
     }
