@@ -2,7 +2,7 @@
   "elements": [],
   "actions": [],
   "status": [
-    { "code": 102, "icon": "active", "caption": "Aktiv — Automatismen laufen" },
-    { "code": 104, "icon": "inactive", "caption": "Inaktiv — noch kein Automatismus eingerichtet" }
+    { "code": 102, "icon": "active", "caption": "Active — automations running" },
+    { "code": 104, "icon": "inactive", "caption": "Inactive — no automation set up yet" }
   ]
 }

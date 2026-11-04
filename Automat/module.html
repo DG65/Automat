@@ -112,7 +112,11 @@
     try { var sv = JSON.parse(localStorage.getItem(AU_KEY) || 'null'); if (sv) { auView = Object.assign(auView, sv, { q: '' }); } } catch (e) {}
     function auSave() { try { localStorage.setItem(AU_KEY, JSON.stringify({ f: auView.f, g: auView.g, s: auView.s, closed: auView.closed })); } catch (e) {} }
 
-    var AU_FILTERS = [['all', 'Alle'], ['run', 'Läuft'], ['warn', 'Auffällig'], ['quiet', 'Gesperrt/inaktiv']];
+    // Texte: englischer Schlüssel, Übersetzung liefert das Modul in AU.texte (locale.json); %s = Wert.
+    function T(s, a) { var t = (AU && AU.texte && AU.texte[s]) || s; return a == null ? t : t.replace('%s', function () { return String(a); }); }
+    function auLang() { return T('language code: en') === 'de' ? 'de' : 'en'; }
+
+    var AU_FILTERS = [['all', 'All'], ['run', 'Running'], ['warn', 'Noticeable'], ['quiet', 'Locked/inactive']];
     var AU_RANK = { warn: 0, run: 1, idle: 2, locked: 3, off: 4 };
 
     function auEl(tag, cls, text) {
@@ -159,12 +163,12 @@
         sb.appendChild(document.createTextNode('🔍'));
         var inp = auEl('input');
         inp.id = 'au-q';
-        inp.placeholder = 'Suchen: Name, Raum, Art, Zustand …';
+        inp.placeholder = T('Search: name, room, kind, state …');
         inp.value = auView.q;
         inp.oninput = function () { auView.q = inp.value; auList(); };
         sb.appendChild(inp);
         var clr = auEl('button', '', '✕');
-        clr.title = 'Suche leeren';
+        clr.title = T('Clear search');
         clr.onclick = function () { inp.value = ''; auView.q = ''; auList(); inp.focus(); };
         sb.appendChild(clr);
         bar.appendChild(sb);
@@ -172,8 +176,8 @@
         fl.id = 'au-filters';
         fl.style.margin = '0';
         bar.appendChild(fl);
-        bar.appendChild(auSelect('au-g', [['room', 'nach Raum'], ['cat', 'nach Funktion'], ['none', 'ohne Gruppen']], auView.g, function (v) { auView.g = v; auSave(); auList(); }, 'Gruppieren'));
-        bar.appendChild(auSelect('au-s', [['name', 'Name'], ['state', 'Zustand'], ['type', 'Art']], auView.s, function (v) { auView.s = v; auSave(); auList(); }, 'Sortieren'));
+        bar.appendChild(auSelect('au-g', [['room', 'by room'], ['cat', 'by function'], ['none', 'no groups']], auView.g, function (v) { auView.g = v; auSave(); auList(); }, T('Group')));
+        bar.appendChild(auSelect('au-s', [['name', 'Name'], ['state', 'State'], ['type', 'Kind']], auView.s, function (v) { auView.s = v; auSave(); auList(); }, T('Sort')));
         root.appendChild(bar);
         var fla = auEl('div', 'au-flash');
         fla.id = 'au-flash';
@@ -191,7 +195,7 @@
         var s = auEl('select', 'au-sel');
         s.id = id;
         s.title = title;
-        opts.forEach(function (o) { var op = auEl('option', '', (id === 'au-s' ? '↕ ' : '▦ ') + o[1]); op.value = o[0]; s.appendChild(op); });
+        opts.forEach(function (o) { var op = auEl('option', '', (id === 'au-s' ? '↕ ' : '▦ ') + T(o[1])); op.value = o[0]; s.appendChild(op); });
         s.value = val;
         s.onchange = function () { onch(s.value); };
         return s;
@@ -202,11 +206,11 @@
         bar.innerHTML = '';
         AU.modes.forEach(function (label, i) {
             var c = auEl('button', 'au-chip' + (AU.mode === i ? ' on' : ''), label);
-            c.onclick = function () { if (AU.mode !== i) { auSend({ a: 'mode', v: i }, 'Hausmodus „' + label + '“ …'); } };
+            c.onclick = function () { if (AU.mode !== i) { auSend({ a: 'mode', v: i }, T('House mode "%s" …', label)); } };
             bar.appendChild(c);
         });
-        var p = auEl('button', 'au-chip pause' + (AU.paused ? ' on' : ''), AU.paused ? '⏸ pausiert' : '⏸ Pause');
-        p.onclick = function () { auSend({ a: 'pause', v: !AU.paused }, AU.paused ? 'Pause wird beendet …' : 'Alle Automatismen werden pausiert …'); };
+        var p = auEl('button', 'au-chip pause' + (AU.paused ? ' on' : ''), T(AU.paused ? '⏸ paused' : '⏸ Pause'));
+        p.onclick = function () { auSend({ a: 'pause', v: !AU.paused }, T(AU.paused ? 'Ending pause …' : 'Pausing all automations …')); };
         bar.appendChild(p);
     }
 
@@ -220,7 +224,7 @@
             if (it.state === 'locked' || it.state === 'off') { cnt.quiet++; }
         });
         AU_FILTERS.forEach(function (f) {
-            var c = auEl('button', 'au-chip' + (auView.f === f[0] ? ' on' : ''), f[1]);
+            var c = auEl('button', 'au-chip' + (auView.f === f[0] ? ' on' : ''), T(f[1]));
             c.appendChild(auEl('span', 'n', String(cnt[f[0]])));
             c.onclick = function () { auView.f = f[0]; auSave(); auList(); };
             fl.appendChild(c);
@@ -236,33 +240,33 @@
         top.appendChild(nm);
         if (it.permanent !== null) {
             var b1 = auEl('button', 'au-btn perm' + (it.permanent ? ' on' : ''), '🔆');
-            b1.title = it.permanent ? 'Dauerlicht aus' : 'Dauerlicht an';
-            b1.onclick = function () { auSend({ a: 'perm', uid: it.uid, v: !it.permanent }, it.permanent ? 'Dauerlicht aus …' : 'Dauerlicht an …'); };
+            b1.title = T(it.permanent ? 'Permanent light off' : 'Permanent light on');
+            b1.onclick = function () { auSend({ a: 'perm', uid: it.uid, v: !it.permanent }, T(it.permanent ? 'Permanent light off …' : 'Permanent light on …')); };
             top.appendChild(b1);
         }
         // Von Hand auslösen: Rollläden auf/zu, sonst „jetzt ausführen“ (verschlafene Schaltung nachholen)
         if (it.run === 'updown') {
-            [['up', '⬆', 'Jetzt öffnen', 'Wird geöffnet …'], ['down', '⬇', 'Jetzt schließen', 'Wird geschlossen …']].forEach(function (x) {
+            [['up', '⬆', 'Open now', 'Opening …'], ['down', '⬇', 'Close now', 'Closing …']].forEach(function (x) {
                 var b = auEl('button', 'au-btn', x[1]);
-                b.title = x[2];
-                b.onclick = function () { auSend({ a: 'run', uid: it.uid, v: x[0] }, x[3]); };
+                b.title = T(x[2]);
+                b.onclick = function () { auSend({ a: 'run', uid: it.uid, v: x[0] }, T(x[3])); };
                 top.appendChild(b);
             });
         } else if (it.run === 'run') {
             var b0 = auEl('button', 'au-btn', '▶');
-            b0.title = 'Jetzt ausführen';
-            b0.onclick = function () { auSend({ a: 'run', uid: it.uid, v: '' }, 'Wird ausgeführt …'); };
+            b0.title = T('Run now');
+            b0.onclick = function () { auSend({ a: 'run', uid: it.uid, v: '' }, T('Running …')); };
             top.appendChild(b0);
         }
         var b2 = auEl('button', 'au-btn' + (it.locked ? ' on' : ''), it.locked ? '🔒' : '🔓');
-        b2.title = it.locked ? 'Sperre aufheben' : 'Sperren (tut dann nichts)';
-        b2.onclick = function () { auSend({ a: 'lock', uid: it.uid, v: !it.locked }, it.locked ? 'Sperre wird aufgehoben …' : 'Wird gesperrt …'); };
+        b2.title = T(it.locked ? 'Unlock' : 'Lock (then does nothing)');
+        b2.onclick = function () { auSend({ a: 'lock', uid: it.uid, v: !it.locked }, T(it.locked ? 'Unlocking …' : 'Locking …')); };
         top.appendChild(b2);
         box.appendChild(top);
         var st = auEl('div', 'au-status');
         st.title = it.status;
         if (auView.g !== 'room' && it.room) { st.appendChild(auEl('span', 'au-meta', it.room + ' · ')); }
-        st.appendChild(document.createTextNode(it.state === 'off' ? '⚫ Nicht aktiv' : it.status));
+        st.appendChild(document.createTextNode(it.state === 'off' ? T('⚫ Not active') : it.status));
         if (it.due) {
             var c = auEl('span', 'au-count');
             c.setAttribute('data-due', String(it.due));
@@ -279,30 +283,31 @@
         var grid = document.getElementById('au-grid');
         grid.innerHTML = '';
         if (items.length === 0) {
-            grid.appendChild(auEl('div', 'au-empty', 'Noch kein Automatismus eingerichtet — in der Instanz unter „Entdecken“ oder „Katalog“ anlegen.'));
+            grid.appendChild(auEl('div', 'au-empty', T('No automation set up yet — create one in the instance under "Discover" or "Catalog".')));
             return;
         }
         var shown = items.filter(auMatch);
-        var coll = new Intl.Collator('de');
+        var coll = new Intl.Collator(auLang());
         shown.sort(function (a, b) {
             if (auView.s === 'state' && AU_RANK[a.state] !== AU_RANK[b.state]) { return AU_RANK[a.state] - AU_RANK[b.state]; }
             if (auView.s === 'type' && a.type !== b.type) { return coll.compare(a.type, b.type); }
             return coll.compare(a.name, b.name);
         });
         if (shown.length === 0) {
-            grid.appendChild(auEl('div', 'au-empty', 'Nichts gefunden' + (auView.q ? ' für „' + auView.q + '“' : '') + ' — Filter „Alle“ wählen oder die Suche leeren.'));
+            grid.appendChild(auEl('div', 'au-empty', (auView.q ? T('Nothing found for "%s"', auView.q) : T('Nothing found')) + T(' — choose filter "All" or clear the search.')));
             return;
         }
         var groups = {};
+        var noRoom = T('Without room');
         var order = [];
         shown.forEach(function (it) {
-            var k = auView.g === 'room' ? (it.room || 'Ohne Raum') : (auView.g === 'cat' ? it.cat : '');
+            var k = auView.g === 'room' ? (it.room || noRoom) : (auView.g === 'cat' ? it.cat : '');
             if (!groups[k]) { groups[k] = []; order.push(k); }
             groups[k].push(it);
         });
         order.sort(function (a, b) {
-            if (a === 'Ohne Raum') { return 1; }
-            if (b === 'Ohne Raum') { return -1; }
+            if (a === noRoom) { return 1; }
+            if (b === noRoom) { return -1; }
             return coll.compare(a, b);
         });
         order.forEach(function (k) {
@@ -318,7 +323,7 @@
                 h.appendChild(auEl('span', 'tw', '▾'));
                 h.appendChild(document.createTextNode(k));
                 h.appendChild(auEl('span', 'n', '(' + groups[k].length + ')'));
-                h.title = closed ? 'Aufklappen' : 'Zuklappen';
+                h.title = T(closed ? 'Expand' : 'Collapse');
                 h.onclick = function () {
                     var key = auView.g + ':' + k;
                     if (auView.closed[key]) { delete auView.closed[key]; } else { auView.closed[key] = 1; }
@@ -338,7 +343,7 @@
         d.innerHTML = '';
         if (!AU.log || !AU.log.length) { d.style.display = 'none'; return; }
         d.style.display = '';
-        d.appendChild(auEl('summary', '', 'Protokoll'));
+        d.appendChild(auEl('summary', '', T('Log')));
         AU.log.forEach(function (l) { d.appendChild(auEl('div', '', l)); });
         d.open = open;
     }
@@ -347,7 +352,7 @@
     function auTick() {
         document.querySelectorAll('#au-grid [data-due]').forEach(function (e) {
             var r = auRest(parseInt(e.getAttribute('data-due'), 10));
-            e.textContent = r ? ' · noch ' + r : '';
+            e.textContent = r ? T(' · %s left', r) : '';
         });
     }
 

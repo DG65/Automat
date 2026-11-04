@@ -2197,7 +2197,7 @@ class Automat extends IPSModule
     {
         $keys = json_decode($keysJson, true);
         if (!is_array($keys) || count($keys) === 0) {
-            return 'ℹ️ Bitte zuerst in der Vorschlagsliste die gewünschten Vorschläge anhaken (Spalte „✔“).';
+            return AUTOMATText::t('ℹ️ First tick the suggestions you want in the suggestion list (column "✔").');
         }
         $new = [];
         foreach ($this->suggestions() as $s) {
@@ -2206,24 +2206,24 @@ class Automat extends IPSModule
             }
         }
         if (count($new) === 0) {
-            return 'ℹ️ Die angehakten Vorschläge gibt es nicht mehr — bitte „Jetzt Vorschläge suchen“.';
+            return AUTOMATText::t('ℹ️ The ticked suggestions no longer exist — please use "Search for suggestions now".');
         }
         $names = array_map(function ($r) {
-            return '„' . $r['Name'] . '“';
+            return AUTOMATText::t('"%s"', $r['Name']);
         }, $new);
-        return $this->insertRows($new, $rowsJson, count($new) === 1 ? $names[0] : count($new) . ' Automatismen (' . implode(', ', $names) . ')');
+        return $this->insertRows($new, $rowsJson, count($new) === 1 ? $names[0] : AUTOMATText::t('%s automations (%s)', count($new), implode(', ', $names)));
     }
 
     /** AUTOMAT_UIAddType($id, $type, $rowsJson): string — leeren Automatismus eines Typs einfügen. */
     public function UIAddType(string $type, string $rowsJson): string
     {
         if (!AUTOMATKatalog::has($type)) {
-            return 'ℹ️ Bitte zuerst einen Typ auswählen.';
+            return AUTOMATText::t('ℹ️ Please select a type first.');
         }
         $row = AUTOMATKatalog::defaults($type);
         $row['Name'] = AUTOMATKatalog::types()[$type]['label'];
         $row['Room'] = '';
-        return $this->insertRows([$row], $rowsJson, 'Ein neuer Automatismus „' . $row['Name'] . '“');
+        return $this->insertRows([$row], $rowsJson, AUTOMATText::t('A new automation "%s"', $row['Name']));
     }
 
     private function insertRows(array $newRows, string $rowsJson, string $what, bool $keepEnabled = false): string
@@ -2242,7 +2242,7 @@ class Automat extends IPSModule
         if (!$valid) {
             // Die Liste der offenen Maske war nicht lesbar: auf den gespeicherten Stand aufsetzen.
             $rows = $this->rows();
-            $note = "\n⚠️ Noch nicht übernommene Änderungen in der Liste konnten nicht gelesen werden — die Liste zeigt jetzt den gespeicherten Stand plus den neuen Eintrag.";
+            $note = "\n" . AUTOMATText::t('⚠️ Changes not yet applied in the list could not be read — the list now shows the saved state plus the new entry.');
         }
         foreach ($newRows as $row) {
             $row['Uid'] = $this->newUid($rows);
@@ -2254,8 +2254,8 @@ class Automat extends IPSModule
         }
         $this->UpdateFormField('Automations', 'values', json_encode($this->listValues($rows)));
         $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
-        return '✅ ' . $what . (count($newRows) === 1 ? ' steht' : ' stehen') . ' jetzt in der Liste — noch NICHT gespeichert.' . "\n"
-            . 'Bitte mit ✏️ prüfen (Geräte, Zeiten) und unten „Übernehmen“ klicken.' . $note;
+        return AUTOMATText::t(count($newRows) === 1 ? '✅ %s is now in the list — NOT saved yet.' : '✅ %s are now in the list — NOT saved yet.', $what) . "\n"
+            . AUTOMATText::t('Please check with ✏️ (devices, times) and click "Apply changes" below.') . $note;
     }
 
     /**
@@ -2269,7 +2269,7 @@ class Automat extends IPSModule
             return is_array($r) && !empty($r['Mark']);
         }));
         if (count($marked) === 0) {
-            return 'ℹ️ Bitte zuerst in der Liste bei den Automatismen, die du kopieren willst, das Häkchen ☑︎ setzen.';
+            return AUTOMATText::t('ℹ️ First set the tick ☑︎ in the list for the automations you want to copy.');
         }
         $items = $room !== '' ? $this->collectItems() : [];
         $roleOf = [];
@@ -2325,17 +2325,17 @@ class Automat extends IPSModule
                     }
                 }
             } else {
-                $c['Name'] = trim((string)$r['Name']) . ' (Kopie)';
+                $c['Name'] = AUTOMATText::t('%s (copy)', trim((string)$r['Name']));
             }
             // Eine Kopie mit denselben Geräten würde doppelt regeln — deshalb erst nach dem Prüfen aktiv.
             $c['Enabled'] = $room !== '' && $room !== $old && $cTotal > 0 && $cMapped === $cTotal;
             $copies[] = $c;
         }
-        $msg = $this->insertRows($copies, $rowsJson, count($copies) . ' Kopie(n)', true);
+        $msg = $this->insertRows($copies, $rowsJson, AUTOMATText::t('%s copy/copies', count($copies)), true);
         if ($room !== '') {
-            $msg .= "\n🔁 Geräte für „" . $room . '“: ' . $mapped . ' von ' . $total . ' passend gefunden' . ($mapped < $total ? ' — die übrigen sind leer (rot), bitte im Dialog wählen; die Kopie ist bis dahin nicht aktiv.' : '.');
+            $msg .= "\n" . AUTOMATText::t('🔁 Devices for "%s": %s of %s matching ones found', $room, $mapped, $total) . ($mapped < $total ? AUTOMATText::t(' — the rest are empty (red), please choose them in the dialog; until then the copy is not active.') : '.');
         } else {
-            $msg .= "\nℹ️ Die Kopie nutzt dieselben Geräte und ist deshalb noch nicht aktiv — im Dialog anpassen und „Aktiv“ setzen.";
+            $msg .= "\n" . AUTOMATText::t('ℹ️ The copy uses the same devices and is therefore not active yet — adjust it in the dialog and tick "Active".');
         }
         return $msg;
     }
@@ -2354,7 +2354,7 @@ class Automat extends IPSModule
             $rooms[$x] = true;
         }
         ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
-        $o = [['caption' => '— gleicher Raum, gleiche Geräte (nur kopieren) —', 'value' => '']];
+        $o = [['caption' => AUTOMATText::t('— same room, same devices (copy only) —'), 'value' => '']];
         foreach (array_keys($rooms) as $x) {
             $o[] = ['caption' => (string)$x, 'value' => (string)$x];
         }
@@ -2404,7 +2404,7 @@ class Automat extends IPSModule
             $last = (int)($s['last'] ?? 0);
             $rows[] = ['Name' => $this->rowName($r), 'A7' => $a7, 'A30' => $a30, 'M30' => $m30, 'Last' => $last > 0 ? date('d.m.Y H:i', $last) : '—'];
             if (!empty($r['Enabled']) && $s !== null && $now - (int)($s['first'] ?? $now) >= 30 * 86400 && $a30 + $m30 === 0) {
-                $idle[] = '„' . $this->rowName($r) . '“';
+                $idle[] = AUTOMATText::t('"%s"', $this->rowName($r));
             }
         }
         return [$rows, $idle];
@@ -2460,7 +2460,7 @@ class Automat extends IPSModule
     {
         $keys = json_decode($keysJson, true);
         if (!is_array($keys) || count($keys) === 0) {
-            return 'ℹ️ Bitte zuerst in der Vorschlagsliste die Vorschläge anhaken, die nicht mehr erscheinen sollen.';
+            return AUTOMATText::t('ℹ️ First tick the suggestions in the suggestion list that should no longer appear.');
         }
         $d = array_values(array_unique(array_merge($this->dismissed(), array_map('strval', $keys))));
         $this->WriteAttributeString('Dismissed', json_encode($d));
@@ -2470,7 +2470,7 @@ class Automat extends IPSModule
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
         $this->refreshSuggestionsForm($this->pInt('cfg_SuggestOrder'));
         $this->UpdateFormField('RestoreSuggestionsBtn', 'visible', true);
-        return '🙈 ' . count($keys) . ' Vorschlag/Vorschläge ausgeblendet — auch bei der nächsten Suche nicht mehr. („Ausgeblendete Vorschläge wieder anzeigen“ holt sie zurück.)';
+        return AUTOMATText::t('🙈 %s suggestion(s) hidden — they will not come back on the next search either. ("Show hidden suggestions again" brings them back.)', count($keys));
     }
 
     /** AUTOMAT_RestoreSuggestions($id): string */
@@ -2479,7 +2479,7 @@ class Automat extends IPSModule
         $n = count($this->dismissed());
         $this->WriteAttributeString('Dismissed', '[]');
         $this->UpdateFormField('RestoreSuggestionsBtn', 'visible', false);
-        return $n > 0 ? '✅ ' . $n . ' ausgeblendete Vorschläge kommen bei der nächsten Suche wieder. ' . $this->Discover() : 'ℹ️ Es war nichts ausgeblendet.';
+        return $n > 0 ? AUTOMATText::t('✅ %s hidden suggestions will come back on the next search. ', $n) . $this->Discover() : AUTOMATText::t('ℹ️ Nothing was hidden.');
     }
 
     // =====================================================================
@@ -2506,10 +2506,10 @@ class Automat extends IPSModule
                 }
                 foreach (array_intersect($outs, AUTOMATKatalog::variables($r)['out']) as $vid) {
                     if (in_array($row['Type'], ['szene', 'alarm'], true) || in_array($r['Type'] ?? '', ['szene', 'alarm'], true)) {
-                        $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“ schaltet „' . $this->varLabel($vid) . '“ ebenfalls — gewollt: Szene bzw. Alarm schalten nur bei ihrem Anlass, der andere arbeitet danach normal weiter (ohne Handpause).'];
+                        $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => AUTOMATText::t('Automation "%s" also switches "%s" — intended: scene or alarm only switch on their occasion, the other one carries on normally afterwards (without manual pause).', $this->rowName($r), $this->varLabel($vid))];
                         continue;
                     }
-                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => 'Automatismus „' . $this->rowName($r) . '“' . ($iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : ' (diese Instanz)') . ' schaltet „' . $this->varLabel($vid) . '“ ebenfalls.'];
+                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => AUTOMATText::t('Automation "%s"%s also switches "%s".', $this->rowName($r), $iid !== $this->InstanceID ? ' (Automat #' . $iid . ')' : AUTOMATText::t(' (this instance)'), $this->varLabel($vid))];
                 }
             }
         }
@@ -2526,7 +2526,7 @@ class Automat extends IPSModule
             [$does, $target] = $this->eventAction($eid, $e);
             $same = $target > 0 && in_array($target, $outs, true);
             $out[] = ['level' => $same ? '⚠️' : 'ℹ️', 'id' => $eid, 'text' => $this->eventLabel($eid) . ': ' . $this->triggerText($e, $tv) . ' → ' . $does
-                . ($same ? ' — schaltet dasselbe wie dieser Automatismus.' : ' — prüfen, ob es dasselbe tut.')];
+                . AUTOMATText::t($same ? ' — switches the same as this automation.' : ' — check whether it does the same.')];
         }
         // Andere Instanzen, deren Konfiguration eine der geschalteten Variablen nennt
         if ($this->confCache === null) {
@@ -2549,13 +2549,13 @@ class Automat extends IPSModule
                     continue;
                 }
                 $module = $this->moduleName($iid);
-                $where = 'Instanz „' . IPS_GetName($iid) . '“ (#' . $iid . ', Modul ' . $module . ', ' . $this->location($iid) . ')';
+                $where = AUTOMATText::t('Instance "%s" (#%s, module %s, %s)', IPS_GetName($iid), $iid, $module, $this->location($iid));
                 if (preg_match('/anwesenheit|schein|presence ?sim/i', $module . ' ' . IPS_GetName($iid))) {
-                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => $where . ' schaltet „' . $this->varLabel($vid) . '“ nur, solange die Anwesenheitssimulation läuft (niemand zu Hause). Tipp: diesen Automatismus im Hausmodus „Abwesend“ abwählen (Dialog → „Wann ist der Automatismus aktiv?“).'];
+                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => AUTOMATText::t('%s switches "%s" only while the presence simulation is running (nobody at home). Tip: deselect house mode "Away" for this automation (dialog → "When is the automation active?").', $where, $this->varLabel($vid))];
                 } elseif ($this->isPassThrough($iid, $module)) {
-                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => $where . ' gibt „' . $this->varLabel($vid) . '“ nur an ein anderes System weiter oder zeigt es an — kein zweiter Regler.'];
+                    $out[] = ['level' => 'ℹ️', 'id' => $iid, 'text' => AUTOMATText::t('%s only passes "%s" on to another system or displays it — no second controller.', $where, $this->varLabel($vid))];
                 } else {
-                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => $where . ' verwendet „' . $this->varLabel($vid) . '“ ebenfalls — regelt sie das schon, entsteht ein zweiter Regler.'];
+                    $out[] = ['level' => '⚠️', 'id' => $iid, 'text' => AUTOMATText::t('%s also uses "%s" — if it already controls it, you get a second controller.', $where, $this->varLabel($vid))];
                 }
             }
         }
@@ -2580,35 +2580,35 @@ class Automat extends IPSModule
         $parent = IPS_GetParent($eid);
         $name = IPS_GetName($eid);
         $auto = preg_match('/^(Bei |On |Trigger)/i', $name) || stripos($name, 'for Variable') !== false;
-        $kind = $parent > 0 ? ([0 => 'Kategorie', 1 => 'Instanz', 2 => 'Variable', 3 => 'Skript'][(int)(@IPS_GetObject($parent)['ObjectType'] ?? -1)] ?? 'Objekt') : '';
-        return 'Ereignis #' . $eid . ($auto ? '' : ' „' . $name . '“') . ($parent > 0 ? ' unter ' . $kind . ' „' . IPS_GetName($parent) . '“ (' . $this->location($parent) . ')' : '');
+        $kind = $parent > 0 ? AUTOMATText::t([0 => 'Category', 1 => 'Instance', 2 => 'Variable', 3 => 'Script'][(int)(@IPS_GetObject($parent)['ObjectType'] ?? -1)] ?? 'Object') : '';
+        return AUTOMATText::t('Event #%s', $eid) . ($auto ? '' : ' ' . AUTOMATText::t('"%s"', $name)) . ($parent > 0 ? AUTOMATText::t(' under %s "%s" (%s)', $kind, IPS_GetName($parent), $this->location($parent)) : '');
     }
 
     private function triggerText(array $e, int $tv): string
     {
         $val = $e['TriggerValue'] ?? null;
-        $v = is_bool($val) ? ($val ? '„an“' : '„aus“') : '„' . AUTOMATLogik::fmtNum($val) . '“';
+        $v = is_bool($val) ? AUTOMATText::t($val ? '"on"' : '"off"') : AUTOMATText::t('"%s"', AUTOMATLogik::fmtNum($val));
         switch ((int)($e['TriggerType'] ?? -1)) {
             case 0:
-                $t = 'bei jeder Aktualisierung';
+                $t = AUTOMATText::t('on every update');
                 break;
             case 1:
-                $t = 'bei jeder Änderung';
+                $t = AUTOMATText::t('on every change');
                 break;
             case 2:
-                $t = 'beim Überschreiten von ' . $v;
+                $t = AUTOMATText::t('when exceeding %s', $v);
                 break;
             case 3:
-                $t = 'beim Unterschreiten von ' . $v;
+                $t = AUTOMATText::t('when falling below %s', $v);
                 break;
             case 4:
-                $t = 'bei Wert ' . $v;
+                $t = AUTOMATText::t('at value %s', $v);
                 break;
             default:
-                $t = 'bei Auslösung';
+                $t = AUTOMATText::t('when triggered');
         }
         $cond = is_array($e['EventConditions'] ?? null) && count($e['EventConditions']) > 0;
-        return $t . ' von „' . $this->varLabel($tv) . '“' . ($cond ? ' (mit Bedingung)' : '');
+        return AUTOMATText::t('%s of "%s"', $t, $this->varLabel($tv)) . ($cond ? AUTOMATText::t(' (with condition)') : '');
     }
 
     /** Was ein Ereignis tut, als Text, und welche Variable es ggf. schaltet: [Text, VariablenID|0]. */
@@ -2620,19 +2620,19 @@ class Automat extends IPSModule
         }
         $target = (int)($params['TARGET'] ?? 0);
         if ($target > 0 && IPS_VariableExists($target)) {
-            return ['schaltet „' . $this->varLabel($target) . '“' . (isset($params['VALUE']) ? ' auf ' . AUTOMATLogik::fmtNum($params['VALUE']) : ''), $target];
+            return [AUTOMATText::t('switches "%s"', $this->varLabel($target)) . (isset($params['VALUE']) ? AUTOMATText::t(' to %s', AUTOMATLogik::fmtNum($params['VALUE'])) : ''), $target];
         }
         if (trim((string)($e['EventScript'] ?? '')) !== '') {
-            return ['führt eigenen Skriptcode aus', 0];
+            return [AUTOMATText::t('runs its own script code'), 0];
         }
         $parent = IPS_GetParent($eid);
         if ($parent > 0 && (int)(@IPS_GetObject($parent)['ObjectType'] ?? -1) === 3) {
-            return ['startet das Skript', 0];
+            return [AUTOMATText::t('starts the script'), 0];
         }
         if ($target > 0) {
-            return ['schaltet Objekt #' . $target, 0];
+            return [AUTOMATText::t('switches object #%s', $target), 0];
         }
-        return ['führt eine Aktion aus', 0];
+        return [AUTOMATText::t('runs an action'), 0];
     }
 
     private function moduleName(int $iid): string
@@ -2645,7 +2645,7 @@ class Automat extends IPSModule
     {
         $loc = function_exists('IPS_GetLocation') ? (string)@IPS_GetLocation($id) : '';
         if ($loc === '') {
-            return 'Objekt #' . $id;
+            return AUTOMATText::t('Object #%s', $id);
         }
         // Lange Pfade vorne kürzen, das Ende ist das Aussagekräftige.
         $parts = explode('\\', $loc);
@@ -2697,19 +2697,19 @@ class Automat extends IPSModule
     {
         $this->confCache = null;
         $isNew = $uid === '';
-        $typeOpts = [['caption' => '— bitte wählen —', 'value' => '']];
+        $typeOpts = [['caption' => AUTOMATText::t('— please choose —'), 'value' => '']];
         foreach (AUTOMATKatalog::types() as $t => $def) {
             $typeOpts[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
         }
         $el = [
-            ['type' => 'Select', 'name' => 'Type', 'caption' => 'Art des Automatismus', 'options' => $typeOpts, 'value' => $type, 'width' => '420px', 'onChange' => 'AUTOMAT_UIDialogType($id, $Type);', 'enabled' => $isNew || !AUTOMATKatalog::has($type)],
-            ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.'],
-            ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => 'Bezeichnung (z. B. „Flurlicht“)', 'width' => '420px'],
-            ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => 'Raum (optional, für Übersicht und Kachel)', 'width' => '420px'],
-            ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => 'Aktiv', 'value' => true],
-            ['type' => 'CheckBox', 'name' => 'Dry', 'caption' => '🧪 Probelauf: nichts schalten und nichts melden, nur im Protokoll festhalten, was passiert wäre', 'value' => false],
-            ['type' => 'ValidationTextBox', 'name' => 'Uid', 'caption' => 'Kennung', 'visible' => false, 'value' => $isNew ? $this->newUid($this->rows()) : $uid],
-            ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => 'Typ', 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
+            ['type' => 'Select', 'name' => 'Type', 'caption' => AUTOMATText::t('Kind of automation'), 'options' => $typeOpts, 'value' => $type, 'width' => '420px', 'onChange' => 'AUTOMAT_UIDialogType($id, $Type);', 'enabled' => $isNew || !AUTOMATKatalog::has($type)],
+            ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : AUTOMATText::t('Choose the kind first — then the matching settings appear.')],
+            ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => AUTOMATText::t('Name (e.g. "Hallway light")'), 'width' => '420px'],
+            ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => AUTOMATText::t('Room (optional, for overview and tile)'), 'width' => '420px'],
+            ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => AUTOMATText::t('Active'), 'value' => true],
+            ['type' => 'CheckBox', 'name' => 'Dry', 'caption' => AUTOMATText::t('🧪 Dry run: switch nothing and send no notifications, only record in the log what would have happened'), 'value' => false],
+            ['type' => 'ValidationTextBox', 'name' => 'Uid', 'caption' => AUTOMATText::t('ID'), 'visible' => false, 'value' => $isNew ? $this->newUid($this->rows()) : $uid],
+            ['type' => 'ValidationTextBox', 'name' => 'TypeLabel', 'caption' => AUTOMATText::t('Type'), 'visible' => false, 'value' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::label($type) : ''],
         ];
         $saved = $isNew ? null : $this->rowByUid($uid);
         $this->editRow = $current !== null && count($current) > 0 ? $current + ($saved ?? []) : ($saved ?? []);
@@ -2717,14 +2717,14 @@ class Automat extends IPSModule
             return IPS_VariableExists($vid);
         }) : [];
         if (count($fieldProblems) > 0) {
-            array_splice($el, 2, 0, [['type' => 'Label', 'caption' => '⛔ ' . count($fieldProblems) . ' Feld(er) unten brauchen Aufmerksamkeit (rot markiert).', 'color' => 0xFF0000, 'bold' => true]]);
+            array_splice($el, 2, 0, [['type' => 'Label', 'caption' => AUTOMATText::t('⛔ %s field(s) below need attention (marked red).', count($fieldProblems)), 'color' => 0xFF0000, 'bold' => true]]);
         }
         $infoHints = $saved !== null && $saved['Type'] === $type ? $this->melderHints($saved) : [];
         // Nur die Felder der eigenen Art in den Dialog — der Dialog speichert jedes Feld in die Zeile, und alle
         // 20 Arten zusammen haben die Konsole beim Speichern lahmgelegt. Neue Zeilen: erst die Art wählen.
         $own = !$isNew && AUTOMATKatalog::has($type);
         if (!$own) {
-            $el[] = ['type' => 'Label', 'name' => 'NewHint', 'caption' => '➡️ Art wählen und mit „OK“ bestätigen — danach die Zeile mit ✏️ öffnen, dann erscheinen die Einstellungen dieser Art. (Schneller: „📚 Katalog“ oder „🔎 Entdecken“.)', 'bold' => true];
+            $el[] = ['type' => 'Label', 'name' => 'NewHint', 'caption' => AUTOMATText::t('➡️ Choose the kind and confirm with "OK" — then open the row with ✏️ and the settings of this kind appear. (Faster: "📚 Catalog" or "🔎 Discover".)'), 'bold' => true];
         }
         foreach ($own ? [$type => AUTOMATKatalog::types()[$type]] : [] as $t => $def) {
             $items = [];
@@ -2739,26 +2739,26 @@ class Automat extends IPSModule
                 }
             }
             $bad = $t === $type && count($fieldProblems) > 0;
-            $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
+            $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . AUTOMATText::t('Settings: %s', $def['label']), 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
         }
-        $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):', 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)]];
+        $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => AUTOMATText::t('Active in these house modes (variable "House mode" of this instance):'), 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)]];
         foreach (AUTOMATKatalog::modes() as $m => $label) {
             $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true, 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)];
         }
-        $modeItems[] = ['type' => 'SelectCondition', 'name' => 'Cond', 'caption' => 'Zusätzliche Bedingung (optional, z. B. nur werktags oder nur wenn ein Schalter an ist)', 'multi' => true];
-        $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_when', 'caption' => '🕒 Wann ist der Automatismus aktiv?', 'expanded' => false, 'items' => $modeItems];
+        $modeItems[] = ['type' => 'SelectCondition', 'name' => 'Cond', 'caption' => AUTOMATText::t('Additional condition (optional, e.g. only on weekdays or only when a switch is on)'), 'multi' => true];
+        $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_when', 'caption' => AUTOMATText::t('🕒 When is the automation active?'), 'expanded' => false, 'items' => $modeItems];
 
         if (!$isNew) {
             $row = $this->rowByUid($uid);
             if ($row !== null) {
                 $c = $this->conflicts($row, $uid);
                 if (count($c) === 0) {
-                    $el[] = ['type' => 'Label', 'caption' => '✅ Keine andere Steuerung derselben Geräte gefunden (gespeicherter Stand).'];
+                    $el[] = ['type' => 'Label', 'caption' => AUTOMATText::t('✅ No other control of the same devices found (saved state).')];
                 } else {
-                    $items = [['type' => 'Label', 'caption' => '⚠️ = schaltet nachweislich dasselbe · ℹ️ = reagiert auf dieselbe Variable oder reicht sie nur weiter. „Öffnen“ springt zur Fundstelle im Objektbaum.']];
+                    $items = [['type' => 'Label', 'caption' => AUTOMATText::t('⚠️ = demonstrably switches the same · ℹ️ = reacts to the same variable or only passes it on. "Open" jumps to the location in the object tree.')]];
                     foreach ($c as $i => $x) {
                         $items[] = ['type' => 'RowLayout', 'items' => [
-                            ['type' => 'OpenObjectButton', 'caption' => 'Öffnen', 'objectID' => $x['id'], 'width' => '90px'],
+                            ['type' => 'OpenObjectButton', 'caption' => AUTOMATText::t('Open'), 'objectID' => $x['id'], 'width' => '90px'],
                             ['type' => 'Label', 'caption' => $x['level'] . ' ' . $x['text']],
                         ]];
                     }
@@ -2766,11 +2766,11 @@ class Automat extends IPSModule
                         return $x['level'] === '⚠️';
                     }));
                     $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_conflicts', 'expanded' => $warn > 0,
-                        'caption' => ($warn > 0 ? '⚠️ ' : 'ℹ️ ') . 'Andere Steuerungen derselben Geräte: ' . count($c) . ($warn > 0 ? ' (davon ' . $warn . ' schalten dasselbe)' : ''), 'items' => $items];
+                        'caption' => ($warn > 0 ? '⚠️ ' : 'ℹ️ ') . AUTOMATText::t('Other controls of the same devices: %s', count($c)) . ($warn > 0 ? AUTOMATText::t(' (%s of them switch the same)', $warn) : ''), 'items' => $items];
                 }
             }
         } else {
-            $el[] = ['type' => 'Label', 'caption' => 'ℹ️ Nach „Übernehmen“ prüft Automat, ob dieselben Geräte schon von einem Ereignis oder einer anderen Instanz gesteuert werden (Hinweis beim nächsten Öffnen).'];
+            $el[] = ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ After "Apply changes", Automat checks whether the same devices are already controlled by an event or another instance (note on next opening).')];
         }
         return json_encode($el);
     }
@@ -2813,14 +2813,14 @@ class Automat extends IPSModule
     {
         $ways = $this->ways();
         if (count($ways) === 0) {
-            return [['type' => 'Label', 'caption' => 'ℹ️ Noch kein Meldeweg angelegt — unter „🔔 Meldungen“ anlegen.']];
+            return [['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ No notification channel yet — create one under "🔔 Notifications".')]];
         }
         $std = implode(', ', array_column(array_filter($ways, function ($w) {
             return $w['std'];
-        }), 'name')) ?: '— keiner —';
-        $els = [['type' => 'Label', 'caption' => 'Über welche Meldewege? (kein Haken = die Standard-Wege: ' . $std . ')']];
+        }), 'name')) ?: AUTOMATText::t('— none —');
+        $els = [['type' => 'Label', 'caption' => AUTOMATText::t('Via which notification channels? (no tick = the default channels: %s)', $std)]];
         foreach ($ways as $w) {
-            $els[] = ['type' => 'CheckBox', 'name' => $prefix . 'mw_' . $w['id'], 'caption' => $w['name'] . ($w['std'] ? ' (Standard)' : ''), 'value' => false];
+            $els[] = ['type' => 'CheckBox', 'name' => $prefix . 'mw_' . $w['id'], 'caption' => $w['name'] . ($w['std'] ? AUTOMATText::t(' (default)') : ''), 'value' => false];
         }
         return $els;
     }
@@ -2857,7 +2857,7 @@ class Automat extends IPSModule
                 }
                 $o[] = ['type' => 'Label', 'name' => 'more_' . $f['n'], 'visible' => !in_array(false, $vals === [] ? [false] : array_map(function ($v) {
                     return $v >= AUTOMATKatalog::$minId;
-                }, $vals), true), 'caption' => '➕ Alle Plätze belegt — nach „Übernehmen“ und erneutem Öffnen gibt es weitere.'];
+                }, $vals), true), 'caption' => AUTOMATText::t('➕ All slots filled — more appear after "Apply changes" and reopening.')];
                 return $o;
             case 'var':
                 return [$base + ['type' => 'SelectVariable', 'value' => 0, 'width' => '520px', 'onChange' => 'AUTOMAT_UIVarChanged($id, \'' . $f['n'] . '\', (int)$' . $f['n'] . ');']];
@@ -2968,8 +2968,8 @@ class Automat extends IPSModule
         if (count($out) === 0 && (int)$v['VariableType'] === VARIABLETYPE_BOOLEAN) {
             // Matter-Kontakt ohne Beschriftung: wahr = geschlossen — so steht es auch in der Auswahl
             $out = AUTOMATErkennung::contactInverted($this->varInfo($vid)) && preg_match(AUTOMATErkennung::contactPattern(), IPS_GetName($vid) . ' ' . IPS_GetName(IPS_GetParent($vid)))
-                ? ['true' => 'zu', 'false' => 'offen']
-                : ['true' => 'an / wahr', 'false' => 'aus / falsch'];
+                ? ['true' => AUTOMATText::t('closed'), 'false' => AUTOMATText::t('open')]
+                : ['true' => AUTOMATText::t('on / true'), 'false' => AUTOMATText::t('off / false')];
         }
         return $out;
     }
@@ -2979,12 +2979,12 @@ class Automat extends IPSModule
     {
         $labels = $this->valueLabels($vid);
         if (count($labels) === 0) {
-            return [['caption' => '— keine festen Werte bekannt, oben eintippen —', 'value' => '']];
+            return [['caption' => AUTOMATText::t('— no fixed values known, type one above —'), 'value' => '']];
         }
-        $opts = [['caption' => '— Wert wählen —', 'value' => '']];
+        $opts = [['caption' => AUTOMATText::t('— choose value —'), 'value' => '']];
         foreach ($labels as $val => $cap) {
             $val = (string)$val; // PHP macht aus Schlüsseln wie „0“ eine Zahl
-            $raw = $val === 'true' ? 'wahr' : ($val === 'false' ? 'falsch' : $val);
+            $raw = $val === 'true' ? AUTOMATText::t('true') : ($val === 'false' ? AUTOMATText::t('false') : $val);
             $opts[] = ['caption' => $cap . (mb_strpos(mb_strtolower($cap), mb_strtolower($raw)) !== false ? '' : ' (' . $raw . ')'), 'value' => $val];
         }
         return $opts;
@@ -3041,7 +3041,7 @@ class Automat extends IPSModule
                 }
             }
         }
-        $this->UpdateFormField('chk_' . $field, 'caption', $bad ? '⛔ Variable #' . $vid . ' existiert nicht — bitte neu wählen oder leeren.' : '');
+        $this->UpdateFormField('chk_' . $field, 'caption', $bad ? AUTOMATText::t('⛔ Variable #%s does not exist — please choose again or clear.', $vid) : '');
         $this->UpdateFormField('chk_' . $field, 'visible', $bad);
     }
 
@@ -3056,7 +3056,7 @@ class Automat extends IPSModule
         foreach (AUTOMATKatalog::modes() as $m => $_) {
             $this->UpdateFormField('m' . $m, 'visible', $modeFilter);
         }
-        $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.');
+        $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : AUTOMATText::t('Choose the kind first — then the matching settings appear.'));
     }
 
     // =====================================================================
@@ -3074,6 +3074,9 @@ class Automat extends IPSModule
         $this->UpdateVisualizationValue(json_encode($this->tilePayload(), JSON_UNESCAPED_UNICODE));
     }
 
+    /** Kachel-Texte (englische Schlüssel), übersetzt mitgegeben in tilePayload()['texte']. */
+    private const KACHEL_TEXTE = ['language code: en', 'All', 'Running', 'Noticeable', 'Locked/inactive', 'Search: name, room, kind, state …', 'Clear search', 'by room', 'by function', 'no groups', 'Name', 'State', 'Kind', 'Group', 'Sort', 'House mode "%s" …', '⏸ paused', '⏸ Pause', 'Ending pause …', 'Pausing all automations …', 'Permanent light off', 'Permanent light on', 'Permanent light off …', 'Permanent light on …', 'Open now', 'Opening …', 'Close now', 'Closing …', 'Run now', 'Running …', 'Unlock', 'Lock (then does nothing)', 'Unlocking …', 'Locking …', '⚫ Not active', 'No automation set up yet — create one in the instance under "Discover" or "Catalog".', 'Nothing found for "%s"', 'Nothing found', ' — choose filter "All" or clear the search.', 'Without room', 'Expand', 'Collapse', 'Log', ' · %s left'];
+
     private function tilePayload(): array
     {
         $status = $this->attrMap('Status');
@@ -3088,7 +3091,7 @@ class Automat extends IPSModule
             $locked = (bool)$this->getOwn('l_' . $uid, false);
             $items[] = [
                 'uid' => $uid, 'name' => $this->rowName($row), 'icon' => $def['icon'] ?? '❔',
-                'type' => $def['label'] ?? '', 'cat' => AUTOMATKatalog::categories()[$def['cat'] ?? ''] ?? 'Sonstiges',
+                'type' => $def['label'] ?? '', 'cat' => AUTOMATKatalog::categories()[$def['cat'] ?? ''] ?? AUTOMATText::t('Other'),
                 'room' => trim((string)($row['Room'] ?? '')), 'status' => $st,
                 'due' => isset($due[$uid]) ? (int)$due[$uid] : null, 'enabled' => !empty($row['Enabled']),
                 'locked' => $locked, 'permanent' => $light ? (bool)$this->getOwn('d_' . $uid, false) : null,
@@ -3104,6 +3107,7 @@ class Automat extends IPSModule
             'paused' => (bool)$this->getOwn('Pause', false),
             'items' => $items,
             'log' => $this->protocolLines(8),
+            'texte' => array_combine(self::KACHEL_TEXTE, array_map([AUTOMATText::class, 't'], self::KACHEL_TEXTE)),
         ];
     }
 
@@ -3122,12 +3126,15 @@ class Automat extends IPSModule
         $problems = AUTOMATKatalog::problems($row, function (int $vid) {
             return IPS_VariableExists($vid);
         });
-        foreach (['🔔', '⚠️', '❔', '⛔', '🚨', '💨 Bitte'] as $p) {
+        // Erkennung am Anfang des Zustandstexts — sprachneutral am Emoji, wo es eindeutig ist („💨“ gibt es nur als
+        // „Bitte lüften“, „🌡“ nur als „Abgesenkt“). Wo dasselbe Emoji auch Ruhe bedeutet („🌅 Fertig“, „💤 Wartet“),
+        // stehen der deutsche und der englische Anfang (Quelltexte in AUTOMATLogik).
+        foreach (['🔔', '⚠️', '❔', '⛔', '🚨', '💨'] as $p) {
             if (count($problems) > 0 || strpos($status, $p) === 0) {
                 return 'warn';
             }
         }
-        foreach (['💡', '🔆', '▶️', '⏳', '🪟', '🚪 Alle weg', '🌅 Wird', '🌙 Wird', '🌡 Abgesenkt', '💤 Standby'] as $p) {
+        foreach (['💡', '🔆', '▶️', '⏳', '🪟', '🌡', '🚪 Alle weg', '🚪 Everybody gone', '🌅 Wird', '🌅 Getting', '🌙 Wird', '🌙 Getting', '💤 Standby'] as $p) {
             if (strpos($status, $p) === 0) {
                 return 'run';
             }
@@ -3279,7 +3286,7 @@ class Automat extends IPSModule
     private function rowName(array $row): string
     {
         $n = trim((string)($row['Name'] ?? ''));
-        return $n !== '' ? $n : (AUTOMATKatalog::types()[$row['Type'] ?? '']['label'] ?? 'Automatismus');
+        return $n !== '' ? $n : (AUTOMATKatalog::types()[$row['Type'] ?? '']['label'] ?? AUTOMATText::t('Automation'));
     }
 
     private function newUid(array $rows): string
@@ -3331,7 +3338,11 @@ class Automat extends IPSModule
         if ($id) {
             // MaintainVariable benennt nicht um (Pitfall 16): nur Standardnamen nachziehen, Nutzernamen bleiben.
             $cur = IPS_GetName($id);
-            if ($cur !== $name && preg_match('/ · (Status|Restzeit|gesperrt|Dauerlicht|Jemand zu Hause)$/u', $cur)) {
+            // Standardnamen auf Deutsch oder Englisch (Sprachwechsel) sowie gleiche Endung wie der neue Name (Umbenennen).
+            $cut = strrpos($name, ' · ');
+            $suffix = $cut !== false ? substr($name, $cut) : '';
+            if ($cur !== $name && (preg_match('/ · (Status|Restzeit|gesperrt|Dauerlicht|Jemand zu Hause|remaining time|locked|permanent light|someone at home)$/u', $cur)
+                || ($suffix !== '' && substr($cur, -strlen($suffix)) === $suffix))) {
                 IPS_SetName($id, $name);
             }
         }
@@ -3483,8 +3494,8 @@ class Automat extends IPSModule
                 return IPS_VariableExists($vid);
             });
             $r = AUTOMATKatalog::stripForeign($r);
-            $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : '❔ Typ wählen (✏️)';
-            $r['State'] = empty($r['Enabled']) ? '⚫ Nicht aktiv' : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? 'ℹ️ Nach „Übernehmen“ aktiv'));
+            $r['TypeLabel'] = AUTOMATKatalog::has((string)($r['Type'] ?? '')) ? AUTOMATKatalog::label((string)$r['Type']) : AUTOMATText::t('❔ Choose type (✏️)');
+            $r['State'] = empty($r['Enabled']) ? AUTOMATText::t('⚫ Not active') : (count($p) > 0 ? '⚠️ ' . $p[0] : (string)($status[$uid] ?? AUTOMATText::t('ℹ️ Active after "Apply changes"')));
             if (!empty($r['Dry']) && strpos($r['State'], '🧪') !== 0) {
                 $r['State'] = '🧪 ' . $r['State'];
             }
@@ -3498,7 +3509,7 @@ class Automat extends IPSModule
                     $t[] = $this->melderTimeout($m);
                 }
                 if (count($t) > 0) {
-                    $r['Settings'] .= ' · Melder-Rückfall auto ' . AUTOMATKatalog::dur(max($t));
+                    $r['Settings'] .= AUTOMATText::t(' · sensor fallback auto %s', AUTOMATKatalog::dur(max($t)));
                 }
             }
             if (($r['Type'] ?? '') === 'bewegung') {
@@ -3507,13 +3518,13 @@ class Automat extends IPSModule
                     $lost += $this->lostCount($m);
                 }
                 $hints = $this->melderHints($r);
-                $pre = isset($hints['bl_impuls']) ? 'ℹ️ Impuls-Melder erkannt (✏️) · ' : '';
+                $pre = isset($hints['bl_impuls']) ? AUTOMATText::t('ℹ️ Pulse sensor detected (✏️) · ') : '';
                 $stt = $this->statesMap()[$r['Uid'] ?? ''] ?? [];
                 $eff = AUTOMATLogik::effectiveNachlauf($r, is_array($stt) ? $stt : []);
                 $fo = count((array)($stt['fo'] ?? []));
-                $learned = $eff > max(1, (int)($r['bl_nachlauf'] ?? 120)) ? ' · 🕒 Nachlauf gelernt ' . AUTOMATKatalog::dur($eff) : '';
-                $learned .= $fo > 0 ? ' · ' . $fo . '× zu früh aus (7 Tage)' : '';
-                $r['Settings'] = $pre . $r['Settings'] . $learned . ($lost > 0 ? ' · 📶 ' . $lost . '× Meldung verloren (7 Tage)' : '');
+                $learned = $eff > max(1, (int)($r['bl_nachlauf'] ?? 120)) ? AUTOMATText::t(' · 🕒 learned follow-up time %s', AUTOMATKatalog::dur($eff)) : '';
+                $learned .= $fo > 0 ? AUTOMATText::t(' · %s× off too early (7 days)', $fo) : '';
+                $r['Settings'] = $pre . $r['Settings'] . $learned . ($lost > 0 ? AUTOMATText::t(' · 📶 %s× sensor report lost (7 days)', $lost) : '');
             }
             // Sortierschlüssel: Raum → Art → Name bzw. Art → Raum → Name (Spaltenkopf oder „Ordnen nach“).
             $room = mb_strtolower(trim((string)($r['Room'] ?? '')) ?: '~');
@@ -3537,13 +3548,13 @@ class Automat extends IPSModule
     {
         $land = $this->pStr('cfg_Bundesland');
         if ($land === '') {
-            return 'ℹ️ Feiertage werden nicht berücksichtigt.';
+            return AUTOMATText::t('ℹ️ Public holidays are not taken into account.');
         }
         $d = date('Y-m-d', $this->now());
         for ($i = 0; $i < 400; $i++) {
             $h = AUTOMATLogik::holiday($d, $land);
             if ($h !== '') {
-                return '📅 Nächster Feiertag: ' . $h . ', ' . date('d.m.Y', (int)strtotime($d)) . '.';
+                return AUTOMATText::t('📅 Next public holiday: %s, %s.', $h, date('d.m.Y', (int)strtotime($d)));
             }
             $d = AUTOMATLogik::addDays($d, 1);
         }
@@ -3558,7 +3569,7 @@ class Automat extends IPSModule
         }
         $def = AUTOMATKatalog::types()[$type];
         if (count($def['needs']) === 0) {
-            return '      ✅ geht mit jeder Variable';
+            return AUTOMATText::t('      ✅ works with any variable');
         }
         $missing = [];
         $have = [];
@@ -3569,7 +3580,7 @@ class Automat extends IPSModule
                 $missing[] = AUTOMATKatalog::roles()[$role];
             }
         }
-        return count($missing) === 0 ? '      ✅ passende Geräte gefunden: ' . implode(', ', $have) : '      ⚪ dafür fehlt: ' . implode(', ', $missing) . ' (oder wurde nicht erkannt — von Hand wählbar)';
+        return count($missing) === 0 ? AUTOMATText::t('      ✅ matching devices found: %s', implode(', ', $have)) : AUTOMATText::t('      ⚪ missing for this: %s (or not detected — can be chosen by hand)', implode(', ', $missing));
     }
 
     private function liveText(int $vid): ?string
@@ -3621,10 +3632,10 @@ class Automat extends IPSModule
     {
         $rows = $this->rows();
         if (count($rows) === 0) {
-            return 'ℹ️ Noch kein Automatismus eingerichtet.';
+            return AUTOMATText::t('ℹ️ No automation set up yet.');
         }
         $status = $this->attrMap('Status');
-        $lines = ['🏠 Hausmodus: ' . (AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '')];
+        $lines = [AUTOMATText::t('🏠 House mode: %s', AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . ((bool)$this->getOwn('Pause', false) ? AUTOMATText::t(' · ⏸ ALL PAUSED') : '')];
         foreach ($rows as $r) {
             $lines[] = (AUTOMATKatalog::types()[$r['Type']]['icon'] ?? '❔') . ' ' . $this->rowName($r) . ': ' . ($status[$r['Uid']] ?? '—');
             foreach ($this->melderHints($r) as $h) {
@@ -3640,12 +3651,12 @@ class Automat extends IPSModule
             return null;
         }
         return [
-            'type' => 'ExpansionPanel', 'name' => 'PurposeIntroPanel', 'expanded' => true, 'caption' => '👋  Wozu dieses Modul?',
+            'type' => 'ExpansionPanel', 'name' => 'PurposeIntroPanel', 'expanded' => true, 'caption' => AUTOMATText::t('👋  What is this module for?'),
             'items' => [
-                ['type' => 'Label', 'caption' => 'Automat bündelt die kleinen Standard-Automatismen eines Hauses in einer Instanz: Treppenlicht, Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür zu lange offen“-Wächter und „Waschmaschine fertig“.'],
-                ['type' => 'Label', 'caption' => 'Der Nutzen: eine Liste statt dutzender Einzel-Instanzen und Ereignisse, je Automatismus ein sichtbarer Zustand mit Grund, ein Protokoll, eine Kachel — und „Entdecken“ schlägt aus den vorhandenen Geräten vor, was sich lohnt.'],
-                ['type' => 'Label', 'caption' => 'Für alle gleich: Sperre je Automatismus, globale Pause, Hausmodus (Tag/Abend/Nacht/Abwesend/Urlaub) und Respekt vor Handbedienung. Räume kommen aus dem Toolkit-Modul Raumstruktur, falls installiert. Für Urlaub und Abwesenheit gibt es die Anwesenheitssimulation, für Batterien den Batteriewächter (beide ebenfalls DG65-Toolkit).'],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'AUTOMAT_AckPurposeIntro($id);'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Automat bundles the small standard automations of a house in one instance: staircase light, motion light, dusk switching, window open → heating down, "door open too long" watchdog and "washing machine finished".')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('The benefit: one list instead of dozens of single instances and events, a visible state with reason for each automation, one log, one tile — and "Discover" suggests what is worthwhile from the existing devices.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('The same for all: lock per automation, global pause, house mode (Day/Evening/Night/Away/Holiday) and respect for manual operation. Rooms come from the toolkit module Raumstruktur, if installed. For holidays and absence there is Anwesenheitssimulation (presence simulation), for batteries Batteriewächter (battery watchdog) — both also DG65-Toolkit.')],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('Got it – do not show again'), 'onClick' => 'AUTOMAT_AckPurposeIntro($id);'],
             ],
         ];
     }
@@ -3667,29 +3678,29 @@ class Automat extends IPSModule
         foreach ($pending as $version => $lines) {
             $items[] = ['type' => 'Label', 'caption' => 'Version ' . $version . ':'];
             foreach ($lines as $line) {
-                $items[] = ['type' => 'Label', 'caption' => $line];
+                $items[] = ['type' => 'Label', 'caption' => AUTOMATText::t($line)];
             }
         }
-        $items[] = ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'AUTOMAT_AckNews($id);'];
-        return ['type' => 'ExpansionPanel', 'name' => 'NewsPanel', 'expanded' => true, 'caption' => '🆕  Neu bis Version ' . array_key_last($pending), 'items' => $items];
+        $items[] = ['type' => 'Button', 'caption' => AUTOMATText::t('Got it – do not show again'), 'onClick' => 'AUTOMAT_AckNews($id);'];
+        return ['type' => 'ExpansionPanel', 'name' => 'NewsPanel', 'expanded' => true, 'caption' => AUTOMATText::t('🆕  New up to version %s', array_key_last($pending)), 'items' => $items];
     }
 
     private function DocPanel(): array
     {
         $lib = @IPS_GetLibrary(self::LIBRARY_GUID);
-        $ver = is_array($lib) && isset($lib['Version']) ? 'ℹ️ Automat Version ' . $lib['Version'] . ' (Build ' . ($lib['Build'] ?? '?') . ')' : 'ℹ️ Automat';
+        $ver = is_array($lib) && isset($lib['Version']) ? AUTOMATText::t('ℹ️ Automat version %s (build %s)', $lib['Version'], $lib['Build'] ?? '?') : 'ℹ️ Automat';
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📖  Dokumentation & Hilfe',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('📖  Documentation & help'),
             'items' => [
                 ['type' => 'Label', 'caption' => $ver],
-                ['type' => 'Label', 'caption' => 'Anlegen: „Entdecken“ schlägt Automatismen aus den vorhandenen Geräten vor, „Katalog“ legt einen leeren Automatismus eines Typs an, „+“ an der Liste öffnet den Dialog direkt. Immer gilt: mit ✏️ prüfen, dann unten „Übernehmen“.'],
-                ['type' => 'Label', 'caption' => 'Je Automatismus entstehen unter der Instanz: „… · Status“ (Zustand und Grund), „… · Restzeit“ (läuft mit, solange etwas ansteht: Licht aus, Absenkung, Meldung — sonst leer), „… · gesperrt“ (Schalter: Automatismus tut nichts, z. B. Putzen, Party, Handwerker) und bei Licht-Automatismen „… · Dauerlicht“. Alle drei sind auch aus WebFront, Kachel und Skript (IPS_RequestAction) bedienbar.'],
-                ['type' => 'Label', 'caption' => 'Handbedienung hat Vorrang: Wer ein Licht von Hand ausschaltet, beendet die laufende Zeit; beim Bewegungslicht pausiert die Automatik danach für die eingestellte Zeit. Wer es von Hand einschaltet, bekommt beim Zeitlicht die normale Leuchtdauer, beim Bewegungslicht die längere aus Nachlauf und Handpause.'],
-                ['type' => 'Label', 'caption' => 'Hausmodus: „Nacht“ nutzt bei Licht-Automatismen den Nacht-Helligkeitswert; jeder Automatismus kann auf bestimmte Modi beschränkt werden (im Dialog unter „Wann ist der Automatismus aktiv?“). Die Automatik stellt den Modus nur bei einem Übergang um — eine Handeinstellung bleibt bis zum nächsten Übergang. Urlaub wird nie automatisch gesetzt oder verlassen.'],
-                ['type' => 'Label', 'caption' => 'Sperre und Pause sind „hart“ (gar nichts passiert, laufende Zeiten werden abgebrochen, ein abgesenkter Heizungs-Sollwert wird zurückgestellt). Hausmodus und Bedingung sind „weich“: es wird nichts NEU eingeschaltet oder gemeldet, laufende Zeiten laufen aber zu Ende.'],
-                ['type' => 'Label', 'caption' => 'Doppelte Steuerung: Automat warnt im Dialog und bei Vorschlägen, wenn dieselben Geräte schon von einem anderen Automatismus, einem ausgelösten Ereignis oder einer anderen Instanz verwendet werden. Zwei Regler an einem Licht widersprechen sich — eine Seite abschalten.'],
-                ['type' => 'Label', 'caption' => 'Skripte: AUTOMAT_Overview(<InstanzID>) liefert den Zustand aller Automatismen als Text; IPS_RequestAction(<InstanzID>, \'Hausmodus\', 0…4) bzw. \'Pause\', true/false schaltet global.'],
-                ['type' => 'Button', 'caption' => '💬 Forum-Thread: Fragen, Wünsche, Fehler', 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Creating: "Discover" suggests automations from the existing devices, "Catalog" creates an empty automation of a type, "+" on the list opens the dialog directly. Always: check with ✏️, then "Apply changes" below.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('For each automation the instance gets: "… · Status" (state and reason), "… · remaining time" (counts down while something is pending: light off, setback, notification — otherwise empty), "… · locked" (switch: the automation does nothing, e.g. cleaning, party, craftsmen) and for light automations "… · permanent light". All three can also be operated from WebFront, tile and script (IPS_RequestAction).')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Manual operation has priority: switching a light off by hand ends the running time; with motion light the automation then pauses for the set time. Switching it on by hand gives the normal light duration with timed light, and the longer of follow-up time and manual pause with motion light.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('House mode: "Night" uses the night brightness value for light automations; every automation can be restricted to certain modes (in the dialog under "When is the automation active?"). The automatic only changes the mode at a transition — a manual setting stays until the next transition. Holiday is never set or left automatically.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Lock and pause are "hard" (nothing at all happens, running times are cancelled, a lowered heating setpoint is restored). House mode and condition are "soft": nothing is NEWLY switched on or notified, but running times run to the end.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Double control: Automat warns in the dialog and in suggestions when the same devices are already used by another automation, a triggered event or another instance. Two controllers on one light contradict each other — switch off one side.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Scripts: AUTOMAT_Overview(<InstanceID>) returns the state of all automations as text; IPS_RequestAction(<InstanceID>, \'Hausmodus\', 0…4) or \'Pause\', true/false switches globally.')],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('💬 Forum thread: questions, wishes, bugs'), 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -3715,82 +3726,82 @@ class Automat extends IPSModule
             }
         }
         $summary = count($rows) === 0
-            ? 'ℹ️ Noch kein Automatismus — unten „Entdecken“ nutzen, im „Katalog“ einen Typ wählen oder „+“ an der Liste klicken.'
-            : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' aktiv'
-                . ($problems > 0 ? ', ' . $problems . ' unvollständig (rot)' : '') . ($locked > 0 ? ', ' . $locked . ' gesperrt' : '')
-                . ' · Hausmodus „' . (AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->pBool('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
+            ? AUTOMATText::t('ℹ️ No automation yet — use "Discover" below, choose a type in the "Catalog" or click "+" on the list.')
+            : ($problems > 0 ? '⚠️ ' : '✅ ') . AUTOMATText::t('%s automations, %s active', count($rows), $enabled)
+                . ($problems > 0 ? AUTOMATText::t(', %s incomplete (red)', $problems) : '') . ($locked > 0 ? AUTOMATText::t(', %s locked', $locked) : '')
+                . AUTOMATText::t(' · house mode "%s"', AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . AUTOMATText::t($this->pBool('cfg_ModeAuto') ? ' (automatic)' : ' (automatic off — manual only)') . ((bool)$this->getOwn('Pause', false) ? AUTOMATText::t(' · ⏸ ALL PAUSED') : '');
         return [
-            'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '⚙️  Automatismen',
+            'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => AUTOMATText::t('⚙️  Automations'),
             'items' => [
                 ['type' => 'Label', 'name' => 'Summary', 'caption' => $summary],
-                ['type' => 'Select', 'name' => 'cfg_ListOrder', 'caption' => 'Ordnen nach', 'width' => '320px', 'onChange' => 'AUTOMAT_UISetListOrder($id, $cfg_ListOrder);', 'options' => [
-                    ['caption' => 'Raum, darin nach Art', 'value' => 0],
-                    ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
+                ['type' => 'Select', 'name' => 'cfg_ListOrder', 'caption' => AUTOMATText::t('Order by'), 'width' => '320px', 'onChange' => 'AUTOMAT_UISetListOrder($id, $cfg_ListOrder);', 'options' => [
+                    ['caption' => AUTOMATText::t('Room, then by kind'), 'value' => 0],
+                    ['caption' => AUTOMATText::t('Kind (function), then by room'), 'value' => 1],
                 ]],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'ValidationTextBox', 'name' => 'flt_text', 'caption' => '🔍 Suchen (Name, Raum, Art, Zustand)', 'width' => '260px', 'value' => '', 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
-                    ['type' => 'Select', 'name' => 'flt_room', 'caption' => 'Raum', 'width' => '170px', 'value' => '', 'options' => $this->filterRoomOptions($rows), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
-                    ['type' => 'Select', 'name' => 'flt_cat', 'caption' => 'Funktion / Art', 'width' => '230px', 'value' => '', 'options' => $this->filterCatOptions(), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
-                    ['type' => 'Select', 'name' => 'flt_state', 'caption' => 'Zustand', 'width' => '190px', 'value' => '', 'options' => [
-                        ['caption' => 'alle', 'value' => ''],
-                        ['caption' => '⚠️ auffällig / unvollständig', 'value' => 'warn'],
-                        ['caption' => '▶️ läuft gerade', 'value' => 'run'],
-                        ['caption' => '✅ aktiv', 'value' => 'on'],
-                        ['caption' => '⚫ nicht aktiv', 'value' => 'off'],
-                        ['caption' => '🔒 gesperrt', 'value' => 'locked'],
-                        ['caption' => '🧪 Probelauf', 'value' => 'dry'],
+                    ['type' => 'ValidationTextBox', 'name' => 'flt_text', 'caption' => AUTOMATText::t('🔍 Search (name, room, kind, state)'), 'width' => '260px', 'value' => '', 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_room', 'caption' => AUTOMATText::t('Room'), 'width' => '170px', 'value' => '', 'options' => $this->filterRoomOptions($rows), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_cat', 'caption' => AUTOMATText::t('Function / kind'), 'width' => '230px', 'value' => '', 'options' => $this->filterCatOptions(), 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
+                    ['type' => 'Select', 'name' => 'flt_state', 'caption' => AUTOMATText::t('State'), 'width' => '190px', 'value' => '', 'options' => [
+                        ['caption' => AUTOMATText::t('all'), 'value' => ''],
+                        ['caption' => AUTOMATText::t('⚠️ noticeable / incomplete'), 'value' => 'warn'],
+                        ['caption' => AUTOMATText::t('▶️ running now'), 'value' => 'run'],
+                        ['caption' => AUTOMATText::t('✅ active'), 'value' => 'on'],
+                        ['caption' => AUTOMATText::t('⚫ not active'), 'value' => 'off'],
+                        ['caption' => AUTOMATText::t('🔒 locked'), 'value' => 'locked'],
+                        ['caption' => AUTOMATText::t('🧪 Dry run'), 'value' => 'dry'],
                     ], 'onChange' => '$a = []; foreach ($Automations as $x) { $a[] = $x; } foreach ($AutomationsHidden as $x) { $a[] = $x; } AUTOMAT_UIFilterList($id, json_encode($a), (string)$flt_text, (string)$flt_room, (string)$flt_cat, (string)$flt_state);'],
                 ]],
                 ['type' => 'Label', 'name' => 'FilterInfo', 'caption' => '', 'visible' => false],
                 [
-                    'type' => 'List', 'name' => 'AutomationsHidden', 'caption' => 'ausgefiltert', 'visible' => false, 'rowCount' => 1, 'add' => false, 'delete' => false,
+                    'type' => 'List', 'name' => 'AutomationsHidden', 'caption' => AUTOMATText::t('filtered out'), 'visible' => false, 'rowCount' => 1, 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false, 'values' => [],
                     'columns' => [
-                        ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true],
-                        ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true],
-                        ['caption' => 'Daten', 'name' => 'Data', 'width' => '80px', 'add' => '', 'save' => true],
-                        ['caption' => 'Filterstand', 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('ID'), 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('Type'), 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('Data'), 'name' => 'Data', 'width' => '80px', 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('Filter state'), 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true],
                     ],
                 ],
                 [
-                    'type' => 'List', 'name' => 'Automations', 'caption' => 'Automatismen', 'rowCount' => max(12, min(25, count($rows) + 3)),
+                    'type' => 'List', 'name' => 'Automations', 'caption' => AUTOMATText::t('Automations'), 'rowCount' => max(12, min(25, count($rows) + 3)),
                     'add' => true, 'delete' => true, 'loadValuesFromConfiguration' => false, 'values' => $this->listValues($rows),
                     'sort' => $this->listSort($this->pInt('cfg_ListOrder')),
                     'columns' => [
                         ['caption' => '☑︎', 'name' => 'Mark', 'width' => '40px', 'add' => false, 'save' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Aktiv', 'name' => 'Enabled', 'width' => '60px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
-                        ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '210px', 'add' => '', 'save' => true, 'sortColumn' => 'SortType'],
-                        ['caption' => 'Bezeichnung', 'name' => 'Name', 'width' => '200px', 'add' => '', 'save' => true],
-                        ['caption' => 'Einstellungen', 'name' => 'Settings', 'width' => 'auto', 'add' => '', 'save' => false],
-                        ['caption' => 'Zustand', 'name' => 'State', 'width' => '340px', 'add' => '', 'save' => false],
-                        ['caption' => 'Sortierung Raum', 'name' => 'SortRoom', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
-                        ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
-                        ['caption' => 'Typ', 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
-                        ['caption' => 'Kennung', 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
-                        ['caption' => 'Filterstand', 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Active'), 'name' => 'Enabled', 'width' => '60px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('Room'), 'name' => 'Room', 'width' => '120px', 'add' => '', 'save' => true, 'sortColumn' => 'SortRoom'],
+                        ['caption' => AUTOMATText::t('Kind'), 'name' => 'TypeLabel', 'width' => '210px', 'add' => '', 'save' => true, 'sortColumn' => 'SortType'],
+                        ['caption' => AUTOMATText::t('Label'), 'name' => 'Name', 'width' => '200px', 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('Settings'), 'name' => 'Settings', 'width' => 'auto', 'add' => '', 'save' => false],
+                        ['caption' => AUTOMATText::t('State'), 'name' => 'State', 'width' => '340px', 'add' => '', 'save' => false],
+                        ['caption' => AUTOMATText::t('Sort by room'), 'name' => 'SortRoom', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Sort by kind'), 'name' => 'SortType', 'width' => '10px', 'add' => '', 'save' => false, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Type'), 'name' => 'Type', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
+                        ['caption' => AUTOMATText::t('ID'), 'name' => 'Uid', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Filter state'), 'name' => 'Gen', 'width' => '80px', 'add' => '', 'save' => true, 'visible' => false],
                     ],
                     'form' => "return json_decode(AUTOMAT_UIEditFormRow(\$id, json_encode(\$Automations)), true);",
                 ],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'Select', 'name' => 'cfg_CopyRoom', 'caption' => 'Angehakte (☑︎) duplizieren — in Raum', 'width' => '320px', 'value' => '', 'options' => $this->copyRoomOptions()],
-                    ['type' => 'Button', 'caption' => '📄 Duplizieren', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIDuplicate($id, json_encode($r), (string)$cfg_CopyRoom);'],
+                    ['type' => 'Select', 'name' => 'cfg_CopyRoom', 'caption' => AUTOMATText::t('Duplicate ticked (☑︎) — into room'), 'width' => '320px', 'value' => '', 'options' => $this->copyRoomOptions()],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('📄 Duplicate'), 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIDuplicate($id, json_encode($r), (string)$cfg_CopyRoom);'],
                 ]],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'Label', 'caption' => 'Angehakte (☑︎) von Hand:'],
-                    ['type' => 'Button', 'caption' => '▶ Jetzt ausführen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'\');'],
-                    ['type' => 'Button', 'caption' => '⬇ Rollläden schließen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'down\');'],
-                    ['type' => 'Button', 'caption' => '⬆ Rollläden öffnen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'up\');'],
+                    ['type' => 'Label', 'caption' => AUTOMATText::t('Ticked (☑︎) by hand:')],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('▶ Run now'), 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'\');'],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('⬇ Close shutters'), 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'down\');'],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('⬆ Open shutters'), 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIRunMarked($id, json_encode($r), \'up\');'],
                 ]],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'Button', 'caption' => '📋 Übersicht anzeigen', 'onClick' => 'echo AUTOMAT_Overview($id);'],
-                    ['type' => 'PopupButton', 'caption' => 'Wie lege ich einen Automatismus an?', 'width' => '420px', 'popup' => [
-                        'caption' => 'Wie lege ich einen Automatismus an?',
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('📋 Show overview'), 'onClick' => 'echo AUTOMAT_Overview($id);'],
+                    ['type' => 'PopupButton', 'caption' => AUTOMATText::t('How do I create an automation?'), 'width' => '420px', 'popup' => [
+                        'caption' => AUTOMATText::t('How do I create an automation?'),
                         'items' => [
-                            ['type' => 'Label', 'caption' => '1. Am einfachsten über „🔎 Entdecken“: Vorschläge anhaken, „Angehakte in die Liste übernehmen“.'],
-                            ['type' => 'Label', 'caption' => '2. Oder im „📚 Katalog“ einen Typ wählen und „Leeren Automatismus anlegen“.'],
-                            ['type' => 'Label', 'caption' => '3. Oder „+“ an der Liste: Im Dialog zuerst die Art wählen, dann Geräte und Zeiten.'],
-                            ['type' => 'Label', 'caption' => 'Danach mit ✏️ prüfen und unten „Übernehmen“ klicken — erst dann arbeitet der Automatismus. Rot markierte Zeilen sind unvollständig, die Spalte „Zustand“ sagt, was fehlt.'],
+                            ['type' => 'Label', 'caption' => AUTOMATText::t('1. Easiest via "🔎 Discover": tick suggestions, then "Add ticked to the list".')],
+                            ['type' => 'Label', 'caption' => AUTOMATText::t('2. Or choose a type in the "📚 Catalog" and "Create empty automation".')],
+                            ['type' => 'Label', 'caption' => AUTOMATText::t('3. Or "+" on the list: in the dialog choose the kind first, then devices and times.')],
+                            ['type' => 'Label', 'caption' => AUTOMATText::t('Then check with ✏️ and click "Apply changes" below — only then does the automation work. Rows marked red are incomplete, the "State" column says what is missing.')],
                         ],
                     ]],
                 ]],
@@ -3803,48 +3814,48 @@ class Automat extends IPSModule
         $src = $this->aStr('RoomSource');
         if ($src === '') {
             $src = count(@IPS_GetInstanceListByModuleID(self::RAUM_GUID) ?: []) > 0
-                ? 'ℹ️ Raumstruktur gefunden — die Räume werden bei der Suche übernommen.'
-                : 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).';
+                ? AUTOMATText::t('ℹ️ Raumstruktur found — its rooms are used during the search.')
+                : AUTOMATText::t('ℹ️ Raumstruktur not installed — rooms are derived from the device names (e.g. "Light Hallway" + "Motion sensor Hallway" = Hallway).');
         }
         $order = $this->pInt('cfg_SuggestOrder');
         [$sgRooms, $sgTypes] = $this->suggestFilterOptions();
         $n = count($this->suggestions());
         return [
-            'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '🔎  Entdecken — Vorschläge aus deinen Geräten',
+            'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => AUTOMATText::t('🔎  Discover — suggestions from your devices'),
             'items' => [
-                ['type' => 'Button', 'caption' => '🔎 Jetzt Vorschläge suchen', 'onClick' => 'echo AUTOMAT_Discover($id);'],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('🔎 Search for suggestions now'), 'onClick' => 'echo AUTOMAT_Discover($id);'],
                 ['type' => 'Label', 'name' => 'DiscoverHead', 'caption' => $this->discoverHeadLine()],
                 ['type' => 'Label', 'name' => 'RoomSource', 'caption' => $src, 'color' => strpos($src, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'Select', 'name' => 'cfg_SuggestOrder', 'caption' => 'Ordnen nach', 'width' => '320px', 'onChange' => 'AUTOMAT_UISetSuggestOrder($id, $cfg_SuggestOrder);', 'options' => [
-                    ['caption' => 'Raum, darin nach Art', 'value' => 0],
-                    ['caption' => 'Art (Funktion), darin nach Raum', 'value' => 1],
+                ['type' => 'Select', 'name' => 'cfg_SuggestOrder', 'caption' => AUTOMATText::t('Order by'), 'width' => '320px', 'onChange' => 'AUTOMAT_UISetSuggestOrder($id, $cfg_SuggestOrder);', 'options' => [
+                    ['caption' => AUTOMATText::t('Room, then by kind'), 'value' => 0],
+                    ['caption' => AUTOMATText::t('Kind (function), then by room'), 'value' => 1],
                 ]],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'ValidationTextBox', 'name' => 'sg_text', 'caption' => '🔍 Suchen', 'width' => '260px', 'value' => '', 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
-                    ['type' => 'Select', 'name' => 'sg_room', 'caption' => 'Raum', 'width' => '170px', 'value' => '', 'options' => $sgRooms, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
-                    ['type' => 'Select', 'name' => 'sg_type', 'caption' => 'Art', 'width' => '260px', 'value' => '', 'options' => $sgTypes, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
+                    ['type' => 'ValidationTextBox', 'name' => 'sg_text', 'caption' => AUTOMATText::t('🔍 Search'), 'width' => '260px', 'value' => '', 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
+                    ['type' => 'Select', 'name' => 'sg_room', 'caption' => AUTOMATText::t('Room'), 'width' => '170px', 'value' => '', 'options' => $sgRooms, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
+                    ['type' => 'Select', 'name' => 'sg_type', 'caption' => AUTOMATText::t('Kind'), 'width' => '260px', 'value' => '', 'options' => $sgTypes, 'onChange' => 'AUTOMAT_UIFilterSuggestions($id, (string)$sg_text, (string)$sg_room, (string)$sg_type);'],
                 ]],
                 [
-                    'type' => 'List', 'name' => 'SuggestList', 'caption' => 'Vorschläge (gelb = dieselben Geräte werden schon anderswo geschaltet)', 'rowCount' => max(5, min(15, $n)),
+                    'type' => 'List', 'name' => 'SuggestList', 'caption' => AUTOMATText::t('Suggestions (yellow = the same devices are already switched elsewhere)'), 'rowCount' => max(5, min(15, $n)),
                     'add' => false, 'delete' => false, 'loadValuesFromConfiguration' => false, 'values' => $this->suggestionRows(), 'sort' => $this->suggestionSort($order),
                     'columns' => [
                         ['caption' => '✔', 'name' => 'Pick', 'width' => '45px', 'save' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Raum', 'name' => 'Room', 'width' => '120px', 'save' => false, 'sortColumn' => 'SortRoom'],
-                        ['caption' => 'Art', 'name' => 'TypeLabel', 'width' => '230px', 'save' => false, 'sortColumn' => 'SortType'],
-                        ['caption' => 'Vorschlag', 'name' => 'Title', 'width' => '240px', 'save' => false],
-                        ['caption' => 'Warum', 'name' => 'Why', 'width' => 'auto', 'save' => false],
-                        ['caption' => 'Hinweise', 'name' => 'Hints', 'width' => '320px', 'save' => false],
-                        ['caption' => 'Sortierung Raum', 'name' => 'SortRoom', 'width' => '10px', 'save' => false, 'visible' => false],
-                        ['caption' => 'Sortierung Art', 'name' => 'SortType', 'width' => '10px', 'save' => false, 'visible' => false],
-                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '10px', 'save' => false, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Room'), 'name' => 'Room', 'width' => '120px', 'save' => false, 'sortColumn' => 'SortRoom'],
+                        ['caption' => AUTOMATText::t('Kind'), 'name' => 'TypeLabel', 'width' => '230px', 'save' => false, 'sortColumn' => 'SortType'],
+                        ['caption' => AUTOMATText::t('Suggestion'), 'name' => 'Title', 'width' => '240px', 'save' => false],
+                        ['caption' => AUTOMATText::t('Why'), 'name' => 'Why', 'width' => 'auto', 'save' => false],
+                        ['caption' => AUTOMATText::t('Notes'), 'name' => 'Hints', 'width' => '320px', 'save' => false],
+                        ['caption' => AUTOMATText::t('Sort by room'), 'name' => 'SortRoom', 'width' => '10px', 'save' => false, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Sort by kind'), 'name' => 'SortType', 'width' => '10px', 'save' => false, 'visible' => false],
+                        ['caption' => AUTOMATText::t('Key'), 'name' => 'Key', 'width' => '10px', 'save' => false, 'visible' => false],
                     ],
                 ],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'Button', 'caption' => '➕ Angehakte in die Liste übernehmen', 'onClick' => self::PICKED_KEYS . ' $r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdoptMany($id, json_encode($k), json_encode($r));'],
-                    ['type' => 'Button', 'caption' => '🙈 Angehakte ausblenden', 'onClick' => self::PICKED_KEYS . ' echo AUTOMAT_DismissSuggestions($id, json_encode($k));'],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('➕ Add ticked to the list'), 'onClick' => self::PICKED_KEYS . ' $r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAdoptMany($id, json_encode($k), json_encode($r));'],
+                    ['type' => 'Button', 'caption' => AUTOMATText::t('🙈 Hide ticked'), 'onClick' => self::PICKED_KEYS . ' echo AUTOMAT_DismissSuggestions($id, json_encode($k));'],
                 ]],
-                ['type' => 'Button', 'name' => 'RestoreSuggestionsBtn', 'caption' => 'Ausgeblendete Vorschläge wieder anzeigen', 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
-                ['type' => 'Label', 'caption' => 'ℹ️ Gesucht wird nach Bewegungsmeldern, Lichtern (Schalter/Dimmer), Fenster-/Türkontakten, Heizungs-Sollwerten, Helligkeitssensoren und Leistungsmessungen von Haushaltsgeräten. ⚠️ bzw. gelb heißt: dieselben Geräte werden schon anderswo geschaltet — Details mit „Öffnen“-Knopf im Bearbeiten-Dialog nach dem Übernehmen.'],
+                ['type' => 'Button', 'name' => 'RestoreSuggestionsBtn', 'caption' => AUTOMATText::t('Show hidden suggestions again'), 'visible' => count($this->dismissed()) > 0, 'onClick' => 'echo AUTOMAT_RestoreSuggestions($id);'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ The search looks for motion sensors, lights (switches/dimmers), window/door contacts, heating setpoints, brightness sensors and power measurements of household appliances. ⚠️ or yellow means: the same devices are already switched elsewhere — details with the "Open" button in the edit dialog after adding.')],
             ],
         ];
     }
@@ -3852,7 +3863,7 @@ class Automat extends IPSModule
     private function CatalogPanel(): array
     {
         $counts = json_decode($this->aStr('RoleCounts'), true);
-        $items = [['type' => 'Label', 'caption' => 'Alle Arten von Automatismen. Ob passende Geräte da sind, steht nach „Jetzt Vorschläge suchen“ darunter.']];
+        $items = [['type' => 'Label', 'caption' => AUTOMATText::t('All kinds of automations. Whether matching devices exist is shown below each one after "Search for suggestions now".')]];
         foreach (AUTOMATKatalog::categories() as $cat => $catLabel) {
             $items[] = ['type' => 'Label', 'caption' => $catLabel, 'bold' => true];
             foreach (AUTOMATKatalog::types() as $t => $def) {
@@ -3864,26 +3875,26 @@ class Automat extends IPSModule
                 $items[] = ['type' => 'Label', 'name' => 'cat_' . $t, 'caption' => $line, 'visible' => $line !== ''];
             }
         }
-        $opts = [['caption' => '— Art wählen —', 'value' => '']];
+        $opts = [['caption' => AUTOMATText::t('— choose kind —'), 'value' => '']];
         foreach (AUTOMATKatalog::types() as $t => $def) {
             $opts[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
         }
-        $items[] = ['type' => 'Select', 'name' => 'cfg_NewType', 'caption' => 'Neu anlegen', 'options' => $opts, 'value' => '', 'width' => '420px'];
-        $items[] = ['type' => 'Button', 'caption' => '➕ Leeren Automatismus dieser Art anlegen', 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAddType($id, (string)$cfg_NewType, json_encode($r));'];
-        return ['type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📚  Katalog', 'items' => $items];
+        $items[] = ['type' => 'Select', 'name' => 'cfg_NewType', 'caption' => AUTOMATText::t('Create new'), 'options' => $opts, 'value' => '', 'width' => '420px'];
+        $items[] = ['type' => 'Button', 'caption' => AUTOMATText::t('➕ Create empty automation of this kind'), 'onClick' => '$r = []; foreach ($Automations as $x) { $r[] = $x; } echo AUTOMAT_UIAddType($id, (string)$cfg_NewType, json_encode($r));'];
+        return ['type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('📚  Catalog'), 'items' => $items];
     }
 
     private function modeAutoLine(bool $auto): string
     {
         return $auto
-            ? '✅ Automatik an — der Hausmodus wechselt nach den Einstellungen unten; eine Änderung von Hand gilt bis zum nächsten Wechsel.'
-            : 'ℹ️ Automatik aus — der Hausmodus ändert sich nur von Hand, per Kachel oder Skript (Nachtwerte beim Licht greifen dann nur, wenn „Nacht“ von Hand gesetzt ist).';
+            ? AUTOMATText::t('✅ Automatic on — the house mode changes according to the settings below; a manual change applies until the next change.')
+            : AUTOMATText::t('ℹ️ Automatic off — the house mode only changes by hand, via tile or script (night values for lights then only apply when "Night" is set by hand).');
     }
 
     /** AUTOMAT_UIModeAutoChanged($id, $auto) — Zustandszeile im offenen Formular nachführen (gespeichert wird mit „Übernehmen“). */
     public function UIModeAutoChanged(bool $auto): void
     {
-        $this->UpdateFormField('ModeAutoState', 'caption', $this->modeAutoLine($auto) . ' (noch nicht übernommen)');
+        $this->UpdateFormField('ModeAutoState', 'caption', $this->modeAutoLine($auto) . AUTOMATText::t(' (not applied yet)'));
     }
 
     /**
@@ -3972,22 +3983,22 @@ class Automat extends IPSModule
     /** Hinweis unter den Sensorfeldern: Vorschläge, solange keiner gewählt ist, und Richtwerte. */
     private function lightHint(): string
     {
-        $text = 'Richtwerte: Einstrahlung (W/m²) hell ab 50, dunkel unter 20 · Helligkeit (lx) hell ab 1000, dunkel unter 300. '
-            . 'Manche Wetterstationen zeigen die Einstrahlung mit „lx“ an, obwohl sie W/m² liefert — maßgeblich sind die Zahlen. '
-            . 'Die Haltezeit verhindert, dass eine Wolke umschaltet.';
+        $text = AUTOMATText::t('Guide values: irradiance (W/m²) bright from 50, dark below 20 · brightness (lx) bright from 1000, dark below 300. '
+            . 'Some weather stations show the irradiance with "lx" although they deliver W/m² — the numbers are what counts. '
+            . 'The hold time prevents a cloud from switching.');
         $lv = $this->pInt('cfg_LightVar');
         if ($lv >= AUTOMATKatalog::$minId && IPS_VariableExists($lv)) {
             return $text;
         }
         $cand = $this->lightCandidates();
-        return (count($cand) > 0 ? '💡 Passende Sensoren gefunden: ' . implode(', ', $cand) . ' — oben auswählen. ' : '') . $text;
+        return (count($cand) > 0 ? AUTOMATText::t('💡 Matching sensors found: %s — select one above. ', implode(', ', $cand)) : '') . $text;
     }
 
     /** Auswahl-Eintrag für einen Zeitpunkt der Location Control, mit der heutigen Uhrzeit. */
     private function eventOption(int $value, string $ident): array
     {
         $t = $this->sunOn($ident, date('Y-m-d', $this->now()));
-        return ['caption' => self::EVENT_LABELS[$ident] . ($t !== null ? ' (heute ' . date('H:i', $t) . ' Uhr)' : ''), 'value' => $value];
+        return ['caption' => AUTOMATText::t(self::EVENT_LABELS[$ident]) . ($t !== null ? AUTOMATText::t(' (today %s)', date('H:i', $t)) : ''), 'value' => $value];
     }
 
     /**
@@ -4007,29 +4018,29 @@ class Automat extends IPSModule
             $vid = $this->pInt('cfg_LightVar');
             if ($vid >= AUTOMATKatalog::$minId && IPS_VariableExists($vid)) {
                 $st = json_decode($this->aStr('LightState'), true) ?: [];
-                $p[] = 'Sensor „' . $this->varLabel($vid) . '“ gerade ' . round((float)GetValue($vid), 1) . ' ' . $this->unitOf($vid)
-                    . (isset($st['day']) ? ' (' . ($st['day'] ? 'hell' : 'dunkel') . ')' : '');
+                $p[] = AUTOMATText::t('Sensor "%s" currently %s %s', $this->varLabel($vid), round((float)GetValue($vid), 1), $this->unitOf($vid))
+                    . (isset($st['day']) ? ' (' . AUTOMATText::t($st['day'] ? 'bright' : 'dark') . ')' : '');
             } else {
-                $p[] = '⚠️ Helligkeitssensor noch nicht gewählt — bis dahin gelten die Uhrzeiten';
+                $p[] = AUTOMATText::t('⚠️ Brightness sensor not chosen yet — until then the times apply');
             }
         }
         if (count($idents) === 0 && !$needIsDay) {
             return 'ℹ️ ' . implode(' · ', $p) . '.';
         }
         if ($this->locationVariable('Sunset') === 0) {
-            return '⚠️ Keine Location-Control-Instanz gefunden — bis eine angelegt ist, gelten die Uhrzeiten aus den Einstellungen.' . (count($p) > 0 ? ' ' . implode(' · ', $p) . '.' : '');
+            return AUTOMATText::t('⚠️ No Location Control instance found — until one is created, the times from the settings apply.') . (count($p) > 0 ? ' ' . implode(' · ', $p) . '.' : '');
         }
         $today = date('Y-m-d', $this->now());
         foreach (array_unique($idents) as $ident) {
             $t = $this->sunOn($ident, $today);
-            $p[] = self::EVENT_LABELS[$ident] . ' heute ' . ($t !== null ? date('H:i', $t) . ' Uhr' : 'nicht vorhanden (dann gilt die Uhrzeit)');
+            $p[] = $t !== null ? AUTOMATText::t('%s today %s', AUTOMATText::t(self::EVENT_LABELS[$ident]), date('H:i', $t)) : AUTOMATText::t('%s today not available (then the time applies)', AUTOMATText::t(self::EVENT_LABELS[$ident]));
         }
         if ($needIsDay) {
             $vid = $this->locationVariable('IsDay');
-            $p[] = '„Ist es Tag“ gerade: ' . ($vid > 0 ? ((bool)GetValue($vid) ? 'ja' : 'nein') : 'nicht vorhanden');
+            $p[] = AUTOMATText::t('"Is it day" currently: %s', AUTOMATText::t($vid > 0 ? ((bool)GetValue($vid) ? 'yes' : 'no') : 'not available'));
         }
         $sensor = $needLight ? array_shift($p) : null;
-        return 'ℹ️ Aus der Location Control: ' . implode(' · ', $p) . '.' . ($sensor !== null ? ' ' . $sensor . '.' : '');
+        return AUTOMATText::t('ℹ️ From the Location Control: %s.', implode(' · ', $p)) . ($sensor !== null ? ' ' . $sensor . '.' : '');
     }
 
     private function ModePanel(): array
@@ -4038,19 +4049,19 @@ class Automat extends IPSModule
         $eveRef = $this->pInt('cfg_EveningRef');
         $nightRef = $this->pInt('cfg_NightRef');
         $onRef = 'AUTOMAT_UIRefChanged($id, $cfg_DayRef, $cfg_EveningRef, $cfg_NightRef);';
-        $dayOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
+        $dayOpts = [['caption' => AUTOMATText::t('at a set time'), 'value' => 0]];
         foreach (self::DAY_EVENTS as $v => $ident) {
             $dayOpts[] = $this->eventOption($v, $ident);
         }
-        $dayOpts[] = ['caption' => 'wenn „Ist es Tag“ (Location Control) wahr wird', 'value' => 2];
-        $dayOpts[] = ['caption' => 'wenn es hell wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
+        $dayOpts[] = ['caption' => AUTOMATText::t('when "Is it day" (Location Control) becomes true'), 'value' => 2];
+        $dayOpts[] = ['caption' => AUTOMATText::t('when it gets bright (brightness/irradiance sensor, e.g. weather station)'), 'value' => 6];
         $eveOpts = [];
         foreach (self::EVE_EVENTS as $v => $ident) {
             $eveOpts[] = $this->eventOption($v, $ident);
         }
-        $eveOpts[] = ['caption' => 'zur Uhrzeit', 'value' => 1];
-        $eveOpts[] = ['caption' => 'wenn „Ist es Tag“ (Location Control) falsch wird', 'value' => 2];
-        $eveOpts[] = ['caption' => 'wenn es dunkel wird (Helligkeits-/Einstrahlungssensor, z. B. Wetterstation)', 'value' => 6];
+        $eveOpts[] = ['caption' => AUTOMATText::t('at a set time'), 'value' => 1];
+        $eveOpts[] = ['caption' => AUTOMATText::t('when "Is it day" (Location Control) becomes false'), 'value' => 2];
+        $eveOpts[] = ['caption' => AUTOMATText::t('when it gets dark (brightness/irradiance sensor, e.g. weather station)'), 'value' => 6];
         $useLight = true; // zentraler Sensor: immer zeigen
         $lightUnit = '';
         $lv = $this->pInt('cfg_LightVar');
@@ -4058,7 +4069,7 @@ class Automat extends IPSModule
             $lightUnit = $this->unitOf($lv);
         }
         $lightHint = $useLight ? $this->lightHint() : '';
-        $nightOpts = [['caption' => 'zur Uhrzeit', 'value' => 0]];
+        $nightOpts = [['caption' => AUTOMATText::t('at a set time'), 'value' => 0]];
         foreach (self::NIGHT_EVENTS as $v => $ident) {
             $nightOpts[] = $this->eventOption($v, $ident);
         }
@@ -4070,41 +4081,41 @@ class Automat extends IPSModule
         $presShow = !$presField || $this->externalPresenceVar() > 0;
         $own = $this->pInt('cfg_PresenceVar');
         if ($own >= AUTOMATKatalog::$minId && IPS_VariableExists($own) && $this->isOwnPresenceVar($own)) {
-            $presText .= ' Im Feld „Anwesenheits-Variable“ steht noch die Ergebnisvariable selbst — das ist nicht nötig, sie wird ohnehin genutzt.';
+            $presText .= AUTOMATText::t(' The field "Presence variable" still contains the result variable itself — that is not necessary, it is used anyway.');
             $presShow = true;
         }
         $loc = $this->locationLine($dayRef, $eveRef, $nightRef);
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🏠  Hausmodus (aktuell: ' . $mode . ($auto ? ', wechselt automatisch' : ', Automatik aus') . ')',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('🏠  House mode (current: %s%s)', $mode, AUTOMATText::t($auto ? ', changes automatically' : ', automatic off')),
             'items' => [
-                ['type' => 'Label', 'caption' => 'Der Hausmodus ist eine Variable dieser Instanz (Tag, Abend, Nacht, Abwesend, Urlaub) — von Hand, per Kachel, per Skript oder hier automatisch gesetzt. Automatismen können auf Modi beschränkt werden; Licht nutzt bei „Nacht“ den Nachtwert.'],
-                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => 'Hausmodus automatisch nach Tageszeit umschalten: Tag, Abend, Nacht (wann genau, legst du darunter fest — z. B. Abend ab Sonnenuntergang)', 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('The house mode is a variable of this instance (Day, Evening, Night, Away, Holiday) — set by hand, via tile, via script or automatically here. Automations can be restricted to modes; lights use the night value in "Night".')],
+                ['type' => 'CheckBox', 'name' => 'cfg_ModeAuto', 'caption' => AUTOMATText::t('Switch house mode automatically by time of day: Day, Evening, Night (exactly when is set below — e.g. Evening from sunset)'), 'onChange' => 'AUTOMAT_UIModeAutoChanged($id, $cfg_ModeAuto);'],
                 ['type' => 'Label', 'name' => 'ModeAutoState', 'caption' => $this->modeAutoLine($auto)],
-                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => 'Tag beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $dayOpts],
-                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => 'Tag beginnt um', 'visible' => $dayRef === 0],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::DAY_EVENTS[$dayRef])],
-                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => 'Abend beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $eveOpts],
-                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => 'Abend beginnt um', 'visible' => $eveRef === 1],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::EVE_EVENTS[$eveRef])],
-                ['type' => 'Label', 'name' => 'LightHead', 'caption' => '— Helligkeit draußen (für Hausmodus, Rollläden „wenn es dunkel wird“ und Dämmerung) —', 'bold' => true, 'visible' => $useLight],
-                ['type' => 'SelectVariable', 'name' => 'cfg_LightVar', 'caption' => 'Helligkeits- oder Einstrahlungssensor (z. B. Wetterstation, Globalstrahlung)', 'width' => '520px', 'visible' => $useLight],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_LightDay', 'caption' => 'Hell ab', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_LightNight', 'caption' => 'Dunkel unter', 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_LightHold', 'caption' => 'Haltezeit (so lange muss der Wert jenseits der Schwelle bleiben)', 'suffix' => ' min', 'minimum' => 0, 'maximum' => 120, 'visible' => $useLight],
+                ['type' => 'Select', 'name' => 'cfg_DayRef', 'caption' => AUTOMATText::t('Day starts'), 'width' => '520px', 'onChange' => $onRef, 'options' => $dayOpts],
+                ['type' => 'SelectTime', 'name' => 'cfg_DayFrom', 'caption' => AUTOMATText::t('Day starts at'), 'visible' => $dayRef === 0],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_DayOffset', 'caption' => AUTOMATText::t('Offset (− = earlier, + = later)'), 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::DAY_EVENTS[$dayRef])],
+                ['type' => 'Select', 'name' => 'cfg_EveningRef', 'caption' => AUTOMATText::t('Evening starts'), 'width' => '520px', 'onChange' => $onRef, 'options' => $eveOpts],
+                ['type' => 'SelectTime', 'name' => 'cfg_EveningFrom', 'caption' => AUTOMATText::t('Evening starts at'), 'visible' => $eveRef === 1],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_EveningOffset', 'caption' => AUTOMATText::t('Offset (− = earlier, + = later)'), 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::EVE_EVENTS[$eveRef])],
+                ['type' => 'Label', 'name' => 'LightHead', 'caption' => AUTOMATText::t('— Brightness outside (for house mode, shutters "when it gets dark" and dusk) —'), 'bold' => true, 'visible' => $useLight],
+                ['type' => 'SelectVariable', 'name' => 'cfg_LightVar', 'caption' => AUTOMATText::t('Brightness or irradiance sensor (e.g. weather station, global radiation)'), 'width' => '520px', 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightDay', 'caption' => AUTOMATText::t('Bright from'), 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightNight', 'caption' => AUTOMATText::t('Dark below'), 'digits' => 0, 'suffix' => $lightUnit !== '' ? ' ' . $lightUnit : '', 'minimum' => 0, 'maximum' => 200000, 'visible' => $useLight],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_LightHold', 'caption' => AUTOMATText::t('Hold time (how long the value must stay beyond the threshold)'), 'suffix' => ' min', 'minimum' => 0, 'maximum' => 120, 'visible' => $useLight],
                 ['type' => 'Label', 'name' => 'LightHint', 'caption' => $lightHint, 'visible' => $useLight],
-                ['type' => 'Select', 'name' => 'cfg_NightRef', 'caption' => 'Nacht beginnt', 'width' => '520px', 'onChange' => $onRef, 'options' => $nightOpts],
-                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => 'Nacht beginnt um', 'visible' => !isset(self::NIGHT_EVENTS[$nightRef])],
-                ['type' => 'NumberSpinner', 'name' => 'cfg_NightOffset', 'caption' => 'Versatz (− = früher, + = später)', 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::NIGHT_EVENTS[$nightRef])],
+                ['type' => 'Select', 'name' => 'cfg_NightRef', 'caption' => AUTOMATText::t('Night starts'), 'width' => '520px', 'onChange' => $onRef, 'options' => $nightOpts],
+                ['type' => 'SelectTime', 'name' => 'cfg_NightFrom', 'caption' => AUTOMATText::t('Night starts at'), 'visible' => !isset(self::NIGHT_EVENTS[$nightRef])],
+                ['type' => 'NumberSpinner', 'name' => 'cfg_NightOffset', 'caption' => AUTOMATText::t('Offset (− = earlier, + = later)'), 'suffix' => ' min', 'minimum' => -240, 'maximum' => 240, 'visible' => isset(self::NIGHT_EVENTS[$nightRef])],
                 ['type' => 'Label', 'name' => 'LocationInfo', 'caption' => $loc, 'visible' => $loc !== ''],
-                ['type' => 'Select', 'name' => 'cfg_Bundesland', 'caption' => 'Feiertage wie Wochenende behandeln (Rollläden, Aufwachlicht, Zeitschaltuhr)', 'width' => '520px', 'options' => array_map(function ($k, $v) {
+                ['type' => 'Select', 'name' => 'cfg_Bundesland', 'caption' => AUTOMATText::t('Treat public holidays like weekends (shutters, wake-up light, timer)'), 'width' => '520px', 'options' => array_map(function ($k, $v) {
                     return ['caption' => $v, 'value' => (string)$k];
                 }, array_keys(AUTOMATKatalog::tr(AUTOMATKatalog::LAENDER)), AUTOMATKatalog::tr(AUTOMATKatalog::LAENDER))],
                 ['type' => 'Label', 'caption' => $this->holidayLine()],
-                ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('— Presence —'), 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],
-                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => $presField ? 'Andere Anwesenheits-Quelle (hat Vorrang vor dem Automatismus; Bool: wahr = jemand zu Hause)' : 'Anwesenheits-Variable (nur nötig ohne Automatismus „Anwesenheit zusammenfassen“; Bool: wahr = jemand zu Hause)', 'width' => '520px', 'visible' => $presShow],
-                ['type' => 'CheckBox', 'name' => 'cfg_PresenceInvert', 'caption' => 'Variable ist umgekehrt (wahr = niemand da, z. B. „Abwesend“)', 'visible' => $presShow],
-                ['type' => 'Label', 'caption' => 'ℹ️ Bei „niemand da“ wird automatisch „Abwesend“ gesetzt, beim Heimkommen wieder der Tageszeit-Modus. „Urlaub“ setzt und beendet nur der Nutzer.'],
+                ['type' => 'SelectVariable', 'name' => 'cfg_PresenceVar', 'caption' => AUTOMATText::t($presField ? 'Other presence source (takes priority over the automation; bool: true = someone at home)' : 'Presence variable (only needed without the automation "Combine presence"; bool: true = someone at home)'), 'width' => '520px', 'visible' => $presShow],
+                ['type' => 'CheckBox', 'name' => 'cfg_PresenceInvert', 'caption' => AUTOMATText::t('Variable is inverted (true = nobody there, e.g. "Away")'), 'visible' => $presShow],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ On "nobody there", "Away" is set automatically, on coming home the time-of-day mode again. Only the user sets and ends "Holiday".')],
             ],
         ];
     }
@@ -4119,7 +4130,7 @@ class Automat extends IPSModule
         $who = [];
         foreach ($this->rows() as $r) {
             if (!empty($r['Enabled']) && !empty($r[self::NOTIFY_FIELD[$r['Type']] ?? ''])) {
-                $who[] = '„' . $this->rowName($r) . '“ → ' . (implode(', ', array_column($this->waysFor($r), 'name')) ?: '— kein Weg —');
+                $who[] = AUTOMATText::t('"%s"', $this->rowName($r)) . ' → ' . (implode(', ', array_column($this->waysFor($r), 'name')) ?: AUTOMATText::t('— no channel —'));
             }
         }
         $rows = [];
@@ -4128,44 +4139,44 @@ class Automat extends IPSModule
         }
         $legacy = (json_decode($this->pStr('cfg_Ways'), true) ?: []) === [] && count($ways) > 0;
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🔔  Meldungen',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('🔔  Notifications'),
             'items' => [
-                ['type' => 'Label', 'caption' => '— Meldewege —', 'bold' => true],
-                ['type' => 'Label', 'caption' => 'Lege hier fest, WIE gemeldet werden kann — beliebig viele Wege, z. B. „Mein Handy“ (Push an ein WebFront), „Kachel Küche“ (Push an eine Kachel-Visualisierung), „E-Mail Familie“ oder „Telegram“ (ein Skript, das die Meldung weiterreicht). Welcher Automatismus welchen Weg nutzt, wählst du in seinem Dialog (✏️); ohne Haken dort gelten die Standard-Wege.'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('— Notification channels —'), 'bold' => true],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Define here HOW notifications can be sent — as many channels as you like, e.g. "My phone" (push to a WebFront), "Kitchen tile" (push to a tile visualization), "Family email" or "Telegram" (a script that passes the notification on). Which automation uses which channel is chosen in its dialog (✏️); without a tick there, the default channels apply.')],
                 [
-                    'type' => 'List', 'name' => 'cfg_Ways', 'caption' => 'Meldewege', 'rowCount' => max(3, count($rows) + 1), 'add' => true, 'delete' => true,
+                    'type' => 'List', 'name' => 'cfg_Ways', 'caption' => AUTOMATText::t('Notification channels'), 'rowCount' => max(3, count($rows) + 1), 'add' => true, 'delete' => true,
                     'loadValuesFromConfiguration' => false, 'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Kennung', 'name' => 'Id', 'width' => '0px', 'visible' => false, 'save' => true, 'add' => 'w' . substr(md5((string)microtime(true)), 0, 6)],
-                        ['caption' => 'Name', 'name' => 'Name', 'width' => '220px', 'add' => 'Neuer Meldeweg', 'edit' => ['type' => 'ValidationTextBox']],
-                        ['caption' => 'Art', 'name' => 'Typ', 'width' => '150px', 'add' => 'push', 'edit' => ['type' => 'Select', 'options' => [
+                        ['caption' => AUTOMATText::t('ID'), 'name' => 'Id', 'width' => '0px', 'visible' => false, 'save' => true, 'add' => 'w' . substr(md5((string)microtime(true)), 0, 6)],
+                        ['caption' => 'Name', 'name' => 'Name', 'width' => '220px', 'add' => AUTOMATText::t('New notification channel'), 'edit' => ['type' => 'ValidationTextBox']],
+                        ['caption' => AUTOMATText::t('Kind'), 'name' => 'Typ', 'width' => '150px', 'add' => 'push', 'edit' => ['type' => 'Select', 'options' => [
                             ['caption' => 'Push', 'value' => 'push'],
-                            ['caption' => 'E-Mail', 'value' => 'mail'],
-                            ['caption' => 'Skript', 'value' => 'script'],
+                            ['caption' => AUTOMATText::t('Email'), 'value' => 'mail'],
+                            ['caption' => AUTOMATText::t('Script'), 'value' => 'script'],
                         ]]],
-                        ['caption' => 'Ziel (Push: Visualisierung, leer = alle · E-Mail: SMTP-Instanz, leer = erste · Skript)', 'name' => 'Target', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectObject']],
-                        ['caption' => 'Empfänger (nur E-Mail, mehrere mit Komma)', 'name' => 'To', 'width' => '260px', 'add' => '', 'edit' => ['type' => 'ValidationTextBox']],
-                        ['caption' => 'Standard', 'name' => 'Std', 'width' => '90px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Ruhezeit beachten', 'name' => 'Quiet', 'width' => '140px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('Target (push: visualization, empty = all · email: SMTP instance, empty = first · script)'), 'name' => 'Target', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectObject']],
+                        ['caption' => AUTOMATText::t('Recipients (email only, several separated by commas)'), 'name' => 'To', 'width' => '260px', 'add' => '', 'edit' => ['type' => 'ValidationTextBox']],
+                        ['caption' => AUTOMATText::t('Default'), 'name' => 'Std', 'width' => '90px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('Respect quiet hours'), 'name' => 'Quiet', 'width' => '140px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                     ],
                 ],
                 ['type' => 'Label', 'caption' => $legacy
-                    ? 'ℹ️ Diese Wege stammen aus deinen bisherigen Einstellungen (Push/E-Mail). Mit „Übernehmen“ werden sie als Liste gespeichert — danach kannst du sie umbenennen, ergänzen und je Automatismus wählen.'
-                    : (count($ways) === 0 ? '⚠️ Kein Meldeweg — Meldungen stehen nur in „Letzte Meldung“ und im Protokoll.' : '✅ Standard-Wege: ' . (implode(', ', $std) ?: '— keiner (dann melden nur Automatismen mit eigener Wahl) —') . '.')],
-                ['type' => 'Label', 'caption' => 'ℹ️ Skript-Wege bekommen $_IPS[\'TITLE\'], $_IPS[\'TEXT\'] und $_IPS[\'MEDIA\'] (ID eines Kamerabilds, z. B. von der Türklingel, sonst 0) — so lässt sich jede Benachrichtigung anbinden (Telegram, Pushover, Sprachausgabe …).'],
-                ['type' => 'Label', 'caption' => '— Was wird gemeldet —', 'bold' => true],
+                    ? AUTOMATText::t('ℹ️ These channels come from your previous settings (push/email). With "Apply changes" they are saved as a list — then you can rename them, add more and choose them per automation.')
+                    : (count($ways) === 0 ? AUTOMATText::t('⚠️ No notification channel — notifications only appear in "Last notification" and in the log.') : AUTOMATText::t('✅ Default channels: %s.', implode(', ', $std) ?: AUTOMATText::t('— none (then only automations with their own choice notify) —')))],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ Script channels receive $_IPS[\'TITLE\'], $_IPS[\'TEXT\'] and $_IPS[\'MEDIA\'] (ID of a camera image, e.g. from the doorbell, otherwise 0) — so any kind of notification can be connected (Telegram, Pushover, voice output …).')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('— What is notified —'), 'bold' => true],
                 ['type' => 'Label', 'caption' => count($who) > 0
-                    ? '🔔 ' . implode(' · ', $who) . '. Ein- und ausschalten und Wege wählen je Automatismus im Dialog (✏️).'
-                    : 'ℹ️ Kein Automatismus meldet etwas. Melden können Wächter, „Gerät fertig“ und „Anwesenheit zusammenfassen“ — im Dialog (✏️) „Melden“ ankreuzen.'],
-                ['type' => 'CheckBox', 'name' => 'cfg_NotifyFaults', 'caption' => 'Auch Störungen melden (ein Gerät ließ sich nicht schalten) — über die Standard-Wege'],
-                ['type' => 'Label', 'caption' => '— Ruhezeit —', 'bold' => true],
-                ['type' => 'CheckBox', 'name' => 'cfg_QuietEnabled', 'caption' => 'Ruhezeit: Wege mit „Ruhezeit beachten“ melden nachts nicht (die Meldung wird danach nachgeholt)'],
+                    ? AUTOMATText::t('🔔 %s. Switch on/off and choose channels per automation in the dialog (✏️).', implode(' · ', $who))
+                    : AUTOMATText::t('ℹ️ No automation sends notifications. Watchdogs, "Appliance finished" and "Combine presence" can notify — tick "Notify" in the dialog (✏️).')],
+                ['type' => 'CheckBox', 'name' => 'cfg_NotifyFaults', 'caption' => AUTOMATText::t('Also report faults (a device could not be switched) — via the default channels')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('— Quiet hours —'), 'bold' => true],
+                ['type' => 'CheckBox', 'name' => 'cfg_QuietEnabled', 'caption' => AUTOMATText::t('Quiet hours: channels with "Respect quiet hours" do not notify at night (the notification is sent afterwards)')],
                 ['type' => 'RowLayout', 'items' => [
-                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietFrom', 'caption' => 'Ruhezeit von', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
-                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietTo', 'caption' => 'bis', 'suffix' => ' Uhr', 'minimum' => 0, 'maximum' => 23],
+                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietFrom', 'caption' => AUTOMATText::t('Quiet hours from'), 'suffix' => AUTOMATText::t(" o'clock"), 'minimum' => 0, 'maximum' => 23],
+                    ['type' => 'NumberSpinner', 'name' => 'cfg_QuietTo', 'caption' => AUTOMATText::t('to'), 'suffix' => AUTOMATText::t(" o'clock"), 'minimum' => 0, 'maximum' => 23],
                 ]],
-                ['type' => 'Button', 'caption' => '📨 Testmeldung über alle Meldewege', 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
-                ['type' => 'Label', 'caption' => 'ℹ️ Die Testmeldung nutzt die gespeicherten Einstellungen — nach Änderungen erst „Übernehmen“. Jede Meldung steht außerdem in der Variable „Letzte Meldung“.'],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('📨 Test notification via all channels'), 'onClick' => 'echo AUTOMAT_TestMessage($id);'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ The test notification uses the saved settings — after changes, "Apply changes" first. Every notification also appears in the variable "Last notification".')],
             ],
         ];
     }
@@ -4174,24 +4185,24 @@ class Automat extends IPSModule
     {
         [$stats, $idle] = $this->statsRows();
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '📜  Protokoll und Kachel',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('📜  Log and tile'),
             'items' => [
-                ['type' => 'Label', 'caption' => '— Statistik (30 Tage) —', 'bold' => true],
-                ['type' => 'Label', 'caption' => count($idle) > 0 ? '💤 Seit 30 Tagen nichts geschaltet oder gemeldet: ' . implode(', ', $idle) . ' — noch gebraucht, oder stimmen die Geräte?' : 'ℹ️ Schaltungen und Meldungen je Automatismus; „💤“-Hinweise erscheinen, wenn ein aktiver Automatismus 30 Tage nichts getan hat.'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('— Statistics (30 days) —'), 'bold' => true],
+                ['type' => 'Label', 'caption' => count($idle) > 0 ? AUTOMATText::t('💤 Nothing switched or notified for 30 days: %s — still needed, or are the devices right?', implode(', ', $idle)) : AUTOMATText::t('ℹ️ Switchings and notifications per automation; "💤" notes appear when an active automation has done nothing for 30 days.')],
                 [
                     'type' => 'List', 'name' => 'StatsList', 'caption' => '', 'rowCount' => max(3, min(15, count($stats))), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false, 'values' => $stats,
                     'columns' => [
-                        ['caption' => 'Automatismus', 'name' => 'Name', 'width' => 'auto', 'save' => false],
-                        ['caption' => 'Schaltungen 7 Tage', 'name' => 'A7', 'width' => '150px', 'save' => false],
-                        ['caption' => '30 Tage', 'name' => 'A30', 'width' => '90px', 'save' => false],
-                        ['caption' => 'Meldungen 30 Tage', 'name' => 'M30', 'width' => '150px', 'save' => false],
-                        ['caption' => 'Zuletzt', 'name' => 'Last', 'width' => '150px', 'save' => false],
+                        ['caption' => AUTOMATText::t('Automation'), 'name' => 'Name', 'width' => 'auto', 'save' => false],
+                        ['caption' => AUTOMATText::t('Switchings 7 days'), 'name' => 'A7', 'width' => '150px', 'save' => false],
+                        ['caption' => AUTOMATText::t('30 days'), 'name' => 'A30', 'width' => '90px', 'save' => false],
+                        ['caption' => AUTOMATText::t('Notifications 30 days'), 'name' => 'M30', 'width' => '150px', 'save' => false],
+                        ['caption' => AUTOMATText::t('Last'), 'name' => 'Last', 'width' => '150px', 'save' => false],
                     ],
                 ],
-                ['type' => 'Label', 'caption' => 'Protokoll (neueste zuerst) — warum etwas geschaltet oder gemeldet wurde:'],
-                ['type' => 'Label', 'name' => 'ProtocolText', 'caption' => implode("\n", $this->protocolLines(30)) ?: '— noch leer —'],
-                ['type' => 'CheckBox', 'name' => 'cfg_TileLight', 'caption' => 'Helle Darstellung der Kachel'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Log (newest first) — why something was switched or notified:')],
+                ['type' => 'Label', 'name' => 'ProtocolText', 'caption' => implode("\n", $this->protocolLines(30)) ?: AUTOMATText::t('— still empty —')],
+                ['type' => 'CheckBox', 'name' => 'cfg_TileLight', 'caption' => AUTOMATText::t('Light tile appearance')],
             ],
         ];
     }
@@ -4252,26 +4263,26 @@ class Automat extends IPSModule
             }
         }
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🪟  Formular: Aufbau' . (count($hidden) > 0 ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('🪟  Form: layout') . (count($hidden) > 0 ? AUTOMATText::t(' (%s hidden)', count($hidden)) : ''),
             'items' => [
-                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen aufgeklappt sind, in welcher Reihenfolge sie stehen und welche du gar nicht sehen willst — z. B. „Katalog“ oder „Entdecken“, wenn alles eingerichtet ist. Symcon merkt sich das Auf- und Zuklappen nicht selbst. Wirkt nach „Übernehmen“ beim nächsten Öffnen.'],
-                ['type' => 'Label', 'caption' => 'Kein Haken heißt Standard (wie das Modul es vorsieht). Sind mehrere Haken gesetzt, gilt Ausgeblendet vor Zugeklappt vor Aufgeklappt. Oben (Wozu, Neu, Dokumentation & Hilfe) und unten (Aufbau, Rückmeldungen, Über dieses Modul) bleibt alles, wo es ist.'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Here you decide which areas are expanded on opening, in which order they appear and which you do not want to see at all — e.g. "Catalog" or "Discover" once everything is set up. Symcon does not remember expanding and collapsing itself. Takes effect on next opening after "Apply changes".')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('No tick means default (as the module intends). If several ticks are set, Hidden wins over Collapsed over Expanded. At the top (What for, New, Documentation & help) and at the bottom (Layout, Feedback, About this module) everything stays where it is.')],
                 ['type' => 'Label', 'caption' => count($hidden) > 0
-                    ? '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.'
-                    : 'ℹ️ Nichts ausgeblendet.'],
+                    ? AUTOMATText::t('🙈 Hidden: %s — to show again, remove the tick at "Hidden". Hidden areas keep working, only the display is missing.', implode(', ', $hidden))
+                    : AUTOMATText::t('ℹ️ Nothing hidden.')],
                 [
-                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => AUTOMATText::t('Areas'), 'rowCount' => count($rows), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false, 'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => '', 'save' => false],
-                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
-                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '140px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('Area'), 'name' => 'Panel', 'width' => 'auto', 'add' => '', 'save' => false],
+                        ['caption' => AUTOMATText::t('Key'), 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => AUTOMATText::t('Expanded'), 'name' => 'Opened', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('Collapsed'), 'name' => 'Closed', 'width' => '120px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => AUTOMATText::t('🙈 Hidden'), 'name' => 'Hidden', 'width' => '140px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
                     ],
                 ],
-                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo AUTOMAT_ResetFormLayout($id);'],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('↩️ Reset to default'), 'onClick' => 'echo AUTOMAT_ResetFormLayout($id);'],
             ],
         ];
     }
@@ -4285,7 +4296,7 @@ class Automat extends IPSModule
             $rows[] = ['Key' => $k, 'Panel' => trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panels[$k]['caption'] ?? $k))), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => $i + 1];
         }
         $this->UpdateFormField('FormLayout', 'values', json_encode($rows, JSON_UNESCAPED_UNICODE));
-        return 'ℹ️ Alle Bereiche wieder sichtbar und in Standardreihenfolge. Zum Speichern unten „Übernehmen“ klicken.';
+        return AUTOMATText::t('ℹ️ All areas visible again and in default order. Click "Apply changes" below to save.');
     }
 
     private function ForumHint(): ?array
@@ -4294,12 +4305,12 @@ class Automat extends IPSModule
             return null;
         }
         return [
-            'type' => 'ExpansionPanel', 'name' => 'ForumHintPanel', 'expanded' => true, 'caption' => '💬  Rückmeldungen',
+            'type' => 'ExpansionPanel', 'name' => 'ForumHintPanel', 'expanded' => true, 'caption' => AUTOMATText::t('💬  Feedback'),
             'items' => [
-                ['type' => 'Label', 'caption' => '🧪 Automat ist neu (Beta) — Fragen, Wünsche nach weiteren Automatismen und Fehler gerne im Forum-Thread. Besonders hilfreich sind Rückmeldungen zu Geräten, die ich selbst nicht habe (Rollläden, Taster, Wasser-/Rauchmelder, Lüftung).'],
-                ['type' => 'Button', 'caption' => '💬 Zum Forum-Thread', 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
-                ['type' => 'Button', 'caption' => 'Zum Repository', 'onClick' => "echo '" . self::REPO_URL . "';", 'link' => true],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'AUTOMAT_AckForumHint($id);'],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('🧪 Automat is new (beta) — questions, wishes for further automations and bugs are welcome in the forum thread. Feedback on devices I do not have myself is especially helpful (shutters, push buttons, water/smoke detectors, ventilation).')],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('💬 To the forum thread'), 'onClick' => "echo '" . self::FORUM_URL . "';", 'link' => true],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('To the repository'), 'onClick' => "echo '" . self::REPO_URL . "';", 'link' => true],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('Got it – do not show again'), 'onClick' => 'AUTOMAT_AckForumHint($id);'],
             ],
         ];
     }
@@ -4307,14 +4318,14 @@ class Automat extends IPSModule
     private function LicenseHint(): array
     {
         return [
-            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => '🧡  Über dieses Modul',
+            'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => AUTOMATText::t('🧡  About this module'),
             'items' => [
-                ['type' => 'Label', 'caption' => 'Entstanden aus echter Begeisterung für die eigene Anlage — und ein paar durchgetippten Abenden. Trotzdem: Software-Hobby hin oder her, das hier ist geistiges Eigentum und echte Arbeit steckt drin.'],
-                ['type' => 'Label', 'caption' => 'Lizenz: PolyForm Noncommercial 1.0.0 — privat und nicht-kommerziell frei nutzbar, für den gewerblichen Einsatz braucht es eine gesonderte Lizenz vom Rechteinhaber.'],
-                ['type' => 'Button', 'caption' => 'Lizenztext ansehen', 'onClick' => "echo '" . self::LICENSE_URL . "';", 'link' => true],
-                ['type' => 'Label', 'caption' => 'Gewerbliche Nutzung oder Fragen zur Lizenz? Einfach melden: dietmar@gureth.eu'],
-                ['type' => 'Label', 'caption' => 'Gefällt dir das Modul und du möchtest trotzdem etwas dalassen? Über eine kleine Spende freue ich mich — völlig freiwillig, keine Gegenleistung nötig.'],
-                ['type' => 'Button', 'caption' => '☕  Spenden via PayPal', 'onClick' => "echo '" . self::PAYPAL_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Born out of genuine enthusiasm for my own installation — and a few evenings of typing. Still: hobby software or not, this is intellectual property and real work went into it.')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('License: PolyForm Noncommercial 1.0.0 — free for private and non-commercial use; commercial use requires a separate license from the rights holder.')],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('View license text'), 'onClick' => "echo '" . self::LICENSE_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Commercial use or questions about the license? Just get in touch: dietmar@gureth.eu')],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('Do you like the module and would like to leave something anyway? I am happy about a small donation — completely voluntary, nothing required in return.')],
+                ['type' => 'Button', 'caption' => AUTOMATText::t('☕  Donate via PayPal'), 'onClick' => "echo '" . self::PAYPAL_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -4342,6 +4353,9 @@ class Automat extends IPSModule
             $middle,
             [$this->LayoutPanel($layout, $panels), $this->ForumHint(), $this->LicenseHint()]
         )));
-        return json_encode(['elements' => $elements, 'actions' => [], 'status' => $base['status'] ?? []]);
+        $status = array_map(function ($s) {
+            return is_array($s) && isset($s['caption']) ? ['caption' => AUTOMATText::t((string)$s['caption'])] + $s : $s;
+        }, $base['status'] ?? []);
+        return json_encode(['elements' => $elements, 'actions' => [], 'status' => $status]);
     }
 }
