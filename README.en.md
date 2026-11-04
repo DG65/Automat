@@ -20,7 +20,7 @@ motion light, dusk switching, window open → heating down, "door open too long"
 and reason per automation, a log, a tile — and **Discover** suggests from your existing
 devices what is worth automating.
 
-> **As of 0.2.0 (beta in the Module Store, 700+ checks):** motion light, window open, watchdog, presence, central off,
+> **As of 0.2.0 (beta in the Module Store, 710 checks):** motion light, window open, watchdog, presence, central off,
 > shutters and house mode run in my own installation; the other automations are tested on the test bench.
 > Feedback is welcome in the [forum thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647) (German forum, English posts are fine).
 

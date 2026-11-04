@@ -19,7 +19,8 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
 - „Neu bis Version" erst ab der ersten veröffentlichten Version (`NEWS_VERSIONS` bleibt bis dahin leer).
 - Logging nur `$this->LogMessage`, nie `IPS_LogMessage`; Datum sichtbar TT.MM.JJJJ; keine `±86400`-Rechnung.
 - Vor jedem Commit: `php .tools/test-automat.php`, `php .tools/check-standalone.php`, `php -l`.
-- Branch: nur `beta`; `main` erst nach Live-Bewährung (Dietmar entscheidet).
+- Branches: `beta` (Store-Beta) und ab 0.2.0 `main` (Store-Stable, Dietmar 04.11.2026). Kein `IPS_SetProperty`/`IPS_ApplyChanges`
+  im Modul (Prüfstand prüft das); Objekt-Eigenschaften eigener Variablen (versteckt, Position) nur beim Anlegen vorgeben.
 - Nicht live geprüft (Stand 0.1.0): alles. Insbesondere: Dialog mit Typwechsel per `UpdateFormField`, `$Automations`
   im onClick, Echo-Laufzeiten echter Aktoren (Z-Wave), Push-Zustellung, Kachel in der echten Visualisierung.
 - Ab 0.1.31: Alarm, Rollladen, Standby, Lüften, Heizung nach Hausmodus, Taster, Aufwachlicht sind nur am Prüfstand
@@ -34,3 +35,8 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
   - `cleanupChanged()` gibt beim Abschalten, Löschen, Probelauf oder Umbau frei.
   - Neue Arten, die etwas festhalten (Sollwerte), brauchen einen Zweig in `AUTOMATLogik::cleanup()`.
   - Der Prüfstand bildet Gerätemeldungen mit `geändert`/`alter Wert` nach (`fire()`, `PENDING`).
+- Ab 0.2.0 zweisprachig: nutzersichtbare Texte nur als englischer Quelltext über `AUTOMATText::t('… %s', $x)`, die deutsche
+  Fassung in `.tools/locale-teile/<teil>.json`, danach `php .tools/locale-bauen.php` (erzeugt `Automat/locale.json`, nie von Hand
+  bearbeiten). Katalog-Konstanten bleiben englisch, angezeigt über `modes()/categories()/roles()/types()/tr()`. Prüfblock E
+  (`.tools/test-englisch.inc.php`) findet fehlende Übersetzungen, falsche Platzhalter und deutsche Reste auf Englisch.
+  Erkennungsmuster für Gerätenamen bleiben deutsch (beschreiben die Objekte des Nutzers).

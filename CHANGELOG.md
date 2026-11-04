@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 (Build 57) — 04.11.2026
+
+- Zweisprachig (Deutsch/Englisch) nach RoboHub-Muster: Quelltexte englisch über `AUTOMATText::t()` (neue Datei `AUTOMATText.php`, Übersetzer im Konstruktor auf `$this->Translate()`), Deutsch in `Automat/locale.json` (rund 1.250 Texte), gebaut aus `.tools/locale-teile/*.json` mit `php .tools/locale-bauen.php`.
+- Katalog: Konstanten englisch, Anzeige über `modes()`, `categories()`, `roles()`, `types()`, `tr()`; `fields()` liefert übersetzte Captions/Hilfen/Optionen, Aufbau in `fieldDefs()`.
+- Kachel: Texte als `KACHEL_TEXTE` mit `texte`-Tabelle im Payload, `T()` in module.html.
+- `ensureVar()` erkennt deutsche und englische Standard-Endungen der Variablennamen; `tileState()` deutsche und englische Statusanfänge.
+- Deutsche Ausgabe Zeichen für Zeichen unverändert (Prüfstand 700 deutsche Prüfungen + Vergleichsläufe alt/neu); neuer Prüfblock E (Übersetzungstabelle, Platzhalter, Formular/Dialoge/Kachel ohne deutsche Reste).
+- README.en.md.
+- Store-Review (vor erster Stable-Einreichung): ApplyChanges schreibt Zeilen ohne Kennung nicht mehr per `IPS_SetProperty`/`IPS_ApplyChanges` fest; `rows()` vergibt eine kollisionsfreie Ersatzkennung `r<n>`, die mit dem nächsten „Übernehmen“ des Nutzers gespeichert wird. Variable „store“ wird nur beim Anlegen versteckt (`IPS_SetHidden`), danach entscheidet der Nutzer.
+
 ## 0.1.55 (Build 56) — 29.10.2026
 
 - Formular: Aufbau an SUITE.md 3a angeglichen: `doc` aus `LAYOUT_KEYS` entfernt, „Dokumentation & Hilfe“ fest nach Wozu/Neu (nicht mehr wählbar/ausblendbar); gespeicherte `doc`-Zeilen werden als unbekannter Schlüssel ignoriert. Erklärtext nennt Doku bei den festen Bereichen. Prüfstand: Doku fest oben, unbekannter Schlüssel, Reset mit 6 Bereichen. Fachpanels in `actions` gibt es nicht.

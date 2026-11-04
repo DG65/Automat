@@ -2842,7 +2842,14 @@ $m->props['Automations'] = json_encode([$noUid]);
 $m->props['AutomationsHidden'] = '[]';
 $m->ApplyChanges();
 $saved1 = json_decode($m->props['Automations'], true);
-check('Zeile ohne Kennung bekommt beim Übernehmen eine feste (nicht „r0“)', preg_match('/^a[0-9a-f]{5}$/', (string)($saved1[0]['Uid'] ?? '')) === 1, json_encode($saved1[0]['Uid'] ?? null));
+check('Zeile ohne Kennung: ApplyChanges schreibt die Property nicht selbst (Store-Review)', ($saved1[0]['Uid'] ?? null) === '');
+$rowsNo = (new ReflectionMethod('Automat', 'rows'))->invoke($m);
+$formNo = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('… bekommt eine Ersatzkennung, die das Formular zum Speichern mitgibt', ($rowsNo[0]['Uid'] ?? '') === 'r0' && strpos($formNo, '"Uid":"r0"') !== false);
+$m->props['Automations'] = json_encode([$noUid, array_merge($noUid, ['Uid' => 'r0'])]);
+check('… und kollidiert nie mit einer schon gespeicherten Ersatzkennung', array_column((new ReflectionMethod('Automat', 'rows'))->invoke($m), 'Uid') === ['r1', 'r0']);
+$srcSp = (string)file_get_contents(dirname(__DIR__) . '/Automat/module.php');
+check('Store-Review: kein IPS_SetProperty/IPS_ApplyChanges im Modul', strpos($srcSp, 'IPS_SetProperty(') === false && strpos($srcSp, 'IPS_ApplyChanges(') === false);
 [$m->props['Automations'], $m->props['AutomationsHidden']] = $keepProps;
 $m->ApplyChanges();
 $m->fieldUpdates = [];
@@ -3062,6 +3069,8 @@ foreach ((new ReflectionClass('Automat'))->getMethods(ReflectionMethod::IS_PUBLI
 check('Öffentliche Methoden ohne Standardwerte, nur skalare Typen', count($bad) === 0, implode(', ', $bad));
 $warn = array_filter($GLOBALS['WARN'], fn($w) => strpos($w, 'Ident nicht gefunden') === false);
 check('Keine PHP-Warnungen im ganzen Lauf', count($warn) === 0, implode(' | ', array_slice($warn, 0, 5)));
+
+require __DIR__ . '/test-englisch.inc.php';
 
 echo "\n" . ($fails === 0 ? "✅ Alle $checks Prüfungen bestanden.\n" : "❌ $fails von $checks Prüfungen fehlgeschlagen.\n");
 exit($fails === 0 ? 0 : 1);

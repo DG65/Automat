@@ -79,6 +79,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.0' => [
+            '🌍 Automat now speaks English: on an English Symcon, the form, dialogs, states, log, notifications and the tile appear in English; on a German Symcon everything stays as before. Variable idents are unchanged.',
+        ],
         '0.1.55' => [
             '🪟 Form: layout following the common rule of all DG65 modules: "📖 Documentation & help" now sits fixed at the top after "New" and can no longer be moved or hidden. If you had hidden it, it is back. You still choose all topic sections yourself.',
         ],
@@ -284,10 +287,13 @@ class Automat extends IPSModule
         $this->MaintainVariable('LastMessage', AUTOMATText::t('Last notification'), VARIABLETYPE_STRING, '', 3, true);
         // Gedächtnis der Automatismen (gemerkte Sollwerte, gelernte Zeiten, Melderzustände) als versteckte
         // Variable statt Attribut: übersteht ein Neueinbinden des Moduls in der Modulverwaltung.
+        $storeNew = @IPS_GetObjectIDByIdent('store', $this->InstanceID) === false;
         $this->MaintainVariable('store', AUTOMATText::t('Memory (internal)'), VARIABLETYPE_STRING, '', 999, true);
         $storeID = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
         if ($storeID) {
-            IPS_SetHidden($storeID, true);
+            if ($storeNew) {
+                IPS_SetHidden($storeID, true); // nur beim Anlegen vorgeben, danach entscheidet der Nutzer
+            }
             $old = $this->aStr('States');
             if ((string)GetValue($storeID) === '' && $old !== '' && $old !== '{}') {
                 SetValueString($storeID, $old); // Übernahme aus Versionen bis 0.1.13
@@ -302,23 +308,9 @@ class Automat extends IPSModule
             }
         }
 
-        // Zeilen ohne Kennung (z. B. über „+“, falls Symcon den Dialogwert nicht übernimmt) bekommen einmal eine
-        // feste — sonst hinge die Kennung am Listenplatz und Sperre/Zustand wechselten beim Löschen davor.
-        $vis = json_decode((string)$this->pStr('Automations'), true);
-        if (is_array($vis) && function_exists('IPS_SetProperty')) {
-            $fixed = false;
-            foreach ($vis as $i => $vr) {
-                if (is_array($vr) && preg_replace('/[^a-z0-9]/', '', strtolower((string)($vr['Uid'] ?? ''))) === '') {
-                    $vis[$i]['Uid'] = $this->newUid($vis);
-                    $fixed = true;
-                }
-            }
-            if ($fixed) {
-                IPS_SetProperty($this->InstanceID, 'Automations', json_encode(array_values($vis)));
-                IPS_ApplyChanges($this->InstanceID);
-                return;
-            }
-        }
+        // Zeilen ohne Kennung (z. B. über „+“, falls Symcon den Dialogwert nicht übernimmt) bekommen in rows() eine
+        // Ersatzkennung; das Formular zeigt sie mit dieser Kennung, beim nächsten „Übernehmen“ des Nutzers wird sie
+        // gespeichert. Kein IPS_SetProperty hier — Properties gehören dem Nutzer (Store-Review).
         $rows = $this->rows();
         $keep = [];
         $enabled = 0;
@@ -3278,13 +3270,25 @@ class Automat extends IPSModule
             }
         }
         $out = [];
+        $taken = [];
+        foreach ($rows as $r) {
+            if (is_array($r)) {
+                $taken[preg_replace('/[^a-z0-9]/', '', strtolower((string)($r['Uid'] ?? '')))] = true;
+            }
+        }
         foreach (array_values($rows) as $i => $r) {
             if (!is_array($r)) {
                 continue;
             }
             $r['Uid'] = preg_replace('/[^a-z0-9]/', '', strtolower((string)($r['Uid'] ?? '')));
             if ($r['Uid'] === '') {
-                $r['Uid'] = 'r' . $i; // Rückfall für Zeilen ohne Kennung
+                // Rückfall für Zeilen ohne Kennung (erst mit dem nächsten „Übernehmen“ gespeichert); nie eine vergebene
+                $n = $i;
+                while (isset($taken['r' . $n])) {
+                    $n++;
+                }
+                $r['Uid'] = 'r' . $n;
+                $taken[$r['Uid']] = true;
             }
             $r['Type'] = (string)($r['Type'] ?? '');
             $out[] = AUTOMATKatalog::sanitize(AUTOMATKatalog::stripForeign($r));
