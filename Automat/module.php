@@ -62,10 +62,10 @@ class Automat extends IPSModule
     private const EVE_EVENTS = [0 => 'Sunset', 3 => 'CivilTwilightEnd', 4 => 'NauticTwilightEnd', 5 => 'AstronomicTwilightEnd'];
     private const NIGHT_EVENTS = [3 => 'CivilTwilightEnd', 4 => 'NauticTwilightEnd', 5 => 'AstronomicTwilightEnd'];
     private const EVENT_LABELS = [
-        'Sunrise' => 'Sonnenaufgang', 'Sunset' => 'Sonnenuntergang',
-        'CivilTwilightStart' => 'Beginn bürgerliche Dämmerung', 'CivilTwilightEnd' => 'Ende bürgerliche Dämmerung',
-        'NauticTwilightStart' => 'Beginn nautische Dämmerung', 'NauticTwilightEnd' => 'Ende nautische Dämmerung',
-        'AstronomicTwilightStart' => 'Beginn astronomische Dämmerung', 'AstronomicTwilightEnd' => 'Ende astronomische Dämmerung',
+        'Sunrise' => 'Sunrise', 'Sunset' => 'Sunset',
+        'CivilTwilightStart' => 'Start of civil twilight', 'CivilTwilightEnd' => 'End of civil twilight',
+        'NauticTwilightStart' => 'Start of nautical twilight', 'NauticTwilightEnd' => 'End of nautical twilight',
+        'AstronomicTwilightStart' => 'Start of astronomical twilight', 'AstronomicTwilightEnd' => 'End of astronomical twilight',
     ];
     // DG65-Toolkit Raumstruktur (vormals Raumstruktur; Räume/Etagen), Vertrag RAUM_/STRUKT_GetStructure 1.x — optional.
     private const RAUM_GUID = '{CA700334-0982-F356-0617-6952868137E9}';
@@ -80,91 +80,91 @@ class Automat extends IPSModule
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
         '0.1.55' => [
-            '🪟 Formular: Aufbau nach der einheitlichen Regel aller DG65-Module: „📖 Dokumentation & Hilfe“ steht jetzt fest oben nach „Neu“ und lässt sich nicht mehr verschieben oder ausblenden. Hattest du sie ausgeblendet, ist sie wieder da. Alle Fachbereiche wählst du wie bisher selbst.',
+            '🪟 Form: layout following the common rule of all DG65 modules: "📖 Documentation & help" now sits fixed at the top after "New" and can no longer be moved or hidden. If you had hidden it, it is back. You still choose all topic sections yourself.',
         ],
         '0.1.54' => [
-            '⏱ Wächter mit Hysterese: Bei „größer als“/„kleiner als“ lässt sich eine zweite Schwelle eintragen, ab der der Zustand wieder als „in Ordnung“ gilt — z. B. melden unter 20 GB freiem Speicher, erst wieder meldebereit über 30 GB. Ein Wert, der um die Grenze pendelt, meldet so nur einmal.',
+            '⏱ Watchdog with hysteresis: for "greater than"/"less than" a second threshold can be entered from which the state counts as "OK" again — e.g. notify below 20 GB free storage, ready to notify again only above 30 GB. A value hovering around the limit thus notifies only once.',
         ],
         '0.1.53' => [
-            '🔁 Neu: „Melder zurücksetzen“ — setzt Bewegungs-/Alarmmelder auf „falsch“, wenn sie auf „wahr“ stehen und seit der Haltezeit (Standard 60 s) keine neue Meldung kam, z. B. weil die „keine Bewegung“-Meldung im Funk verloren ging. Ersetzt Ablaufpläne/Skripte mit Passwort oder JSON-RPC. Der Status zählt je Melder, wie oft zurückgesetzt wurde. Hinweis: Bei Z-Wave-Instanzen mit „Variablen sperren“ lehnt Symcon das Setzen ab — Automat sagt das im Protokoll.',
+            '🔁 New: "Reset sensors" — sets motion/alarm sensors to "false" when they are "true" and no new report has come in for the hold time (default 60 s), e.g. because the "no motion" report got lost over the radio. Replaces schedules/scripts with password or JSON-RPC. The status counts per sensor how often it was reset. Note: for Z-Wave instances with "Lock variables", Symcon refuses the write — Automat says so in the log.',
         ],
         '0.1.52' => [
-            '🔃 Rollläden: Automat nimmt die Richtung jetzt je Rollladen aus dessen Profil — „~Shutter“: 0 = offen, „~Shutter.Reversed“: 0 = zu. Gemischte Aktoren (z. B. Z-Wave und Shelly) in einem Automatismus fahren damit alle richtig herum. Die Werte „offen/zu“ im Automatismus gelten nur noch für Rollläden ohne dieses Profil. Gilt auch für „Rollladen öffnen“ beim Wasser-/Rauchalarm.',
+            '🔃 Shutters: Automat now takes the direction of each shutter from its profile — "~Shutter": 0 = open, "~Shutter.Reversed": 0 = closed. Mixed actuators (e.g. Z-Wave and Shelly) in one automation thus all move the right way round. The "open/closed" values in the automation now only apply to shutters without this profile. Also applies to "Open shutter" on water/smoke alarm.',
         ],
         '0.1.51' => [
-            '🛠 Rollläden: Der Befehl geht jetzt immer raus — auch wenn die Anzeige schon „zu“ bzw. „offen“ zeigt. Manche Aktoren (z. B. Z-Wave) setzen die Anzeige schon beim Befehl; ging einer im Funk verloren, schickte Automat danach keinen mehr, auch nicht von Hand.',
+            '🛠 Shutters: the command is now always sent — even if the display already shows "closed" or "open". Some actuators (e.g. Z-Wave) update the display as soon as the command is sent; if one got lost over the radio, Automat sent no further command afterwards, not even manually.',
         ],
         '0.1.50' => [
-            '▶ Von Hand auslösen: In der Liste Automatismen anhaken und „▶ Jetzt ausführen“ — holt eine verschlafene Schaltung nach (Szene, Zeitschaltuhr, Treppenlicht, Gehen-Check als Probe, Heizung neu setzen). Für Rollläden „⬇ schließen“ und „⬆ öffnen“. Dieselben Knöpfe gibt es in der Kachel. Der Aussperrschutz (offene Tür) gilt auch hier.',
+            '▶ Trigger manually: tick automations in the list and click "▶ Run now" — catches up on a missed switching (scene, timer, staircase light, leaving check as a test, re-apply heating). For shutters "⬇ close" and "⬆ open". The same buttons are on the tile. The lock-out protection (open door) applies here too.',
         ],
         '0.1.49' => [
-            '🔐 Türschlösser: Meldet ein Schloss „Gesperrt“, gilt die Tür als zu. Automat liest dafür die Beschriftung des Werts („Gesperrt“, „Geschlossen“, „Entriegelt“, „Geöffnet“ …) statt nur des Profilnamens. Beim Riegel („~Lock.Reversed“) lag die Erkennung vorher genau falsch herum.',
+            '🔐 Door locks: if a lock reports "Locked", the door counts as closed. For this, Automat reads the label of the value ("Locked", "Closed", "Unlocked", "Opened" …) instead of only the profile name. With the bolt ("~Lock.Reversed") the detection used to be exactly the wrong way round.',
         ],
         '0.1.48' => [
-            '🔎 Die letzten offenen Punkte der Prüfung behoben:',
-            '• Reagiert ein Licht oder Schalter nicht auf einen Befehl (z. B. Funkstörung), steht das nach 20 s im Protokoll — auf Wunsch als Störungsmeldung.',
-            '• Hausmodus „Abend“ und Rollladen „bei Dunkelheit“ frühestens 2 h vor Sonnenuntergang — ein Gewitter am Nachmittag schließt nicht mehr für den ganzen Tag.',
-            '• Ausfall-Wächter warnt, wenn die Messsteckdose seit 6 h nichts mehr meldet. Wasser-/Rauchalarm meldet weitere Melder sofort. Türklingel: wiederholte Meldungen ohne Änderung zählen nicht als neues Klingeln (neue Option für Klingeln mit immer gleichem Wert).',
-            '• Wächter: Bei Matter-Kontakten heißt die Auswahl jetzt „zu“ und „offen“.',
-            '• Dialog zeigt auch bei noch nicht übernommenen Automatismen (Entdecken, Duplizieren) alle eingetragenen Geräte.',
-            '• Gelöschte Automatismen kommen nach einem früheren Speichern mit Filter nicht zurück; neue Automatismen bekommen immer eine feste Kennung.',
+            '🔎 Fixed the last open points of the review:',
+            '• If a light or switch does not respond to a command (e.g. radio interference), this appears in the log after 20 s — optionally as a fault notification.',
+            '• House mode "Evening" and shutter "when dark" at the earliest 2 h before sunset — an afternoon thunderstorm no longer closes them for the whole day.',
+            '• Outage watchdog warns if the metering plug has not reported anything for 6 h. Water/smoke alarm reports further sensors immediately. Doorbell: repeated reports without a change no longer count as a new ring (new option for bells that always send the same value).',
+            '• Watchdog: for Matter contacts the choices are now called "closed" and "open".',
+            '• The dialog also shows all entered devices for automations not yet applied (Discover, Duplicate).',
+            '• Deleted automations no longer come back after an earlier save with a filter; new automations always get a fixed ID.',
         ],
         '0.1.47' => [
-            '🔎 Gründliche Prüfung aller Automatismen — rund 30 Fehler behoben, jeder mit eigenem Test. Die wichtigsten:',
-            '• Rollladen: Das Protokoll nennt, welcher Rollladen wirklich einen Befehl bekam. Nach 3 Minuten prüft Automat nach und sendet einmal erneut. Ein Aussperrschutz über Mitternacht wird sauber beendet. Beim Rauchalarm gilt der „offen“-Wert des Rollladen-Automatismus.',
-            '• Fenster offen + Heizung nach Hausmodus am selben Thermostat: Der Komfortwert geht nicht mehr verloren. Ein Thermostat, das den neuen Wert erst später meldet, gilt nicht mehr als „von Hand verstellt“.',
-            '• Abschalten, Löschen, Probelauf oder Umbau eines Automatismus gibt abgesenkte Sollwerte wieder frei.',
-            '• Bewegungslicht: Der Nachlauf startet erst, wenn keine Bewegung mehr gemeldet wird — auch nach Handeinschaltung, Dauerlicht und Sperre.',
-            '• Dämmerung: Im Sommer brannte das Licht fast 24 Stunden, wenn der Sonnenuntergang nach der Ausschaltzeit lag.',
-            '• Zeitschaltuhr, Aufwachlicht, Sommer-Lüften, Lüften, Ausfall-Wächter, Taster, Gehen-Check, Anwesenheit: einzelne Fehler behoben (siehe Änderungsprotokoll).',
-            '• Grundgerüst: gleichzeitige Abläufe überschreiben sich nicht mehr gegenseitig; Geräte, die ihren Wert mehrfach oder in Zwischenschritten melden, gelten nicht mehr als Handbedienung; ein per Skript gesetzter Hausmodus wird erkannt.',
+            '🔎 Thorough review of all automations — around 30 bugs fixed, each with its own test. The most important:',
+            '• Shutter: the log names which shutter actually received a command. After 3 minutes Automat checks and resends once. A lock-out protection across midnight is ended cleanly. On smoke alarm the "open" value of the shutter automation applies.',
+            '• Window open + heating by house mode on the same thermostat: the comfort value is no longer lost. A thermostat that reports the new value only later no longer counts as "changed manually".',
+            '• Switching off, deleting, dry run or rebuilding an automation releases lowered setpoints again.',
+            '• Motion light: the follow-up time only starts when no more motion is reported — also after manual switch-on, permanent light and lock.',
+            '• Dusk: in summer the light stayed on for almost 24 hours if sunset was after the switch-off time.',
+            '• Timer, wake-up light, summer ventilation, ventilation, outage watchdog, push button, leaving check, presence: individual bugs fixed (see change log).',
+            '• Foundation: simultaneous runs no longer overwrite each other; devices that report their value several times or in intermediate steps no longer count as manual operation; a house mode set by script is detected.',
         ],
         '0.1.46' => [
-            '🛠 Fenster-/Türkontakte: Ob ein Kontakt „wahr = offen“ oder „wahr = zu“ meldet, erkennt Automat jetzt je Sensor selbst (Matter-Kontakte, Profile „…Reversed“, Darstellung) und wendet das in jedem Automatismus gleich an. Das Häkchen „umgekehrt“ braucht es nur noch für Sensoren, die Automat nicht erkennt. Vorher hielt eine geschlossene Matter-Terrassentür den Rollladen oben.',
+            '🛠 Window/door contacts: whether a contact reports "true = open" or "true = closed" is now detected by Automat per sensor (Matter contacts, "…Reversed" profiles, presentation) and applied the same way in every automation. The "inverted" tick is only needed for sensors Automat does not recognize. Before, a closed Matter patio door kept the shutter up.',
         ],
         '0.1.45' => [
-            '🕒 Bewegungslicht: Der lernende Nachlauf wird höchstens das Vierfache des eingestellten Werts (30 s → höchstens 2 min). Als „zu früh ausgeschaltet“ zählt nur noch, wer innerhalb der eingestellten Nachlaufzeit zurückkommt. Wer den Nachlauf ändert, verwirft das Gelernte. Das Protokoll nennt den gelernten Wert. Beim Update beginnt das Lernen bei allen Bewegungslichtern neu.',
+            '🕒 Motion light: the learned follow-up time becomes at most four times the set value (30 s → at most 2 min). Only coming back within the set follow-up time now counts as "switched off too early". Changing the follow-up time discards what was learned. The log names the learned value. With the update, learning starts anew for all motion lights.',
         ],
         '0.1.44' => [
-            '🛠 Bewegungslicht: Licht ging tagsüber an, obwohl es hell genug war. Nach jedem automatischen Ausschalten wurde der Helligkeitssensor bis zum nächsten Einschalten übergangen statt nur in den ersten drei Minuten (gegen Restlicht). Behoben.',
+            '🛠 Motion light: the light came on during the day although it was bright enough. After every automatic switch-off the brightness sensor was ignored until the next switch-on instead of only for the first three minutes (against residual light). Fixed.',
         ],
         '0.1.43' => [
-            '🖼 Kachel: größere Symbole, Name und Zustand brechen um statt abgeschnitten zu werden.',
+            '🖼 Tile: larger icons; name and state wrap instead of being cut off.',
         ],
         '0.1.42' => [
-            '➕ Keine feste Obergrenze mehr bei Meldern, Lichtern, Kontakten, Geräten usw.: Hinter dem letzten belegten Platz gibt es immer weitere freie. Sind alle belegt, nach „Übernehmen“ den Dialog neu öffnen. „Entdecken“ übernimmt jetzt alle gefundenen Geräte.',
+            '➕ No fixed upper limit any more for sensors, lights, contacts, devices etc.: after the last filled slot there are always more free ones. If all are filled, reopen the dialog after "Apply changes". "Discover" now takes over all devices found.',
         ],
         '0.1.41' => [
-            '🛠 Wichtige Korrektur: Wer mit aktivem Filter „Übernehmen“ gedrückt hat, verlor die Einstellungen der ausgeblendeten Automatismen (sie standen danach leer in der Liste). Ausgeblendete werden jetzt vollständig gespeichert. Bereits leer gewordene Automatismen bitte neu einstellen — die tägliche Symcon-Sicherung enthält den alten Stand.',
+            '🛠 Important fix: anyone who pressed "Apply changes" with an active filter lost the settings of the hidden automations (they then appeared empty in the list). Hidden ones are now saved completely. Please set up automations that have already become empty again — the daily Symcon backup contains the old state.',
         ],
         '0.1.40' => [
-            '➕ Übersichtlichere Dialoge: Bei Meldern, Lichtern, Kontakten usw. stehen nur noch die belegten Plätze und EIN freier da. Füllt man ihn, erscheint der nächste.',
+            '➕ Clearer dialogs: for sensors, lights, contacts etc. only the filled slots and ONE free slot are shown. Fill it and the next one appears.',
         ],
         '0.1.39' => [
-            '☀️ Ein Helligkeitssensor für alles: Der Sensor unter „🏠 Hausmodus“ (mit Schwellen und Haltezeit) gilt jetzt auch für Rollläden „wenn es dunkel wird“ und die Dämmerungsschaltung — kein zweites Eintragen mehr. Die Dämmerungsschaltung kann weiterhin einen eigenen Sensor nutzen (z. B. Raumsensor).',
+            '☀️ One brightness sensor for everything: the sensor under "🏠 House mode" (with thresholds and hold time) now also applies to shutters "when it gets dark" and to dusk switching — no second entry needed. Dusk switching can still use its own sensor (e.g. a room sensor).',
         ],
         '0.1.38' => [
-            '🧹 Der Bearbeiten-Dialog zeigt nur noch die Felder, die zur Auswahl passen — z. B. beim Rollladen „Öffnen bei Tag“ ohne Uhrzeit und Versatz. Umstellen blendet sofort passend ein und aus (Rollladen, Dämmerung, Aufwachlicht, Szene, Taster, Zeitschaltuhr, Wächter).',
+            '🧹 The edit dialog now only shows the fields that match the selection — e.g. for shutter "Open at day" without time and offset. Changing the selection shows and hides fields immediately (shutter, dusk, wake-up light, scene, push button, timer, watchdog).',
         ],
         '0.1.37' => [
-            '🔍 Filter über der Liste der Automatismen: Suchtext, Raum, Funktion/Art und Zustand (auffällig, läuft, aktiv, nicht aktiv, gesperrt, Probelauf). Ausgefilterte bleiben beim „Übernehmen“ erhalten.',
-            '🔍 Filter beim Entdecken: Suchtext, Raum und Art der Vorschläge.',
+            '🔍 Filter above the list of automations: search text, room, function/type and state (conspicuous, running, active, not active, locked, dry run). Filtered-out ones are kept on "Apply changes".',
+            '🔍 Filter when discovering: search text, room and type of the suggestions.',
         ],
         '0.1.36' => [
-            '🛠 Behoben: Beim Speichern hing die Konsole. Der Bearbeiten-Dialog enthält jetzt nur noch die Einstellungen der eigenen Art (vorher die aller 20 Arten, über 350 Werte je Zeile). Neue Automatismen über „+“: erst die Art wählen, dann mit ✏️ einstellen.',
+            '🛠 Fixed: the console hung when saving. The edit dialog now only contains the settings of its own type (previously those of all 20 types, over 350 values per row). New automations via "+": first choose the type, then configure with ✏️.',
         ],
         '0.1.35' => [
-            '🚪 Gehen-Check: beim Wechsel auf „Abwesend“/„Urlaub“ EINE Meldung, was noch offen oder an ist.',
-            '🛎 Türklingel, ☀️ Sommer-Lüften (mit Taupunkt), 🧊 Ausfall-Wächter (Kühlschrank, Pumpe) und 📅 Zeitschaltuhr als neue Automatismen.',
-            '📄 Duplizieren: Automatismen in der Liste anhaken (☑︎) und in einen anderen Raum kopieren — Geräte gleicher Art werden dort eingesetzt.',
-            '🧪 Probelauf je Automatismus: nichts schalten, nur protokollieren, was passiert wäre.',
-            '📅 Feiertage nach Bundesland (unter „🏠 Hausmodus“) für Rollläden, Aufwachlicht und Zeitschaltuhr.',
-            '📊 Statistik je Automatismus und Hinweis auf solche, die 30 Tage nichts getan haben (unter „📜 Protokoll und Kachel“).',
-            '💡 Entdecken schlägt aus dem Archiv Gewohnheiten vor, z. B. „Licht geht werktags meist um 22:30 aus“.',
+            '🚪 Leaving check: when switching to "Away"/"Holiday", ONE notification about what is still open or on.',
+            '🛎 Doorbell, ☀️ summer ventilation (with dew point), 🧊 outage watchdog (fridge, pump) and 📅 timer as new automations.',
+            '📄 Duplicate: tick automations in the list (☑︎) and copy them into another room — devices of the same kind are used there.',
+            '🧪 Dry run per automation: switch nothing, only log what would have happened.',
+            '📅 Public holidays by state (under "🏠 House mode") for shutters, wake-up light and timer.',
+            '📊 Statistics per automation and a hint about those that have done nothing for 30 days (under "📜 Log and tile").',
+            '💡 Discover suggests habits from the archive, e.g. "Light usually goes off at 22:30 on weekdays".',
         ],
         '0.1.34' => [
-            '💬 Es gibt jetzt einen Forum-Thread für Fragen, Wünsche und Rückmeldungen — Link unter „💬 Rückmeldungen“ und in „📖 Dokumentation & Hilfe“.',
-            '🕒 Uhrzeiten, die Stunden entfernt liegen, stehen ohne Sekunden in den Zuständen („Rollläden schließen um 18:41 Uhr“).',
+            '💬 There is now a forum thread for questions, wishes and feedback — link under "💬 Feedback" and in "📖 Documentation & help".',
+            '🕒 Times that are hours away appear without seconds in the states ("Shutters close at 18:41").',
         ],
     ];
     private const REPO_URL    = 'https://github.com/DG65/Automat';
@@ -179,6 +179,20 @@ class Automat extends IPSModule
     private const REST_TICK_S  = 5;    // so oft wird „… · Restzeit" nachgeführt, solange unter einer Stunde läuft
     private const ECHO_S       = 15;   // so lange gilt eine Wertänderung als Echo des eigenen Befehls
     private const PROTOCOL_MAX = 200;
+
+    /** NEWS_VERSIONS mit übersetzten Zeilen (Konstante steht englisch, Deutsch in locale.json). */
+    private function newsVersions(): array
+    {
+        return array_map(function (array $lines): array {
+            return array_map([AUTOMATText::class, 't'], $lines);
+        }, self::NEWS_VERSIONS);
+    }
+
+    /** Übersetzte Beschriftung eines Location-Control-Zeitpunkts (EVENT_LABELS steht englisch). */
+    private function sunEventLabel(string $ident): string
+    {
+        return AUTOMATText::t(self::EVENT_LABELS[$ident] ?? $ident);
+    }
 
     /** Pro Aufruf zwischengespeicherte Instanz-Konfigurationen (Doppelregelungs-Prüfung). */
     private ?array $confCache = null;
@@ -263,14 +277,14 @@ class Automat extends IPSModule
         }
 
         $this->ensureModeProfile();
-        $this->MaintainVariable('Hausmodus', 'Hausmodus', VARIABLETYPE_INTEGER, self::PROFILE_MODE, 1, true);
+        $this->MaintainVariable('Hausmodus', AUTOMATText::t('House mode'), VARIABLETYPE_INTEGER, self::PROFILE_MODE, 1, true);
         $this->EnableAction('Hausmodus');
-        $this->MaintainVariable('Pause', 'Alle Automatismen pausieren', VARIABLETYPE_BOOLEAN, '~Switch', 2, true);
+        $this->MaintainVariable('Pause', AUTOMATText::t('Pause all automations'), VARIABLETYPE_BOOLEAN, '~Switch', 2, true);
         $this->EnableAction('Pause');
-        $this->MaintainVariable('LastMessage', 'Letzte Meldung', VARIABLETYPE_STRING, '', 3, true);
+        $this->MaintainVariable('LastMessage', AUTOMATText::t('Last notification'), VARIABLETYPE_STRING, '', 3, true);
         // Gedächtnis der Automatismen (gemerkte Sollwerte, gelernte Zeiten, Melderzustände) als versteckte
         // Variable statt Attribut: übersteht ein Neueinbinden des Moduls in der Modulverwaltung.
-        $this->MaintainVariable('store', 'Gedächtnis (intern)', VARIABLETYPE_STRING, '', 999, true);
+        $this->MaintainVariable('store', AUTOMATText::t('Memory (internal)'), VARIABLETYPE_STRING, '', 999, true);
         $storeID = @IPS_GetObjectIDByIdent('store', $this->InstanceID);
         if ($storeID) {
             IPS_SetHidden($storeID, true);
@@ -312,18 +326,18 @@ class Automat extends IPSModule
             $uid = $row['Uid'];
             $name = $this->rowName($row);
             $pos = 10 + $i * 4;
-            $this->ensureVar('s_' . $uid, $name . ' · Status', VARIABLETYPE_STRING, '', $pos);
-            $this->ensureVar('r_' . $uid, $name . ' · Restzeit', VARIABLETYPE_STRING, '', $pos + 1);
-            $this->ensureVar('l_' . $uid, $name . ' · gesperrt', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
+            $this->ensureVar('s_' . $uid, AUTOMATText::t('%s · Status', $name), VARIABLETYPE_STRING, '', $pos);
+            $this->ensureVar('r_' . $uid, AUTOMATText::t('%s · remaining time', $name), VARIABLETYPE_STRING, '', $pos + 1);
+            $this->ensureVar('l_' . $uid, AUTOMATText::t('%s · locked', $name), VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
             $this->EnableAction('l_' . $uid);
             $keep['s_' . $uid] = $keep['r_' . $uid] = $keep['l_' . $uid] = true;
             if (!empty(AUTOMATKatalog::types()[$row['Type']]['light']) && $row['Type'] !== 'daemmerung') {
-                $this->ensureVar('d_' . $uid, $name . ' · Dauerlicht', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 3);
+                $this->ensureVar('d_' . $uid, AUTOMATText::t('%s · permanent light', $name), VARIABLETYPE_BOOLEAN, '~Switch', $pos + 3);
                 $this->EnableAction('d_' . $uid);
                 $keep['d_' . $uid] = true;
             }
             if ($row['Type'] === 'anwesenheit') {
-                $this->ensureVar('p_' . $uid, $name . ' · Jemand zu Hause', VARIABLETYPE_BOOLEAN, IPS_VariableProfileExists('~Presence') ? '~Presence' : '~Switch', $pos + 3);
+                $this->ensureVar('p_' . $uid, AUTOMATText::t('%s · someone at home', $name), VARIABLETYPE_BOOLEAN, IPS_VariableProfileExists('~Presence') ? '~Presence' : '~Switch', $pos + 3);
                 $keep['p_' . $uid] = true;
             }
             if (empty($row['Enabled'])) {
@@ -416,7 +430,7 @@ class Automat extends IPSModule
             $known = $this->aInt('ModeKnown');
             if ($changed && (int)$value !== $known && isset(AUTOMATKatalog::modes()[(int)$value])) {
                 $this->WriteAttributeInteger('ModeKnown', (int)$value);
-                $this->announceMode($known >= 0 ? $known : (int)($Data[2] ?? 0), (int)$value, 'von außen gesetzt');
+                $this->announceMode($known >= 0 ? $known : (int)($Data[2] ?? 0), (int)$value, AUTOMATText::t('set externally'));
                 $this->reschedule();
                 $this->refreshTile();
             }
@@ -427,7 +441,7 @@ class Automat extends IPSModule
         $central = '';
         if ($own && $origin !== '') {
             $or = $this->rowByUid($origin);
-            $central = $or !== null ? 'Szene „' . $this->rowName($or) . '“' : '';
+            $central = $or !== null ? AUTOMATText::t('Scene "%s"', $this->rowName($or)) : '';
         }
         $this->learnMelder($vid, $value);
         $touched = false;
@@ -464,27 +478,27 @@ class Automat extends IPSModule
         if ($Ident === 'Hausmodus') {
             $mode = (int)$Value;
             if (!isset(AUTOMATKatalog::modes()[$mode])) {
-                throw new Exception('Unbekannter Hausmodus: ' . $mode);
+                throw new Exception(AUTOMATText::t('Unknown house mode: %s', $mode));
             }
-            $this->setMode($mode, 'von Hand');
+            $this->setMode($mode, AUTOMATText::t('manually'));
         } elseif ($Ident === 'Pause') {
             $this->SetValue('Pause', (bool)$Value);
-            $this->addLog('', (bool)$Value ? '⏸ Alle Automatismen pausiert.' : '▶️ Pause beendet — alle Automatismen arbeiten wieder.');
+            $this->addLog('', (bool)$Value ? AUTOMATText::t('⏸ All automations paused.') : AUTOMATText::t('▶️ Pause ended — all automations are working again.'));
             foreach ($this->rows() as $row) {
                 $this->process($row, ['k' => 'flag']);
             }
         } elseif (preg_match('/^([ld])_([a-z0-9]+)$/', $Ident, $m)) {
             $row = $this->rowByUid($m[2]);
             if ($row === null) {
-                throw new Exception('Unbekannter Automatismus: ' . $m[2]);
+                throw new Exception(AUTOMATText::t('Unknown automation: %s', $m[2]));
             }
             $this->SetValue($Ident, (bool)$Value);
             $this->addLog($this->rowName($row), $m[1] === 'l'
-                ? ((bool)$Value ? '🔒 Gesperrt.' : '🔓 Sperre aufgehoben.')
-                : ((bool)$Value ? '🔆 Dauerlicht an.' : 'Dauerlicht aus.'));
+                ? ((bool)$Value ? AUTOMATText::t('🔒 Locked.') : AUTOMATText::t('🔓 Lock released.'))
+                : ((bool)$Value ? AUTOMATText::t('🔆 Permanent light on.') : AUTOMATText::t('Permanent light off.')));
             $this->process($row, ['k' => 'flag']);
         } else {
-            throw new Exception('Unbekannte Aktion: ' . $Ident);
+            throw new Exception(AUTOMATText::t('Unknown action: %s', $Ident));
         }
         $this->reschedule();
         $this->refreshTile();
@@ -531,7 +545,7 @@ class Automat extends IPSModule
             return $res;
         } catch (Throwable $e) {
             // Ein Fehler in einem Automatismus darf die anderen im selben Durchlauf nicht aufhalten.
-            $this->LogMessage('Automatismus „' . $this->rowName($row) . '“: Fehler — ' . $e->getMessage(), KL_ERROR);
+            $this->LogMessage(AUTOMATText::t('Automation "%s": error — %s', $this->rowName($row), $e->getMessage()), KL_ERROR);
             return null;
         }
     }
@@ -545,18 +559,18 @@ class Automat extends IPSModule
     {
         $row = $this->rowByUid(preg_replace('/[^a-z0-9]/', '', strtolower($uid)));
         if ($row === null) {
-            return '⚠️ Unbekannter oder noch nicht übernommener Automatismus „' . $uid . '“ — erst „Übernehmen“.';
+            return AUTOMATText::t('⚠️ Unknown or not yet applied automation "%s" — click "Apply changes" first.', $uid);
         }
         if (empty($row['Enabled'])) {
-            return '⚫ „' . $this->rowName($row) . '“ ist nicht aktiv.';
+            return AUTOMATText::t('⚫ "%s" is not active.', $this->rowName($row));
         }
         if (in_array($what, ['down', 'up'], true) && $row['Type'] !== 'rollladen') {
-            return 'ℹ️ „' . $this->rowName($row) . '“ ist kein Rollladen-Automatismus.';
+            return AUTOMATText::t('ℹ️ "%s" is not a shutter automation.', $this->rowName($row));
         }
         $res = $this->process($row, ['k' => 'run', 'what' => $what]);
         $this->reschedule();
         $this->refreshTile();
-        $log = $res !== null && $res['log'] !== null ? (string)$res['log'] : 'Nichts zu tun — ' . (string)($res['status'] ?? '');
+        $log = $res !== null && $res['log'] !== null ? (string)$res['log'] : AUTOMATText::t('Nothing to do — %s', (string)($res['status'] ?? ''));
         return (!empty($row['Dry']) ? '🧪 ' : '▶ ') . $this->rowName($row) . ': ' . $log;
     }
 
@@ -568,7 +582,7 @@ class Automat extends IPSModule
             return is_array($r) && !empty($r['Mark']);
         }));
         if (count($marked) === 0) {
-            return 'ℹ️ Bitte zuerst in der Liste bei den Automatismen, die du auslösen willst, das Häkchen ☑︎ setzen.';
+            return AUTOMATText::t('ℹ️ First set the tick ☑︎ in the list for the automations you want to trigger.');
         }
         $out = [];
         foreach ($marked as $r) {
@@ -577,7 +591,7 @@ class Automat extends IPSModule
             }
             $out[] = $this->RunNow((string)($r['Uid'] ?? ''), $what);
         }
-        return count($out) > 0 ? implode("\n", $out) : 'ℹ️ Unter den angehakten ist kein Rollladen-Automatismus.';
+        return count($out) > 0 ? implode("\n", $out) : AUTOMATText::t('ℹ️ None of the ticked automations is a shutter automation.');
     }
 
     /** Sperre für Lese-/Schreibabschnitte der Attribute (nicht verschachteln, nie während eines Schaltbefehls halten). */
@@ -636,8 +650,9 @@ class Automat extends IPSModule
                 [$c, $text] = AUTOMATLogik::cleanup((string)$o['t'], $st, ['val' => $val]);
                 if (count($c) > 0) {
                     $cmds = array_merge($cmds, $c);
-                    $why = $n === null ? 'gelöscht' : (!$n['on'] ? 'abgeschaltet' : 'geändert');
-                    $this->addLog(isset($byUid[$uid]) ? $this->rowName($row) : '', 'Automatismus ' . $why . ' — ' . $text);
+                    $why = $n === null ? AUTOMATText::t('Automation deleted — %s', $text)
+                        : (!$n['on'] ? AUTOMATText::t('Automation switched off — %s', $text) : AUTOMATText::t('Automation changed — %s', $text));
+                    $this->addLog(isset($byUid[$uid]) ? $this->rowName($row) : '', $why);
                 }
             }
             unset($states[$uid]); // frischer Zustand (auch nach einem Probelauf, der nur so getan hat)
@@ -656,7 +671,7 @@ class Automat extends IPSModule
         $status = $this->attrMap('Status');
         $due = $this->attrMap('Due');
         if (empty($row['Enabled'])) {
-            $status[$uid] = '⚫ Nicht aktiv (in der Liste)';
+            $status[$uid] = AUTOMATText::t('⚫ Not active (in the list)');
             unset($due[$uid]);
             $this->WriteAttributeString('Status', json_encode($status));
             $this->WriteAttributeString('Due', json_encode($due));
@@ -682,7 +697,7 @@ class Automat extends IPSModule
         try {
             $res = AUTOMATLogik::step($row, $st, $ev, $ctx);
         } catch (Throwable $e) {
-            $this->LogMessage('Automatismus „' . $this->rowName($row) . '“: Fehler in der Auswertung — ' . $e->getMessage(), KL_ERROR);
+            $this->LogMessage(AUTOMATText::t('Automation "%s": error in the evaluation — %s', $this->rowName($row), $e->getMessage()), KL_ERROR);
             return null;
         }
         $states[$uid] = $res['st'];
@@ -711,13 +726,13 @@ class Automat extends IPSModule
                 $would[] = $this->varLabel((int)$vid) . ' → ' . AUTOMATLogik::fmtNum($value);
             }
             foreach ($res['msg'] as [$title, $text]) {
-                $would[] = 'Meldung „' . $title . '“';
+                $would[] = AUTOMATText::t('Notification "%s"', $title);
             }
             if (isset($res['mode'])) {
-                $would[] = 'Hausmodus „' . (AUTOMATKatalog::modes()[(int)$res['mode']] ?? '') . '“';
+                $would[] = AUTOMATText::t('House mode "%s"', AUTOMATKatalog::modes()[(int)$res['mode']] ?? '');
             }
             if ($would) {
-                $res['log'] = '🧪 Probelauf — würde: ' . implode('; ', $would) . ($res['log'] !== null ? ' (' . $res['log'] . ')' : '');
+                $res['log'] = AUTOMATText::t('🧪 Dry run — would: %s', implode('; ', $would)) . ($res['log'] !== null ? ' (' . $res['log'] . ')' : '');
             } elseif ($res['log'] !== null) {
                 $res['log'] = '🧪 ' . $res['log'];
             }
@@ -739,13 +754,13 @@ class Automat extends IPSModule
             $this->recordLost($res['lost']);
         }
         if ($res['log'] !== null) {
-            $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ⚠️ Schalten fehlgeschlagen: ' . implode(', ', $failed) : ''));
+            $this->addLog($this->rowName($row), $res['log'] . (count($failed) > 0 ? ' ' . AUTOMATText::t('⚠️ Switching failed: %s', implode(', ', $failed)) : ''));
         }
         if (!empty($res['fault']) && $this->pBool('cfg_NotifyFaults')) {
             $this->message('⚠️ ' . $this->rowName($row), (string)$res['fault'], true, null);
         }
         if (count($failed) > 0 && $this->pBool('cfg_NotifyFaults')) {
-            $this->message('⚠️ ' . $this->rowName($row), 'Schalten fehlgeschlagen: ' . implode(', ', $failed) . '.', true, null);
+            $this->message('⚠️ ' . $this->rowName($row), AUTOMATText::t('Switching failed: %s.', implode(', ', $failed)), true, null);
         }
         $notify = !empty($row[self::NOTIFY_FIELD[$row['Type']] ?? '']);
         foreach ($res['msg'] as [$title, $text]) {
@@ -755,7 +770,7 @@ class Automat extends IPSModule
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
         if (isset($res['mode']) && isset(AUTOMATKatalog::modes()[(int)$res['mode']])) {
             // Taster setzt den Hausmodus (erst jetzt, nachdem der eigene Zustand gespeichert ist)
-            $this->setMode((int)$res['mode'], 'Taster „' . $this->rowName($row) . '“');
+            $this->setMode((int)$res['mode'], AUTOMATText::t('push button "%s"', $this->rowName($row)));
         }
         if (array_key_exists('self', $res) && $res['self'] !== null) {
             // Ergebnis eines Automatismus, der selbst eine Variable führt (Anwesenheit zusammenfassen)
@@ -994,12 +1009,12 @@ class Automat extends IPSModule
                 }
                 if (!$ok) {
                     $error = stripos($warn, 'read-only') !== false || stripos($warn, 'schreibgeschützt') !== false
-                        ? 'Variable ist gesperrt — in der Instanz „' . IPS_GetName($parent) . '“ „Variablen sperren“ ausschalten'
-                        : ($warn !== '' ? $warn : 'Setzen abgelehnt');
+                        ? AUTOMATText::t('Variable is locked — switch off "Lock variables" in the instance "%s"', IPS_GetName($parent))
+                        : ($warn !== '' ? $warn : AUTOMATText::t('Setting refused'));
                 }
             } elseif ($parent > 0 && $parent !== $this->InstanceID && IPS_InstanceExists($parent)) {
                 // Variable einer fremden Instanz ohne Aktion: SetValue würde nur die Anzeige ändern, nicht das Gerät.
-                $error = 'gehört zur Instanz „' . IPS_GetName($parent) . '“ und hat keine Aktion — nicht schaltbar, bitte die schaltbare Variable des Geräts wählen';
+                $error = AUTOMATText::t('belongs to the instance "%s" and has no action — not switchable, please choose the switchable variable of the device', IPS_GetName($parent));
             } else {
                 $ok = (bool)SetValue($vid, $value);
             }
@@ -1008,7 +1023,7 @@ class Automat extends IPSModule
         }
         if (!$ok) {
             // Dauerhaft loggen, nicht nur ins Debug (SUITE.md „Sichtbare Rückmeldung“ Regel 5).
-            $this->LogMessage('Schalten fehlgeschlagen: ' . $this->varLabel($vid) . ' → ' . AUTOMATLogik::fmtNum($value) . ($error !== '' ? ' (' . $error . ')' : ''), KL_WARNING);
+            $this->LogMessage(AUTOMATText::t('Switching failed: %s → %s', $this->varLabel($vid), AUTOMATLogik::fmtNum($value)) . ($error !== '' ? ' (' . $error . ')' : ''), KL_WARNING);
             $why = $error;
         }
         return $ok;
@@ -1049,7 +1064,7 @@ class Automat extends IPSModule
             $this->lockLeave();
         }
         if (count($bad) > 0) {
-            $text = 'Gerät hat nicht reagiert (Wert unverändert): ' . implode(', ', $bad) . '. Funkverbindung prüfen.';
+            $text = AUTOMATText::t('Device did not respond (value unchanged): %s. Check the radio connection.', implode(', ', $bad));
             $this->addLog('', '⚠️ ' . $text);
             if ($this->pBool('cfg_NotifyFaults')) {
                 $this->message('⚠️ Automat', $text, true, null);
@@ -1271,7 +1286,7 @@ class Automat extends IPSModule
             }
             $n = $this->lostCount($vid);
             if ($n > 0) {
-                $out['bl_mel' . $i] = '📶 In den letzten 7 Tagen ' . $n . '× „keine Bewegung“ nicht angekommen (Rückfall hat eingegriffen) — Empfang, Batterie oder Standort des Melders prüfen.';
+                $out['bl_mel' . $i] = AUTOMATText::t('📶 In the last 7 days, "no motion" did not arrive %s× (the fallback stepped in) — check reception, battery or location of the sensor.', $n);
             }
             if (empty($row['bl_impuls']) && $this->isImpulseMelder($vid)) {
                 $impulse[] = $this->varLabel($vid);
@@ -1281,10 +1296,14 @@ class Automat extends IPSModule
         $eff = AUTOMATLogik::effectiveNachlauf($row, is_array($stt) ? $stt : []);
         $fo = count((array)($stt['fo'] ?? []));
         if ($fo > 0 || $eff > max(1, (int)($row['bl_nachlauf'] ?? 120))) {
-            $out['bl_nachlauf'] = '🕒 Gelernt: ' . AUTOMATKatalog::dur($eff) . ($fo > 0 ? ' — ' . $fo . '× zu früh ausgeschaltet in den letzten 7 Tagen' : '') . '. Der Wert hier ist der Grundwert, zu dem Automat zurückkehrt; gelernt wird höchstens das ' . AUTOMATLogik::LEARN_FACTOR_MAX . '-Fache (' . AUTOMATKatalog::dur(AUTOMATLogik::learnCap($row)) . '). Wert ändern verwirft das Gelernte.';
+            $learned = $fo > 0
+                ? AUTOMATText::t('🕒 Learned: %1$s — switched off too early %2$s× in the last 7 days', AUTOMATKatalog::dur($eff), $fo)
+                : AUTOMATText::t('🕒 Learned: %s', AUTOMATKatalog::dur($eff));
+            $out['bl_nachlauf'] = AUTOMATText::t('%1$s. The value here is the base value Automat returns to; at most %2$s times this value is learned (%3$s). Changing the value discards what was learned.',
+                $learned, AUTOMATLogik::LEARN_FACTOR_MAX, AUTOMATKatalog::dur(AUTOMATLogik::learnCap($row)));
         }
         if (count($impulse) > 0) {
-            $out['bl_impuls'] = 'ℹ️ ' . implode(', ', $impulse) . ' sendet offenbar nie „aus“ (nur „Bewegung“) — diesen Schalter einschalten, dann beginnt der Nachlauf bei jeder Meldung.';
+            $out['bl_impuls'] = AUTOMATText::t('ℹ️ %s apparently never sends "off" (only "motion") — switch this on, then the follow-up time starts with every report.', implode(', ', $impulse));
         }
         return $out;
     }
@@ -1320,7 +1339,7 @@ class Automat extends IPSModule
     /** Alle Automatismen über einen Wechsel des Hausmodus informieren. */
     private function announceMode(int $from, int $mode, string $source): void
     {
-        $this->addLog('', '🏠 Hausmodus „' . (AUTOMATKatalog::modes()[$mode] ?? $mode) . '“ (' . $source . ').');
+        $this->addLog('', AUTOMATText::t('🏠 House mode "%s" (%s).', AUTOMATKatalog::modes()[$mode] ?? $mode, $source));
         foreach ($this->rows() as $row) {
             $this->process($row, in_array($row['Type'], self::MODE_EVENT_TYPES, true) ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
         }
@@ -1369,7 +1388,7 @@ class Automat extends IPSModule
         if ($target !== $last || ($presenceChanged && $target !== $current)) {
             $this->WriteAttributeInteger('LastAutoMode', $target);
             if ($target !== $current) {
-                $this->setMode($target, $presenceChanged ? 'Anwesenheit' : 'automatisch');
+                $this->setMode($target, $presenceChanged ? AUTOMATText::t('presence') : AUTOMATText::t('automatically'));
             }
         }
     }
@@ -1386,18 +1405,18 @@ class Automat extends IPSModule
             if ($this->pBool('cfg_PresenceInvert')) {
                 $p = !$p;
             }
-            return [$p, '✏️ Anwesenheit aus der eingetragenen Variable „' . $this->varLabel($presVid) . '“: ' . ($p ? 'jemand da' : 'niemand da') . '.'];
+            return [$p, AUTOMATText::t('✏️ Presence from the entered variable "%s": %s.', $this->varLabel($presVid), $p ? AUTOMATText::t('someone there') : AUTOMATText::t('nobody there'))];
         }
         foreach ($this->rows() as $r) {
             if ($r['Type'] === 'anwesenheit' && !empty($r['Enabled'])) {
                 $pid = @IPS_GetObjectIDByIdent('p_' . $r['Uid'], $this->InstanceID);
                 if ($pid) {
                     $p = (bool)GetValue($pid);
-                    return [$p, '✅ 🔗 Anwesenheit automatisch aus dem Automatismus „' . $this->rowName($r) . '“: ' . ($p ? 'jemand da' : 'niemand da') . '.'];
+                    return [$p, AUTOMATText::t('✅ 🔗 Presence automatically from the automation "%s": %s.', $this->rowName($r), $p ? AUTOMATText::t('someone there') : AUTOMATText::t('nobody there'))];
                 }
             }
         }
-        return [null, 'ℹ️ Keine Anwesenheit verknüpft — „Abwesend“ wird nur von Hand gesetzt. Tipp: Automatismus „🏠 Anwesenheit zusammenfassen“ anlegen (Entdecken schlägt ihn vor), dann nutzt der Hausmodus ihn automatisch.'];
+        return [null, AUTOMATText::t('ℹ️ No presence linked — "Away" is only set manually. Tip: create the automation "🏠 Combine presence" (Discover suggests it), then the house mode uses it automatically.')];
     }
 
     /**
@@ -1492,7 +1511,7 @@ class Automat extends IPSModule
             try {
                 $q = array_merge(json_decode($this->aStr('Deferred'), true) ?: [], $hold);
                 if (count($q) > 50) {
-                    $this->LogMessage('Ruhezeit: mehr als 50 zurückgehaltene Meldungen — die ältesten ' . (count($q) - 50) . ' entfallen.', KL_WARNING);
+                    $this->LogMessage(AUTOMATText::t('Quiet hours: more than 50 held-back notifications — the oldest %s are dropped.', count($q) - 50), KL_WARNING);
                 }
                 $this->WriteAttributeString('Deferred', json_encode(array_slice($q, -50), JSON_UNESCAPED_UNICODE));
             } finally {
@@ -1533,9 +1552,9 @@ class Automat extends IPSModule
             $w = $ways[(string)($e[3] ?? '')] ?? null;
             foreach ($w !== null ? [$w] : $this->waysFor(null) as $way) {
                 try {
-                    $this->deliverWay($way, (string)$e[1], $e[2] . ' (zurückgehalten seit ' . date('d.m.Y H:i', (int)$e[0]) . ' Uhr, Ruhezeit)', (int)($e[4] ?? 0));
+                    $this->deliverWay($way, (string)$e[1], AUTOMATText::t('%1$s (held back since %2$s, quiet hours)', (string)$e[2], date('d.m.Y H:i', (int)$e[0])), (int)($e[4] ?? 0));
                 } catch (Throwable $ex) {
-                    $this->LogMessage('Zurückgehaltene Meldung nicht zugestellt: ' . $ex->getMessage(), KL_WARNING);
+                    $this->LogMessage(AUTOMATText::t('Held-back notification not delivered: %s', $ex->getMessage()), KL_WARNING);
                 }
             }
         }
@@ -1559,7 +1578,7 @@ class Automat extends IPSModule
                 }
                 $seen[$id] = true;
                 $typ = in_array($r['Typ'] ?? '', ['push', 'mail', 'script'], true) ? $r['Typ'] : 'push';
-                $out[] = ['id' => $id, 'name' => trim((string)($r['Name'] ?? '')) ?: 'Meldeweg ' . ($i + 1), 'typ' => $typ,
+                $out[] = ['id' => $id, 'name' => trim((string)($r['Name'] ?? '')) ?: AUTOMATText::t('Notification channel %s', $i + 1), 'typ' => $typ,
                     'target' => (int)($r['Target'] ?? 0), 'to' => trim((string)($r['To'] ?? '')),
                     'std' => !empty($r['Std']), 'quiet' => !array_key_exists('Quiet', $r) || !empty($r['Quiet'])];
             }
@@ -1570,14 +1589,14 @@ class Automat extends IPSModule
                 return (int)($r['Instance'] ?? 0);
             }, json_decode($this->pStr('cfg_PushTargets'), true) ?: [])));
             if (count($chosen) === 0) {
-                $out[] = ['id' => 'push', 'name' => 'Push an alle Visualisierungen', 'typ' => 'push', 'target' => 0, 'to' => '', 'std' => true, 'quiet' => true];
+                $out[] = ['id' => 'push', 'name' => AUTOMATText::t('Push to all visualizations'), 'typ' => 'push', 'target' => 0, 'to' => '', 'std' => true, 'quiet' => true];
             }
             foreach ($chosen as $n => $vid) {
-                $out[] = ['id' => 'push' . ($n + 1), 'name' => 'Push an „' . (IPS_InstanceExists($vid) ? IPS_GetName($vid) : '#' . $vid) . '“', 'typ' => 'push', 'target' => $vid, 'to' => '', 'std' => true, 'quiet' => true];
+                $out[] = ['id' => 'push' . ($n + 1), 'name' => AUTOMATText::t('Push to "%s"', IPS_InstanceExists($vid) ? IPS_GetName($vid) : '#' . $vid), 'typ' => 'push', 'target' => $vid, 'to' => '', 'std' => true, 'quiet' => true];
             }
         }
         if ($this->pBool('cfg_NotifyMail')) {
-            $out[] = ['id' => 'mail', 'name' => 'E-Mail', 'typ' => 'mail', 'target' => $this->pInt('cfg_MailInstance'), 'to' => trim($this->pStr('cfg_MailTo')), 'std' => true, 'quiet' => true];
+            $out[] = ['id' => 'mail', 'name' => AUTOMATText::t('Email'), 'typ' => 'mail', 'target' => $this->pInt('cfg_MailInstance'), 'to' => trim($this->pStr('cfg_MailTo')), 'std' => true, 'quiet' => true];
         }
         return $out;
     }
@@ -1606,19 +1625,19 @@ class Automat extends IPSModule
         switch ($w['typ']) {
             case 'mail':
                 $err = $this->sendMail($w['target'], $w['to'], $title, $text);
-                $res = $err === '' ? '✅ gesendet' : '⚠️ nicht gesendet — ' . $err;
+                $res = $err === '' ? AUTOMATText::t('✅ sent') : AUTOMATText::t('⚠️ not sent — %s', $err);
                 break;
             case 'script':
                 if ($w['target'] <= 0 || !IPS_ScriptExists($w['target'])) {
-                    $res = '⚠️ kein Skript gewählt (oder es gibt es nicht mehr)';
-                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: ' . $res . ' — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
+                    $res = AUTOMATText::t('⚠️ no script selected (or it no longer exists)');
+                    $this->LogMessage(AUTOMATText::t('Notification channel "%1$s": %2$s — notification "%3$s" not delivered.', $w['name'], $res, $title), KL_WARNING);
                     break;
                 }
                 // Das Skript bekommt Titel und Text, z. B. für Telegram, Pushover oder eine Sprachausgabe.
                 $ok = IPS_RunScriptEx($w['target'], ['TITLE' => $title, 'TEXT' => $text, 'MEDIA' => (string)$media, 'SENDER_AUTOMAT' => (string)$this->InstanceID]);
-                $res = $ok ? '✅ Skript „' . IPS_GetName($w['target']) . '“ gestartet' : '⚠️ Skript ließ sich nicht starten';
+                $res = $ok ? AUTOMATText::t('✅ Script "%s" started', IPS_GetName($w['target'])) : AUTOMATText::t('⚠️ Script could not be started');
                 if (!$ok) {
-                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: Skript #' . $w['target'] . ' ließ sich nicht starten — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
+                    $this->LogMessage(AUTOMATText::t('Notification channel "%1$s": script #%2$s could not be started — notification "%3$s" not delivered.', $w['name'], $w['target'], $title), KL_WARNING);
                 }
                 break;
             default:
@@ -1639,13 +1658,13 @@ class Automat extends IPSModule
                     if ($ok) {
                         $sent++;
                     } else {
-                        $this->LogMessage('Push an „' . $t['name'] . '“ fehlgeschlagen: ' . $title, KL_WARNING);
+                        $this->LogMessage(AUTOMATText::t('Push to "%1$s" failed: %2$s', $t['name'], $title), KL_WARNING);
                     }
                 }
                 if (count($targets) === 0) {
-                    $this->LogMessage('Meldeweg „' . $w['name'] . '“: keine passende Visualisierung gefunden — Meldung „' . $title . '“ nicht zugestellt.', KL_WARNING);
+                    $this->LogMessage(AUTOMATText::t('Notification channel "%1$s": no matching visualization found — notification "%2$s" not delivered.', $w['name'], $title), KL_WARNING);
                 }
-                $res = count($targets) === 0 ? '⚠️ keine passende Visualisierung gefunden' : ($sent === count($targets) ? '✅ ' : '⚠️ ') . $sent . ' von ' . count($targets) . ' Zielen';
+                $res = count($targets) === 0 ? AUTOMATText::t('⚠️ no matching visualization found') : ($sent === count($targets) ? '✅ ' : '⚠️ ') . AUTOMATText::t('%1$s of %2$s targets', $sent, count($targets));
         }
         $this->SendDebug('Meldung', $w['name'] . ': ' . $title . ' — ' . $text . ' → ' . $res, 0);
         return $res;
@@ -1658,7 +1677,7 @@ class Automat extends IPSModule
             $inst = (int)((@IPS_GetInstanceListByModuleID(self::SMTP_GUID) ?: [0])[0]);
         }
         if ($inst <= 0 || !IPS_InstanceExists($inst)) {
-            return 'keine SMTP-Instanz gefunden oder gewählt';
+            return AUTOMATText::t('no SMTP instance found or selected');
         }
         $warnings = [];
         $err = '';
@@ -1671,18 +1690,18 @@ class Automat extends IPSModule
         try {
             if ($to === '') {
                 if (!function_exists('SMTP_SendMail')) {
-                    $err = 'die Funktion SMTP_SendMail gibt es nicht (SMTP-Modul fehlt?)';
+                    $err = AUTOMATText::t('the function %s does not exist (SMTP module missing?)', 'SMTP_SendMail');
                 } else {
                     $sent = (bool)SMTP_SendMail($inst, $title, $text);
                 }
             } elseif (!function_exists('SMTP_SendMailEx')) {
-                $err = 'die Funktion SMTP_SendMailEx gibt es nicht (SMTP-Modul fehlt?)';
+                $err = AUTOMATText::t('the function %s does not exist (SMTP module missing?)', 'SMTP_SendMailEx');
             } else {
                 foreach (array_filter(array_map('trim', preg_split('/[,;]+/', $to))) as $addr) {
                     if (SMTP_SendMailEx($inst, $addr, $title, $text)) {
                         $sent = true;
                     } else {
-                        $this->LogMessage('E-Mail an „' . $addr . '“ fehlgeschlagen.', KL_WARNING);
+                        $this->LogMessage(AUTOMATText::t('Email to "%s" failed.', $addr), KL_WARNING);
                     }
                 }
             }
@@ -1696,9 +1715,9 @@ class Automat extends IPSModule
         }
         if ($err === '') {
             $raw = trim(implode(' / ', array_filter(array_map('trim', $warnings))));
-            $err = $raw === '' ? 'das SMTP-Modul nennt keinen Grund (Debug der SMTP-Instanz zeigt den Dialog mit dem Server)' : AUTOMATLogik::mailError($raw);
+            $err = $raw === '' ? AUTOMATText::t('the SMTP module gives no reason (the debug of the SMTP instance shows the exchange with the server)') : AUTOMATLogik::mailError($raw);
         }
-        $this->LogMessage('E-Mail-Versand fehlgeschlagen: ' . $err, KL_WARNING);
+        $this->LogMessage(AUTOMATText::t('Sending email failed: %s', $err), KL_WARNING);
         return $err;
     }
 
@@ -1756,16 +1775,16 @@ class Automat extends IPSModule
     public function TestMessage(): string
     {
         // Über ALLE Meldewege mit den gespeicherten Einstellungen; die Ruhezeit wird beim Test übergangen.
-        $this->SetValue('LastMessage', date('d.m.Y H:i', $this->now()) . ' — 🧪 Automat: Testmeldung');
+        $this->SetValue('LastMessage', AUTOMATText::t('%s — 🧪 Automat: test notification', date('d.m.Y H:i', $this->now())));
         $ways = $this->ways();
         if (count($ways) === 0) {
-            return 'ℹ️ Kein Meldeweg angelegt — unter „🔔 Meldungen“ einen hinzufügen und „Übernehmen“.';
+            return AUTOMATText::t('ℹ️ No notification channel set up — add one under "🔔 Notifications" and click "Apply changes".');
         }
         $parts = [];
         foreach ($ways as $w) {
-            $parts[] = '„' . $w['name'] . '“: ' . $this->deliverWay($w, '🧪 Automat', 'Testmeldung über „' . $w['name'] . '“ — so sehen Meldungen deiner Automatismen aus.');
+            $parts[] = AUTOMATText::t('"%1$s": %2$s', $w['name'], $this->deliverWay($w, '🧪 Automat', AUTOMATText::t('Test notification via "%s" — this is how notifications from your automations look.', $w['name'])));
         }
-        return "🧪 Testmeldung über alle Meldewege (gespeicherte Einstellungen, Ruhezeit übergangen):\n" . implode("\n", $parts);
+        return AUTOMATText::t('🧪 Test notification via all notification channels (saved settings, quiet hours skipped):') . "\n" . implode("\n", $parts);
     }
 
     // =====================================================================
@@ -1802,9 +1821,9 @@ class Automat extends IPSModule
         foreach ($counts as $role => $n) {
             $parts[] = $n . '× ' . AUTOMATKatalog::roles()[$role];
         }
-        return (count($sugg) > 0 ? '✅ ' . count($sugg) . ' Vorschläge gefunden.' : 'ℹ️ Keine neuen Vorschläge.')
-            . "\nGefunden: " . implode(', ', $parts) . '.'
-            . (count($sugg) > 0 ? "\nGewünschte Vorschläge in der Liste anhaken und „Angehakte in die Liste übernehmen“ klicken — angelegt wird erst mit „Übernehmen“ unten." : '');
+        return (count($sugg) > 0 ? AUTOMATText::t('✅ %s suggestions found.', count($sugg)) : AUTOMATText::t('ℹ️ No new suggestions.'))
+            . "\n" . AUTOMATText::t('Found: %s.', implode(', ', $parts))
+            . (count($sugg) > 0 ? "\n" . AUTOMATText::t('Tick the suggestions you want in the list and click "Add ticked to the list" — nothing is created until "Apply changes" below.') : '');
     }
 
     /** Steckbriefe aller Variablen, die eine Rolle spielen könnten. */
@@ -1874,7 +1893,7 @@ class Automat extends IPSModule
         $data = null;
         $available = function_exists('RAUM_GetStructure') || function_exists('STRUKT_GetStructure');
         if (count($ids) === 0 || !$available) {
-            $this->WriteAttributeString('RoomSource', 'ℹ️ Raumstruktur nicht installiert — Räume werden aus den Gerätenamen abgeleitet (z. B. „Licht Flur“ + „Bewegungsmelder Flur“ = Flur).');
+            $this->WriteAttributeString('RoomSource', AUTOMATText::t('ℹ️ Raumstruktur is not installed — rooms are derived from the device names (e.g. "Light Hallway" + "Motion sensor Hallway" = Hallway).'));
             return $map;
         }
         try {
@@ -1887,7 +1906,7 @@ class Automat extends IPSModule
             $data = null;
         }
         if (!is_array($data) || !isset($data['rooms']) || version_compare((string)($data['contractVersion'] ?? '1.0'), '2.0', '>=')) {
-            $this->WriteAttributeString('RoomSource', '⚠️ Raumstruktur #' . $ids[0] . ' gefunden, liefert aber keine verwertbaren Räume — Räume werden aus den Gerätenamen abgeleitet.');
+            $this->WriteAttributeString('RoomSource', AUTOMATText::t('⚠️ Raumstruktur #%s found, but it provides no usable rooms — rooms are derived from the device names.', $ids[0]));
             return $map;
         }
         $n = 0;
@@ -1900,7 +1919,7 @@ class Automat extends IPSModule
                 $n++;
             }
         }
-        $this->WriteAttributeString('RoomSource', '✅ 🔗 Räume von Raumstruktur #' . $ids[0] . ' übernommen: ' . count($data['rooms']) . ' Räume, ' . $n . ' Geräte zugeordnet (Vertrag ' . ($data['contractVersion'] ?? '1.0') . '). Geräte ohne Raum werden nach Namen gruppiert.');
+        $this->WriteAttributeString('RoomSource', AUTOMATText::t('✅ 🔗 Rooms taken from Raumstruktur #%1$s: %2$s rooms, %3$s devices assigned (contract %4$s). Devices without a room are grouped by name.', $ids[0], count($data['rooms']), $n, $data['contractVersion'] ?? '1.0'));
         return $map;
     }
 
@@ -1972,7 +1991,7 @@ class Automat extends IPSModule
             $rows[] = [
                 'Pick' => false,
                 'Key' => $s['key'],
-                'Room' => trim((string)$s['room']) ?: 'ohne Raum',
+                'Room' => trim((string)$s['room']) ?: AUTOMATText::t('no room'),
                 'TypeLabel' => AUTOMATKatalog::label((string)$s['type']),
                 'Title' => $s['title'],
                 'Why' => $s['why'],
@@ -2049,7 +2068,7 @@ class Automat extends IPSModule
         $this->UpdateFormField('AutomationsHidden', 'values', json_encode(array_map(function ($r) use ($gen) {
             return ['Uid' => (string)($r['Uid'] ?? ''), 'Type' => (string)($r['Type'] ?? ''), 'Data' => json_encode($r), 'Gen' => $gen];
         }, array_values($hide))));
-        $this->UpdateFormField('FilterInfo', 'caption', '🔎 Zeigt ' . count($show) . ' von ' . count($rows) . ' Automatismen — die übrigen sind nur ausgeblendet und bleiben beim „Übernehmen“ erhalten.');
+        $this->UpdateFormField('FilterInfo', 'caption', AUTOMATText::t('🔎 Showing %1$s of %2$s automations — the others are only hidden and are kept on "Apply changes".', count($show), count($rows)));
         $this->UpdateFormField('FilterInfo', 'visible', $active);
     }
 
@@ -2109,16 +2128,16 @@ class Automat extends IPSModule
             $rooms[$x === '' ? '-' : $x] = true;
         }
         ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
-        $o = [['caption' => 'alle Räume', 'value' => '']];
+        $o = [['caption' => AUTOMATText::t('all rooms'), 'value' => '']];
         foreach (array_keys($rooms) as $x) {
-            $o[] = ['caption' => $x === '-' ? 'ohne Raum' : (string)$x, 'value' => (string)$x];
+            $o[] = ['caption' => $x === '-' ? AUTOMATText::t('no room') : (string)$x, 'value' => (string)$x];
         }
         return $o;
     }
 
     private function filterCatOptions(): array
     {
-        $o = [['caption' => 'alle', 'value' => '']];
+        $o = [['caption' => AUTOMATText::t('all'), 'value' => '']];
         foreach (AUTOMATKatalog::categories() as $k => $label) {
             $o[] = ['caption' => $label, 'value' => 'cat:' . $k];
             foreach (AUTOMATKatalog::types() as $t => $def) {
@@ -2147,7 +2166,7 @@ class Automat extends IPSModule
         }));
         $this->UpdateFormField('SuggestList', 'values', json_encode($show));
         $this->UpdateFormField('SuggestList', 'rowCount', max(5, min(15, count($show))));
-        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine() . (count($show) < count($all) ? ' Gefiltert: ' . count($show) . ' angezeigt.' : ''));
+        $this->UpdateFormField('DiscoverHead', 'caption', $this->discoverHeadLine() . (count($show) < count($all) ? ' ' . AUTOMATText::t('Filtered: %s shown.', count($show)) : ''));
     }
 
     private function suggestFilterOptions(): array
@@ -2160,11 +2179,11 @@ class Automat extends IPSModule
             $types[(string)$s['type']] = true;
         }
         ksort($rooms, SORT_NATURAL | SORT_FLAG_CASE);
-        $ro = [['caption' => 'alle Räume', 'value' => '']];
+        $ro = [['caption' => AUTOMATText::t('all rooms'), 'value' => '']];
         foreach (array_keys($rooms) as $x) {
-            $ro[] = ['caption' => $x === '-' ? 'ohne Raum' : (string)$x, 'value' => (string)$x];
+            $ro[] = ['caption' => $x === '-' ? AUTOMATText::t('no room') : (string)$x, 'value' => (string)$x];
         }
-        $to = [['caption' => 'alle Arten', 'value' => '']];
+        $to = [['caption' => AUTOMATText::t('all types'), 'value' => '']];
         foreach (AUTOMATKatalog::types() as $t => $def) {
             if (isset($types[$t])) {
                 $to[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
@@ -2183,10 +2202,10 @@ class Automat extends IPSModule
     {
         $ts = $this->aInt('LastDiscoveryTs');
         if ($ts === 0) {
-            return 'ℹ️ Noch nicht gesucht — „Jetzt Vorschläge suchen“ durchsucht den Objektbaum.';
+            return AUTOMATText::t('ℹ️ Not searched yet — "Search for suggestions now" searches the object tree.');
         }
         $n = count($this->suggestions());
-        return ($n > 0 ? '✅ ' : '⚠️ ') . $n . ' Vorschläge gefunden (zuletzt ' . date('H:i:s', $ts) . ' Uhr).';
+        return ($n > 0 ? '✅ ' : '⚠️ ') . AUTOMATText::t('%1$s suggestions found (last search %2$s).', $n, date('H:i:s', $ts));
     }
 
     /**
