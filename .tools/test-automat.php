@@ -2082,7 +2082,8 @@ check('Kachel-Daten: flache Liste mit Raum, Funktion und Zustand, Hausmodus, Pro
     && count(array_diff(['uid', 'name', 'icon', 'type', 'cat', 'room', 'status', 'due', 'enabled', 'locked', 'permanent', 'state'], array_keys($payload['items'][0]))) === 0);
 $states = array_column($payload['items'], 'state', 'uid');
 check('Kachel-Zustände sind bekannt (warn/run/idle/locked/off)', count(array_diff($states, ['warn', 'run', 'idle', 'locked', 'off'])) === 0, json_encode($states));
-check('Kachel hat Suche, Filter, Gruppieren und Sortieren', strpos($html, 'id = \'au-q\'') !== false && strpos($html, "['warn', 'Auffällig']") !== false && strpos($html, "['cat', 'nach Funktion']") !== false && strpos($html, "['state', 'Zustand']") !== false && strpos($html, 'minmax(270px, 1fr)') !== false);
+check('Kachel hat Suche, Filter, Gruppieren und Sortieren', strpos($html, 'id = \'au-q\'') !== false && strpos($html, "['warn', 'Noticeable']") !== false && strpos($html, "['cat', 'by function']") !== false && strpos($html, "['state', 'State']") !== false
+    && ($payload['texte']['Noticeable'] ?? '') === 'Auffällig' && ($payload['texte']['by function'] ?? '') === 'nach Funktion' && ($payload['texte']['State'] ?? '') === 'Zustand' && strpos($html, 'minmax(270px, 1fr)') !== false);
 $m->tileUpdates = [];
 $m->RequestAction('tile', json_encode(['a' => 'lock', 'uid' => 'abad01', 'v' => true]));
 check('Kachel sperrt einen Automatismus', GetValue(IPS_GetObjectIDByIdent('l_abad01', 12345)) === true && count($m->tileUpdates) >= 1);
@@ -2564,7 +2565,7 @@ $walkM = function ($els) use (&$walkM, &$hiddenModes) {
 };
 $walkM($dlgS);
 check('Dialog der Szene: allgemeine Modus-Häkchen ausgeblendet', $hiddenModes);
-check('Schalter heißt „Aktiv“ (Dialog, Listenspalte, Zustand „Nicht aktiv“)', strpos(json_encode($dlgS, JSON_UNESCAPED_UNICODE), '"name":"Enabled","caption":"Aktiv"') !== false && strpos($src0 = file_get_contents(dirname(__DIR__) . '/Automat/module.php'), "['caption' => 'Aktiv', 'name' => 'Enabled'") !== false && strpos($src0, "'⚫ Nicht aktiv'") !== false && strpos($src0, "'Eingeschaltet'") === false);
+check('Schalter heißt „Aktiv“ (Dialog, Listenspalte, Zustand „Nicht aktiv“)', strpos(json_encode($dlgS, JSON_UNESCAPED_UNICODE), '"name":"Enabled","caption":"Aktiv"') !== false && strpos($src0 = file_get_contents(dirname(__DIR__) . '/Automat/module.php'), "['caption' => AUTOMATText::t('Active'), 'name' => 'Enabled'") !== false && strpos($src0, "AUTOMATText::t('⚫ Not active')") !== false && ($GLOBALS['DE']['Active'] ?? '') === 'Aktiv' && ($GLOBALS['DE']['⚫ Not active'] ?? '') === '⚫ Nicht aktiv' && strpos($src0, "'Eingeschaltet'") === false);
 $cS = json_encode(json_decode($m->UIEditForm('aszn02', 'szene'), true), JSON_UNESCAPED_UNICODE);
 check('Doppelregelung mit dem Bewegungslicht nur als ℹ️ (gewollt)', strpos($cS, 'gewollt: Szene bzw. Alarm schalten nur bei ihrem Anlass') !== false);
 $m->props['Automations'] = json_encode([$blr]);
