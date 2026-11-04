@@ -384,34 +384,34 @@ class AUTOMATErkennung
 
             if (count($lights) > 0 && count($motions) > 0) {
                 $row = AUTOMATKatalog::defaults('bewegung');
-                $row['Name'] = 'Bewegungslicht ' . $room;
+                $row['Name'] = AUTOMATText::t('Motion light %s', $room);
                 $row['Room'] = $room;
                 $fill($row, 'bl_mel', array_column($motions, 'vid'));
                 $fill($row, 'bl_out', $lightIds);
                 if (count($luxes) > 0) {
                     $row['bl_lux'] = $luxes[0]['vid'];
                 }
-                $add('bewegung', $room, 'Bewegungslicht ' . $room,
-                    $row, count($motions) . ' Melder und ' . count($lights) . ' Licht im selben Raum' . (count($luxes) > 0 ? ', mit Helligkeitssensor' : ''),
+                $add('bewegung', $room, AUTOMATText::t('Motion light %s', $room),
+                    $row, AUTOMATText::t('%1$s sensor(s) and %2$s light(s) in the same room', count($motions), count($lights)) . (count($luxes) > 0 ? AUTOMATText::t(', with brightness sensor') : ''),
                     array_merge(array_column($motions, 'vid'), $lightIds));
             } elseif (count($lights) > 0 && preg_match(self::TIMED_ROOMS, $room)) {
                 $row = AUTOMATKatalog::defaults('zeitlicht');
-                $row['Name'] = 'Zeitlicht ' . $room;
+                $row['Name'] = AUTOMATText::t('Timed light %s', $room);
                 $row['Room'] = $room;
                 $fill($row, 'zl_out', $lightIds);
-                $add('zeitlicht', $room, 'Zeitlicht ' . $room, $row,
-                    'Licht in einem Durchgangsraum ohne Bewegungsmelder — geht nach der Leuchtdauer von selbst aus', $lightIds);
+                $add('zeitlicht', $room, AUTOMATText::t('Timed light %s', $room), $row,
+                    AUTOMATText::t('Light in a passage room without motion sensor — switches itself off after the light duration'), $lightIds);
             }
             if (count($contacts) > 0 && count($setpoints) > 0) {
                 $row = AUTOMATKatalog::defaults('fenster');
-                $row['Name'] = 'Fenster offen ' . $room;
+                $row['Name'] = AUTOMATText::t('Window open %s', $room);
                 $row['Room'] = $room;
                 $fill($row, 'fo_kon', array_column($contacts, 'vid'));
                 $fill($row, 'fo_soll', array_column($setpoints, 'vid'));
                 $row['fo_invert'] = self::contactInverted($contacts[0]);
-                $add('fenster', $room, 'Fenster offen → Heizung runter ' . $room, $row,
-                    count($contacts) . ' Kontakt(e) und ' . count($setpoints) . ' Thermostat(e) im selben Raum'
-                    . ($row['fo_invert'] ? ' (Kontakt meldet „wahr“ = geschlossen, erkannt)' : ''),
+                $add('fenster', $room, AUTOMATText::t('Window open → heating down %s', $room), $row,
+                    AUTOMATText::t('%1$s contact(s) and %2$s thermostat(s) in the same room', count($contacts), count($setpoints))
+                    . ($row['fo_invert'] ? AUTOMATText::t(' (contact reports "true" = closed, detected)') : ''),
                     array_merge(array_column($contacts, 'vid'), array_column($setpoints, 'vid')));
             }
         }
@@ -425,13 +425,13 @@ class AUTOMATErkennung
                 return strcmp((string)$a['inst'] . $a['name'], (string)$b['inst'] . $b['name']);
             });
             $row = AUTOMATKatalog::defaults('anwesenheit');
-            $row['Name'] = 'Anwesenheit';
+            $row['Name'] = AUTOMATText::t('Presence');
             $row['Room'] = '';
             $fill($row, 'an_p', array_column($pres, 'vid'));
             $names = array_map(function ($it) {
                 return trim((string)$it['inst']) ?: (string)$it['name'];
             }, $pres);
-            $add('anwesenheit', '', 'Anwesenheit zusammenfassen', $row, count($pres) . ' Anwesenheitssignal(e) gefunden (' . implode(', ', $names) . ') — der Hausmodus nutzt das Ergebnis für „Abwesend“', array_column($pres, 'vid'));
+            $add('anwesenheit', '', AUTOMATText::t('Combine presence'), $row, AUTOMATText::t('%1$s presence signal(s) found (%2$s) — the house mode uses the result for "Away"', count($pres), implode(', ', $names)), array_column($pres, 'vid'));
         }
 
         // Zentral-Aus: beim Gehen/Schlafen alle gefundenen Lichter aus (ein Vorschlag fürs ganze Haus)
@@ -443,10 +443,10 @@ class AUTOMATErkennung
                 return strcmp((string)($a['room'] ?? '') . $a['inst'], (string)($b['room'] ?? '') . $b['inst']);
             });
             $row = AUTOMATKatalog::defaults('szene');
-            $row['Name'] = 'Alles aus beim Gehen und nachts';
+            $row['Name'] = AUTOMATText::t('Everything off when leaving and at night');
             $row['Room'] = '';
             $fill($row, 'sz_out', array_column($lights, 'vid'));
-            $add('szene', '', 'Zentral-Aus nach Hausmodus', $row, count($lights) . ' Licht(er) gefunden — bei „Nacht“, „Abwesend“ und „Urlaub“ aus; bitte im Dialog prüfen, was davon wirklich aus soll', array_column($lights, 'vid'));
+            $add('szene', '', AUTOMATText::t('Central off by house mode'), $row, AUTOMATText::t('%s light(s) found — off in "Night", "Away" and "Holiday"; please check in the dialog which of them should really go off', count($lights)), array_column($lights, 'vid'));
         }
 
         $byR = function (string $role) use ($items): array {
@@ -467,28 +467,28 @@ class AUTOMATErkennung
         $al = $byR('alarm');
         if (count($al) > 0) {
             $row = AUTOMATKatalog::defaults('alarm');
-            $row['Name'] = 'Wasser-/Rauchalarm';
+            $row['Name'] = AUTOMATText::t('Water/smoke alarm');
             $row['Room'] = '';
             $fill($row, 'al_mel', array_column($al, 'vid'));
-            $add('alarm', '', 'Wasser-/Rauchmelder-Reaktion', $row, count($al) . ' Melder gefunden (' . $labels($al, 4) . ') — im Dialog eintragen, was bei Alarm passieren soll (Licht, Rollläden, Ventil)', array_column($al, 'vid'));
+            $add('alarm', '', AUTOMATText::t('Water/smoke detector response'), $row, AUTOMATText::t('%1$s detector(s) found (%2$s) — enter in the dialog what should happen on alarm (light, shutters, valve)', count($al), $labels($al, 4)), array_column($al, 'vid'));
         }
         // Rollläden: ein Vorschlag mit allen
         $rl = $byR('shutter');
         if (count($rl) > 0) {
             $row = AUTOMATKatalog::defaults('rollladen');
-            $row['Name'] = 'Rollläden morgens auf, abends zu';
+            $row['Name'] = AUTOMATText::t('Shutters up in the morning, down in the evening');
             $row['Room'] = '';
             $fill($row, 'rl_out', array_column($rl, 'vid'));
-            $add('rollladen', '', 'Rollladen nach Zeit/Sonne', $row, count($rl) . ' Rollladen gefunden (' . $labels($rl, 4) . ') — Sonnenauf-/-untergang, werktags frühestens 6:30, am Wochenende 8:00', array_column($rl, 'vid'));
+            $add('rollladen', '', AUTOMATText::t('Shutters by time/sun'), $row, AUTOMATText::t('%1$s shutter(s) found (%2$s) — sunrise/sunset, weekdays not before 6:30, weekends 8:00', count($rl), $labels($rl, 4)), array_column($rl, 'vid'));
         }
         // Heizung nach Hausmodus: alle Sollwerte
         $hz = $byR('setpoint');
         if (count($hz) > 0) {
             $row = AUTOMATKatalog::defaults('heizung');
-            $row['Name'] = 'Heizung absenken bei Abwesenheit';
+            $row['Name'] = AUTOMATText::t('Lower heating when away');
             $row['Room'] = '';
             $fill($row, 'hz_soll', array_column($hz, 'vid'));
-            $add('heizung', '', 'Heizung nach Hausmodus', $row, count($hz) . ' Heizungs-Sollwert(e) gefunden (' . $labels($hz, 4) . ') — bei „Abwesend“ 17 °C, bei „Urlaub“ 15 °C', array_column($hz, 'vid'));
+            $add('heizung', '', AUTOMATText::t('Heating by house mode'), $row, AUTOMATText::t('%1$s heating setpoint(s) found (%2$s) — 17 °C in "Away", 15 °C in "Holiday"', count($hz), $labels($hz, 4)), array_column($hz, 'vid'));
         }
         // Lüften: je Raum der erste Feuchte-/CO₂-Messwert
         $seenAir = [];
@@ -500,20 +500,20 @@ class AUTOMATErkennung
             $seenAir[$room] = true;
             $co2 = (bool)preg_match('/co2|co₂|kohlendioxid|ppm/iu', $it['name'] . ' ' . $it['inst'] . ' ' . ($it['suffix'] ?? ''));
             $row = AUTOMATKatalog::defaults('lueften');
-            $row['Name'] = 'Lüften ' . $room;
+            $row['Name'] = AUTOMATText::t('Ventilate %s', $room);
             $row['Room'] = $room;
             $row['lf_var'] = $it['vid'];
             if ($co2) {
                 $row['lf_hoch'] = 1200.0;
                 $row['lf_ok'] = 800.0;
             }
-            $add('lueften', $room, 'Lüftungserinnerung', $row, ($co2 ? 'CO₂' : 'Luftfeuchte') . ' „' . (trim((string)$it['inst']) ?: $it['name']) . '“ — erinnert ab ' . ($co2 ? '1200 ppm' : '65 %'), [$it['vid']]);
+            $add('lueften', $room, AUTOMATText::t('Ventilation reminder'), $row, ($co2 ? AUTOMATText::t('CO₂ "%s" — reminds from 1200 ppm', trim((string)$it['inst']) ?: $it['name']) : AUTOMATText::t('Humidity "%s" — reminds from 65 %%', trim((string)$it['inst']) ?: $it['name'])), [$it['vid']]);
         }
         // Gehen-Check: alle Fenster-/Türkontakte des Hauses
         $gk = $byR('contact');
         if (count($gk) > 0) {
             $row = AUTOMATKatalog::defaults('gehen');
-            $row['Name'] = 'Gehen-Check';
+            $row['Name'] = AUTOMATText::t('Leaving check');
             $row['Room'] = '';
             foreach ($gk as $it) {
                 if (self::contactInverted($it)) {
@@ -521,32 +521,32 @@ class AUTOMATErkennung
                 }
             }
             $fill($row, 'gc_kon', array_column($gk, 'vid'));
-            $add('gehen', '', 'Gehen-Check', $row, count($gk) . ' Fenster-/Türkontakt(e) gefunden (' . $labels($gk, 4) . ') — beim Wechsel auf „Abwesend“/„Urlaub“ meldet er, was noch offen ist', array_column($gk, 'vid'));
+            $add('gehen', '', AUTOMATText::t('Leaving check'), $row, AUTOMATText::t('%1$s window/door contact(s) found (%2$s) — on change to "Away"/"Holiday" it reports what is still open', count($gk), $labels($gk, 4)), array_column($gk, 'vid'));
         }
         // Melder zurücksetzen: alle Bewegungsmelder in einem Automatismus (Absicherung gegen verlorene „keine Bewegung“)
         $mot = $byR('motion');
         if (count($mot) > 0) {
             $row = AUTOMATKatalog::defaults('ruecksetzen');
-            $row['Name'] = 'Melder zurücksetzen';
+            $row['Name'] = AUTOMATText::t('Reset sensors');
             $row['Room'] = '';
             $fill($row, 'mr_mel', array_column($mot, 'vid'));
-            $add('ruecksetzen', '', 'Melder zurücksetzen', $row, count($mot) . ' Bewegungsmelder (' . $labels($mot, 4) . ') — setzt einen Melder zurück, der 60 s ohne neue Meldung auf „wahr“ steht (z. B. verlorene „keine Bewegung“-Meldung)', array_column($mot, 'vid'));
+            $add('ruecksetzen', '', AUTOMATText::t('Reset sensors'), $row, AUTOMATText::t('%1$s motion sensor(s) (%2$s) — resets a sensor that has been "true" for 60 s without a new report (e.g. lost "no motion" report)', count($mot), $labels($mot, 4)), array_column($mot, 'vid'));
         }
         // Türklingel
         foreach (array_slice($byR('bell'), 0, 2) as $it) {
             $row = AUTOMATKatalog::defaults('klingel');
-            $row['Name'] = 'Türklingel';
+            $row['Name'] = AUTOMATText::t('Doorbell');
             $row['Room'] = (string)($it['room'] ?? '');
             $row['kl_taster'] = $it['vid'];
-            $add('klingel', (string)($it['room'] ?? ''), 'Türklingel', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — Meldung beim Klingeln, abends Licht an', [$it['vid']]);
+            $add('klingel', (string)($it['room'] ?? ''), AUTOMATText::t('Doorbell'), $row, AUTOMATText::t('"%s" — notification when it rings, light on in the evening', trim((string)$it['inst']) ?: $it['name']), [$it['vid']]);
         }
         // Ausfall-Wächter: Kühlschrank/Gefriertruhe
         foreach ($byR('cooling') as $it) {
             $row = AUTOMATKatalog::defaults('ausfall');
-            $row['Name'] = 'Ausfall ' . (trim((string)$it['inst']) ?: $it['name']);
+            $row['Name'] = AUTOMATText::t('Failure %s', trim((string)$it['inst']) ?: $it['name']);
             $row['Room'] = (string)($it['room'] ?? '');
             $row['af_var'] = $it['vid'];
-            $add('ausfall', (string)($it['room'] ?? ''), 'Ausfall-Wächter', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — meldet, wenn der Kompressor 2 Stunden nicht anspringt', [$it['vid']]);
+            $add('ausfall', (string)($it['room'] ?? ''), AUTOMATText::t('Failure watchdog'), $row, AUTOMATText::t('"%s" — notifies when the compressor does not start for 2 hours', trim((string)$it['inst']) ?: $it['name']), [$it['vid']]);
         }
         // Sommer-Lüften: nur mit Außentemperatur, je Raum die erste Raumtemperatur (höchstens 6)
         $temps = $byR('temp');
@@ -566,11 +566,11 @@ class AUTOMATErkennung
                 }
                 $seenT[$room] = true;
                 $row = AUTOMATKatalog::defaults('sommer');
-                $row['Name'] = 'Sommer-Lüften ' . $room;
+                $row['Name'] = AUTOMATText::t('Summer ventilation %s', $room);
                 $row['Room'] = $room;
                 $row['sl_innen'] = $it['vid'];
                 $row['sl_aussen'] = $outside['vid'];
-                $add('sommer', $room, 'Sommer-Lüften', $row, 'Innen „' . (trim((string)$it['inst']) ?: $it['name']) . '“, außen „' . (trim((string)$outside['inst']) ?: $outside['name']) . '“ — „Fenster schließen“ bzw. „jetzt lüften“ ab 23 °C innen', [$it['vid'], $outside['vid']]);
+                $add('sommer', $room, AUTOMATText::t('Summer ventilation'), $row, AUTOMATText::t('Inside "%1$s", outside "%2$s" — "close the windows" or "ventilate now" from 23 °C inside', trim((string)$it['inst']) ?: $it['name'], trim((string)$outside['inst']) ?: $outside['name']), [$it['vid'], $outside['vid']]);
             }
         }
         // Gewohnheiten aus dem Archiv: Licht geht werktags meist zur selben Zeit aus → Zeitschaltuhr „nur ausschalten“
@@ -586,7 +586,7 @@ class AUTOMATErkennung
             $m = (int)$h['min'] % 1440;
             $row = AUTOMATKatalog::defaults('zeitschalt');
             $label = trim((string)$it['inst']) ?: (string)$it['name'];
-            $row['Name'] = $label . ' aus (Gewohnheit)';
+            $row['Name'] = AUTOMATText::t('%s off (habit)', $label);
             $row['Room'] = (string)($it['room'] ?? '');
             $row['zs_out1'] = (int)$vid;
             $row['zs_modus'] = 1;
@@ -594,16 +594,16 @@ class AUTOMATErkennung
             $row['zs_t6'] = false;
             $row['zs_t7'] = false;
             $row['zs_feiertag'] = 2;
-            $add('zeitschalt', (string)($it['room'] ?? ''), 'Gewohnheit: Zeitschaltuhr', $row, '„' . $label . '“ ging an ' . $h['hits'] . ' von ' . $h['days'] . ' Werktagsabenden um ' . sprintf('%02d:%02d', intdiv($m, 60), $m % 60) . ' Uhr (±30 min) aus — ausschalten, falls es mal vergessen wird', [(int)$vid]);
+            $add('zeitschalt', (string)($it['room'] ?? ''), AUTOMATText::t('Habit: timer switch'), $row, AUTOMATText::t('"%1$s" went off on %2$s of %3$s weekday evenings at %4$s (±30 min) — switch off in case it is forgotten', $label, $h['hits'], $h['days'], sprintf('%02d:%02d', intdiv($m, 60), $m % 60)), [(int)$vid]);
         }
 
         // Taster: je Taster ein Vorschlag (Aktionen trägt der Nutzer ein)
         foreach (array_slice($byR('button'), 0, 6) as $it) {
             $row = AUTOMATKatalog::defaults('taster');
-            $row['Name'] = 'Taster ' . (trim((string)$it['inst']) ?: $it['name']);
+            $row['Name'] = AUTOMATText::t('Button %s', trim((string)$it['inst']) ?: $it['name']);
             $row['Room'] = (string)($it['room'] ?? '');
             $row['tg_in'] = $it['vid'];
-            $add('taster', (string)($it['room'] ?? ''), 'Taster-Zuordnung', $row, '„' . (trim((string)$it['inst']) ?: $it['name']) . '“ — im Dialog eintragen, was kurz/doppelt/lang drücken tun soll', [$it['vid']]);
+            $add('taster', (string)($it['room'] ?? ''), AUTOMATText::t('Button assignment'), $row, AUTOMATText::t('"%s" — enter in the dialog what short/double/long press should do', trim((string)$it['inst']) ?: $it['name']), [$it['vid']]);
         }
 
         // Gerät fertig: ein Vorschlag je Gerät — hat ein Gerät mehrere Leistungsvariablen
@@ -633,22 +633,22 @@ class AUTOMATErkennung
                 $row['Name'] = $label;
                 $row['Room'] = (string)($it['room'] ?? '');
                 $row['gf_var'] = $it['vid'];
-                $add('fertig', (string)($it['room'] ?? ''), $label . ' fertig melden', $row, 'Leistungsmessung eines Haushaltsgeräts erkannt', [$it['vid']]);
+                $add('fertig', (string)($it['room'] ?? ''), AUTOMATText::t('Notify when %s is finished', $label), $row, AUTOMATText::t('Power measurement of a household appliance detected'), [$it['vid']]);
             }
             if (($it['role'] ?? '') === 'light' && preg_match(self::OUTDOOR, $text)) {
                 $row = AUTOMATKatalog::defaults('daemmerung');
-                $row['Name'] = 'Dämmerung ' . $label;
+                $row['Name'] = AUTOMATText::t('Dusk %s', $label);
                 $row['Room'] = (string)($it['room'] ?? '');
                 $row['dz_out1'] = $it['vid'];
-                $add('daemmerung', (string)($it['room'] ?? ''), 'Dämmerungsschaltung ' . $label, $row, 'Außenbeleuchtung erkannt — an bei Sonnenuntergang, aus um 23:00 Uhr', [$it['vid']]);
+                $add('daemmerung', (string)($it['room'] ?? ''), AUTOMATText::t('Dusk switching %s', $label), $row, AUTOMATText::t('Outdoor lighting detected — on at sunset, off at 23:00'), [$it['vid']]);
             }
             if (($it['role'] ?? '') === 'contact' && preg_match('/tür|tuer|door|\btor\b|garage/iu', $text)) {
                 $row = AUTOMATKatalog::defaults('waechter');
-                $row['Name'] = $label . ' offen';
+                $row['Name'] = AUTOMATText::t('%s open', $label);
                 $row['Room'] = (string)($it['room'] ?? '');
                 $row['wa_var'] = $it['vid'];
                 $row['wa_op'] = self::contactInverted($it) ? 5 : 4;
-                $add('waechter', (string)($it['room'] ?? ''), $label . ': melden, wenn länger offen', $row, 'Tür/Tor-Kontakt erkannt — Meldung nach 15 min offen', [$it['vid']]);
+                $add('waechter', (string)($it['room'] ?? ''), AUTOMATText::t('%s: notify when open for too long', $label), $row, AUTOMATText::t('Door/gate contact detected — notification after 15 min open'), [$it['vid']]);
             }
         }
         return array_values($out);
