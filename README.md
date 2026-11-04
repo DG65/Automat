@@ -7,6 +7,8 @@
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
 [![PayPal](https://img.shields.io/badge/PayPal-Spenden-00457C.svg)](https://paypal.me/DietmarGureth)
 
+🇬🇧 [English version](README.en.md)
+
 Teil des **DG65-Toolkit** — Werkzeuge ohne Energiebezug, für jede Symcon-Installation.
 
 Automat bündelt die kleinen Standard-Automatismen eines Hauses in **einer Instanz**: Treppenlicht,
