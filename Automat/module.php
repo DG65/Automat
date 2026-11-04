@@ -29,6 +29,7 @@ declare(strict_types=1);
 // vorhanden.
 // ===========================================================================
 
+require_once __DIR__ . '/AUTOMATText.php';
 require_once __DIR__ . '/AUTOMATKatalog.php';
 require_once __DIR__ . '/AUTOMATLogik.php';
 require_once __DIR__ . '/AUTOMATErkennung.php';
@@ -37,6 +38,15 @@ class Automat extends IPSModule
 {
     private const LIBRARY_GUID = '{D7A3CB8F-E43B-4307-AB64-BAD160C1823A}';
     private const MODULE_GUID  = '{A92CA7FD-B746-45C4-902B-3CBAE1F3FA27}';
+
+    public function __construct($InstanceID)
+    {
+        parent::__construct($InstanceID);
+        // Logik, Katalog, Erkennung und Kachel übersetzen über AUTOMATText (englische Quelltexte, Deutsch in locale.json).
+        AUTOMATText::setzen(function (string $text): string {
+            return $this->Translate($text);
+        });
+    }
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
     // Je Typ das Feld „Melden“ im Dialog (was gemeldet wird, entscheidet der Nutzer je Automatismus).
@@ -307,7 +317,7 @@ class Automat extends IPSModule
             $this->ensureVar('l_' . $uid, $name . ' · gesperrt', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
             $this->EnableAction('l_' . $uid);
             $keep['s_' . $uid] = $keep['r_' . $uid] = $keep['l_' . $uid] = true;
-            if (!empty(AUTOMATKatalog::TYPES[$row['Type']]['light']) && $row['Type'] !== 'daemmerung') {
+            if (!empty(AUTOMATKatalog::types()[$row['Type']]['light']) && $row['Type'] !== 'daemmerung') {
                 $this->ensureVar('d_' . $uid, $name . ' · Dauerlicht', VARIABLETYPE_BOOLEAN, '~Switch', $pos + 3);
                 $this->EnableAction('d_' . $uid);
                 $keep['d_' . $uid] = true;
@@ -404,7 +414,7 @@ class Automat extends IPSModule
             // Hausmodus per SetValue von außen (Skript, Ereignis) — sonst bekämen Szene, Heizung, Gehen-Check den
             // Wechsel nicht mit (Prüfbericht 17.10.2026)
             $known = $this->aInt('ModeKnown');
-            if ($changed && (int)$value !== $known && isset(AUTOMATKatalog::MODES[(int)$value])) {
+            if ($changed && (int)$value !== $known && isset(AUTOMATKatalog::modes()[(int)$value])) {
                 $this->WriteAttributeInteger('ModeKnown', (int)$value);
                 $this->announceMode($known >= 0 ? $known : (int)($Data[2] ?? 0), (int)$value, 'von außen gesetzt');
                 $this->reschedule();
@@ -453,7 +463,7 @@ class Automat extends IPSModule
         }
         if ($Ident === 'Hausmodus') {
             $mode = (int)$Value;
-            if (!isset(AUTOMATKatalog::MODES[$mode])) {
+            if (!isset(AUTOMATKatalog::modes()[$mode])) {
                 throw new Exception('Unbekannter Hausmodus: ' . $mode);
             }
             $this->setMode($mode, 'von Hand');
@@ -704,7 +714,7 @@ class Automat extends IPSModule
                 $would[] = 'Meldung „' . $title . '“';
             }
             if (isset($res['mode'])) {
-                $would[] = 'Hausmodus „' . (AUTOMATKatalog::MODES[(int)$res['mode']] ?? '') . '“';
+                $would[] = 'Hausmodus „' . (AUTOMATKatalog::modes()[(int)$res['mode']] ?? '') . '“';
             }
             if ($would) {
                 $res['log'] = '🧪 Probelauf — würde: ' . implode('; ', $would) . ($res['log'] !== null ? ' (' . $res['log'] . ')' : '');
@@ -743,7 +753,7 @@ class Automat extends IPSModule
         }
         $this->setVarIfChanged('s_' . $uid, $res['status']);
         $this->setEnd($uid, isset($res['end']) ? (int)$res['end'] : null);
-        if (isset($res['mode']) && isset(AUTOMATKatalog::MODES[(int)$res['mode']])) {
+        if (isset($res['mode']) && isset(AUTOMATKatalog::modes()[(int)$res['mode']])) {
             // Taster setzt den Hausmodus (erst jetzt, nachdem der eigene Zustand gespeichert ist)
             $this->setMode((int)$res['mode'], 'Taster „' . $this->rowName($row) . '“');
         }
@@ -1291,7 +1301,7 @@ class Automat extends IPSModule
         IPS_CreateVariableProfile(self::PROFILE_MODE, VARIABLETYPE_INTEGER);
         IPS_SetVariableProfileIcon(self::PROFILE_MODE, 'House');
         $colors = [0 => 0xF5C542, 1 => 0xE08A3C, 2 => 0x3C5BA8, 3 => 0x8A8A8A, 4 => 0x2E8B3D];
-        foreach (AUTOMATKatalog::MODES as $v => $label) {
+        foreach (AUTOMATKatalog::modes() as $v => $label) {
             IPS_SetVariableProfileAssociation(self::PROFILE_MODE, $v, $label, '', $colors[$v]);
         }
     }
@@ -1310,7 +1320,7 @@ class Automat extends IPSModule
     /** Alle Automatismen über einen Wechsel des Hausmodus informieren. */
     private function announceMode(int $from, int $mode, string $source): void
     {
-        $this->addLog('', '🏠 Hausmodus „' . (AUTOMATKatalog::MODES[$mode] ?? $mode) . '“ (' . $source . ').');
+        $this->addLog('', '🏠 Hausmodus „' . (AUTOMATKatalog::modes()[$mode] ?? $mode) . '“ (' . $source . ').');
         foreach ($this->rows() as $row) {
             $this->process($row, in_array($row['Type'], self::MODE_EVENT_TYPES, true) ? ['k' => 'mode', 'from' => $from, 'to' => $mode] : ['k' => 'flag']);
         }
@@ -1775,7 +1785,7 @@ class Automat extends IPSModule
         $this->WriteAttributeString('Suggestions', json_encode($sugg));
         $counts = AUTOMATErkennung::roleCounts($items);
         $this->WriteAttributeString('RoleCounts', json_encode($counts));
-        foreach (AUTOMATKatalog::TYPES as $t => $_) {
+        foreach (AUTOMATKatalog::types() as $t => $_) {
             // Katalog-Zeilen „passende Geräte gefunden / dafür fehlt“ im offenen Formular nachziehen
             $line = $this->catalogLine($t, $counts);
             $this->UpdateFormField('cat_' . $t, 'caption', $line);
@@ -1790,7 +1800,7 @@ class Automat extends IPSModule
         $counts = AUTOMATErkennung::roleCounts($items);
         $parts = [];
         foreach ($counts as $role => $n) {
-            $parts[] = $n . '× ' . AUTOMATKatalog::ROLES[$role];
+            $parts[] = $n . '× ' . AUTOMATKatalog::roles()[$role];
         }
         return (count($sugg) > 0 ? '✅ ' . count($sugg) . ' Vorschläge gefunden.' : 'ℹ️ Keine neuen Vorschläge.')
             . "\nGefunden: " . implode(', ', $parts) . '.'
@@ -2068,7 +2078,7 @@ class Automat extends IPSModule
             return false;
         }
         if ($cat !== '') {
-            $c = AUTOMATKatalog::TYPES[$type]['cat'] ?? '';
+            $c = AUTOMATKatalog::types()[$type]['cat'] ?? '';
             if (strpos($cat, 'cat:') === 0 ? $c !== substr($cat, 4) : $type !== $cat) {
                 return false;
             }
@@ -2109,9 +2119,9 @@ class Automat extends IPSModule
     private function filterCatOptions(): array
     {
         $o = [['caption' => 'alle', 'value' => '']];
-        foreach (AUTOMATKatalog::CATEGORIES as $k => $label) {
+        foreach (AUTOMATKatalog::categories() as $k => $label) {
             $o[] = ['caption' => $label, 'value' => 'cat:' . $k];
-            foreach (AUTOMATKatalog::TYPES as $t => $def) {
+            foreach (AUTOMATKatalog::types() as $t => $def) {
                 if ($def['cat'] === $k) {
                     $o[] = ['caption' => '      ' . $def['icon'] . ' ' . $def['label'], 'value' => $t];
                 }
@@ -2155,7 +2165,7 @@ class Automat extends IPSModule
             $ro[] = ['caption' => $x === '-' ? 'ohne Raum' : (string)$x, 'value' => (string)$x];
         }
         $to = [['caption' => 'alle Arten', 'value' => '']];
-        foreach (AUTOMATKatalog::TYPES as $t => $def) {
+        foreach (AUTOMATKatalog::types() as $t => $def) {
             if (isset($types[$t])) {
                 $to[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
             }
@@ -2211,7 +2221,7 @@ class Automat extends IPSModule
             return 'ℹ️ Bitte zuerst einen Typ auswählen.';
         }
         $row = AUTOMATKatalog::defaults($type);
-        $row['Name'] = AUTOMATKatalog::TYPES[$type]['label'];
+        $row['Name'] = AUTOMATKatalog::types()[$type]['label'];
         $row['Room'] = '';
         return $this->insertRows([$row], $rowsJson, 'Ein neuer Automatismus „' . $row['Name'] . '“');
     }
@@ -2688,12 +2698,12 @@ class Automat extends IPSModule
         $this->confCache = null;
         $isNew = $uid === '';
         $typeOpts = [['caption' => '— bitte wählen —', 'value' => '']];
-        foreach (AUTOMATKatalog::TYPES as $t => $def) {
+        foreach (AUTOMATKatalog::types() as $t => $def) {
             $typeOpts[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
         }
         $el = [
             ['type' => 'Select', 'name' => 'Type', 'caption' => 'Art des Automatismus', 'options' => $typeOpts, 'value' => $type, 'width' => '420px', 'onChange' => 'AUTOMAT_UIDialogType($id, $Type);', 'enabled' => $isNew || !AUTOMATKatalog::has($type)],
-            ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.'],
+            ['type' => 'Label', 'name' => 'TypeDesc', 'caption' => AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.'],
             ['type' => 'ValidationTextBox', 'name' => 'Name', 'caption' => 'Bezeichnung (z. B. „Flurlicht“)', 'width' => '420px'],
             ['type' => 'ValidationTextBox', 'name' => 'Room', 'caption' => 'Raum (optional, für Übersicht und Kachel)', 'width' => '420px'],
             ['type' => 'CheckBox', 'name' => 'Enabled', 'caption' => 'Aktiv', 'value' => true],
@@ -2716,7 +2726,7 @@ class Automat extends IPSModule
         if (!$own) {
             $el[] = ['type' => 'Label', 'name' => 'NewHint', 'caption' => '➡️ Art wählen und mit „OK“ bestätigen — danach die Zeile mit ✏️ öffnen, dann erscheinen die Einstellungen dieser Art. (Schneller: „📚 Katalog“ oder „🔎 Entdecken“.)', 'bold' => true];
         }
-        foreach ($own ? [$type => AUTOMATKatalog::TYPES[$type]] : [] as $t => $def) {
+        foreach ($own ? [$type => AUTOMATKatalog::types()[$type]] : [] as $t => $def) {
             $items = [];
             foreach (AUTOMATKatalog::fields($t) as $f) {
                 foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : [], $t === $type ? $infoHints : []) as $e) {
@@ -2732,7 +2742,7 @@ class Automat extends IPSModule
             $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . 'Einstellungen: ' . $def['label'], 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
         }
         $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => 'Aktiv in diesen Hausmodi (Variable „Hausmodus“ dieser Instanz):', 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)]];
-        foreach (AUTOMATKatalog::MODES as $m => $label) {
+        foreach (AUTOMATKatalog::modes() as $m => $label) {
             $modeItems[] = ['type' => 'CheckBox', 'name' => 'm' . $m, 'caption' => $label, 'value' => true, 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)];
         }
         $modeItems[] = ['type' => 'SelectCondition', 'name' => 'Cond', 'caption' => 'Zusätzliche Bedingung (optional, z. B. nur werktags oder nur wenn ein Schalter an ist)', 'multi' => true];
@@ -3022,7 +3032,7 @@ class Automat extends IPSModule
         }
         $bad = $vid >= AUTOMATKatalog::$minId && !IPS_VariableExists($vid);
         // Hängt an dieser Variable eine Werteauswahl (Wächter), deren Einträge nachführen.
-        foreach (AUTOMATKatalog::TYPES as $t => $_) {
+        foreach (AUTOMATKatalog::types() as $t => $_) {
             foreach (AUTOMATKatalog::fields($t) as $f) {
                 if (($f['k'] ?? '') === 'pick' && $f['src'] === $field) {
                     $opts = $this->pickOptions($vid);
@@ -3043,10 +3053,10 @@ class Automat extends IPSModule
         // Bei der Szene ist der Hausmodus der Auslöser — die allgemeinen Modus-Häkchen wären dort verwirrend.
         $modeFilter = !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true);
         $this->UpdateFormField('ModesLabel', 'visible', $modeFilter);
-        foreach (AUTOMATKatalog::MODES as $m => $_) {
+        foreach (AUTOMATKatalog::modes() as $m => $_) {
             $this->UpdateFormField('m' . $m, 'visible', $modeFilter);
         }
-        $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::TYPES[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.');
+        $this->UpdateFormField('TypeDesc', 'caption', AUTOMATKatalog::has($type) ? AUTOMATKatalog::types()[$type]['desc'] : 'Zuerst die Art wählen — danach erscheinen die passenden Einstellungen.');
     }
 
     // =====================================================================
@@ -3072,13 +3082,13 @@ class Automat extends IPSModule
         foreach ($this->rows() as $row) {
             $uid = $row['Uid'];
             $type = (string)$row['Type'];
-            $def = AUTOMATKatalog::TYPES[$type] ?? [];
+            $def = AUTOMATKatalog::types()[$type] ?? [];
             $light = !empty($def['light']) && $type !== 'daemmerung';
             $st = (string)($status[$uid] ?? '');
             $locked = (bool)$this->getOwn('l_' . $uid, false);
             $items[] = [
                 'uid' => $uid, 'name' => $this->rowName($row), 'icon' => $def['icon'] ?? '❔',
-                'type' => $def['label'] ?? '', 'cat' => AUTOMATKatalog::CATEGORIES[$def['cat'] ?? ''] ?? 'Sonstiges',
+                'type' => $def['label'] ?? '', 'cat' => AUTOMATKatalog::categories()[$def['cat'] ?? ''] ?? 'Sonstiges',
                 'room' => trim((string)($row['Room'] ?? '')), 'status' => $st,
                 'due' => isset($due[$uid]) ? (int)$due[$uid] : null, 'enabled' => !empty($row['Enabled']),
                 'locked' => $locked, 'permanent' => $light ? (bool)$this->getOwn('d_' . $uid, false) : null,
@@ -3090,7 +3100,7 @@ class Automat extends IPSModule
             'light' => $this->pBool('cfg_TileLight'),
             'now' => $this->now(),
             'mode' => (int)$this->getOwn('Hausmodus', 0),
-            'modes' => array_values(AUTOMATKatalog::MODES),
+            'modes' => array_values(AUTOMATKatalog::modes()),
             'paused' => (bool)$this->getOwn('Pause', false),
             'items' => $items,
             'log' => $this->protocolLines(8),
@@ -3142,7 +3152,7 @@ class Automat extends IPSModule
             $this->RunNow($uid, in_array($d['v'] ?? '', ['down', 'up'], true) ? (string)$d['v'] : ''); // landet im Protokoll
         } elseif ($a === 'pause') {
             $this->RequestAction('Pause', !empty($d['v']));
-        } elseif ($a === 'mode' && isset(AUTOMATKatalog::MODES[(int)($d['v'] ?? -1)])) {
+        } elseif ($a === 'mode' && isset(AUTOMATKatalog::modes()[(int)($d['v'] ?? -1)])) {
             $this->RequestAction('Hausmodus', (int)$d['v']);
         } else {
             $this->refreshTile();
@@ -3269,7 +3279,7 @@ class Automat extends IPSModule
     private function rowName(array $row): string
     {
         $n = trim((string)($row['Name'] ?? ''));
-        return $n !== '' ? $n : (AUTOMATKatalog::TYPES[$row['Type'] ?? '']['label'] ?? 'Automatismus');
+        return $n !== '' ? $n : (AUTOMATKatalog::types()[$row['Type'] ?? '']['label'] ?? 'Automatismus');
     }
 
     private function newUid(array $rows): string
@@ -3546,7 +3556,7 @@ class Automat extends IPSModule
         if ($counts === null) {
             return '';
         }
-        $def = AUTOMATKatalog::TYPES[$type];
+        $def = AUTOMATKatalog::types()[$type];
         if (count($def['needs']) === 0) {
             return '      ✅ geht mit jeder Variable';
         }
@@ -3554,9 +3564,9 @@ class Automat extends IPSModule
         $have = [];
         foreach ($def['needs'] as $role) {
             if ((int)($counts[$role] ?? 0) > 0) {
-                $have[] = $counts[$role] . '× ' . AUTOMATKatalog::ROLES[$role];
+                $have[] = $counts[$role] . '× ' . AUTOMATKatalog::roles()[$role];
             } else {
-                $missing[] = AUTOMATKatalog::ROLES[$role];
+                $missing[] = AUTOMATKatalog::roles()[$role];
             }
         }
         return count($missing) === 0 ? '      ✅ passende Geräte gefunden: ' . implode(', ', $have) : '      ⚪ dafür fehlt: ' . implode(', ', $missing) . ' (oder wurde nicht erkannt — von Hand wählbar)';
@@ -3614,9 +3624,9 @@ class Automat extends IPSModule
             return 'ℹ️ Noch kein Automatismus eingerichtet.';
         }
         $status = $this->attrMap('Status');
-        $lines = ['🏠 Hausmodus: ' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '')];
+        $lines = ['🏠 Hausmodus: ' . (AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '')];
         foreach ($rows as $r) {
-            $lines[] = (AUTOMATKatalog::TYPES[$r['Type']]['icon'] ?? '❔') . ' ' . $this->rowName($r) . ': ' . ($status[$r['Uid']] ?? '—');
+            $lines[] = (AUTOMATKatalog::types()[$r['Type']]['icon'] ?? '❔') . ' ' . $this->rowName($r) . ': ' . ($status[$r['Uid']] ?? '—');
             foreach ($this->melderHints($r) as $h) {
                 $lines[] = '      ' . $h;
             }
@@ -3708,7 +3718,7 @@ class Automat extends IPSModule
             ? 'ℹ️ Noch kein Automatismus — unten „Entdecken“ nutzen, im „Katalog“ einen Typ wählen oder „+“ an der Liste klicken.'
             : ($problems > 0 ? '⚠️ ' : '✅ ') . count($rows) . ' Automatismen, ' . $enabled . ' aktiv'
                 . ($problems > 0 ? ', ' . $problems . ' unvollständig (rot)' : '') . ($locked > 0 ? ', ' . $locked . ' gesperrt' : '')
-                . ' · Hausmodus „' . (AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->pBool('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
+                . ' · Hausmodus „' . (AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?') . '“' . ($this->pBool('cfg_ModeAuto') ? ' (automatisch)' : ' (Automatik aus — nur von Hand)') . ((bool)$this->getOwn('Pause', false) ? ' · ⏸ ALLE PAUSIERT' : '');
         return [
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => '⚙️  Automatismen',
             'items' => [
@@ -3843,9 +3853,9 @@ class Automat extends IPSModule
     {
         $counts = json_decode($this->aStr('RoleCounts'), true);
         $items = [['type' => 'Label', 'caption' => 'Alle Arten von Automatismen. Ob passende Geräte da sind, steht nach „Jetzt Vorschläge suchen“ darunter.']];
-        foreach (AUTOMATKatalog::CATEGORIES as $cat => $catLabel) {
+        foreach (AUTOMATKatalog::categories() as $cat => $catLabel) {
             $items[] = ['type' => 'Label', 'caption' => $catLabel, 'bold' => true];
-            foreach (AUTOMATKatalog::TYPES as $t => $def) {
+            foreach (AUTOMATKatalog::types() as $t => $def) {
                 if ($def['cat'] !== $cat) {
                     continue;
                 }
@@ -3855,7 +3865,7 @@ class Automat extends IPSModule
             }
         }
         $opts = [['caption' => '— Art wählen —', 'value' => '']];
-        foreach (AUTOMATKatalog::TYPES as $t => $def) {
+        foreach (AUTOMATKatalog::types() as $t => $def) {
             $opts[] = ['caption' => $def['icon'] . ' ' . $def['label'], 'value' => $t];
         }
         $items[] = ['type' => 'Select', 'name' => 'cfg_NewType', 'caption' => 'Neu anlegen', 'options' => $opts, 'value' => '', 'width' => '420px'];
@@ -4052,7 +4062,7 @@ class Automat extends IPSModule
         foreach (self::NIGHT_EVENTS as $v => $ident) {
             $nightOpts[] = $this->eventOption($v, $ident);
         }
-        $mode = AUTOMATKatalog::MODES[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
+        $mode = AUTOMATKatalog::modes()[(int)$this->getOwn('Hausmodus', 0)] ?? '?';
         $auto = $this->pBool('cfg_ModeAuto');
         [, $presText] = $this->presenceSource();
         // Mit „Anwesenheit zusammenfassen“ ist das Feld überflüssig — nur zeigen, wenn dort eine fremde Quelle steht.
@@ -4088,7 +4098,7 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'name' => 'LocationInfo', 'caption' => $loc, 'visible' => $loc !== ''],
                 ['type' => 'Select', 'name' => 'cfg_Bundesland', 'caption' => 'Feiertage wie Wochenende behandeln (Rollläden, Aufwachlicht, Zeitschaltuhr)', 'width' => '520px', 'options' => array_map(function ($k, $v) {
                     return ['caption' => $v, 'value' => (string)$k];
-                }, array_keys(AUTOMATKatalog::LAENDER), AUTOMATKatalog::LAENDER)],
+                }, array_keys(AUTOMATKatalog::tr(AUTOMATKatalog::LAENDER)), AUTOMATKatalog::tr(AUTOMATKatalog::LAENDER))],
                 ['type' => 'Label', 'caption' => $this->holidayLine()],
                 ['type' => 'Label', 'caption' => '— Anwesenheit —', 'bold' => true],
                 ['type' => 'Label', 'name' => 'PresenceSource', 'caption' => $presText, 'color' => strpos($presText, '🔗') !== false ? 0x2E8B3D : -1],

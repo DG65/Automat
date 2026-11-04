@@ -154,6 +154,9 @@ class IPSModule
     public array $tileUpdates = [];
     public array $logged = [];
 
+    public function __construct($InstanceID = 12345) { $this->InstanceID = (int)$InstanceID; }
+    public function Translate(string $t): string { return $GLOBALS['DE'][$t] ?? $t; }
+
     public function Create() { $GLOBALS['INSTANCES'][$this->InstanceID] = $this; }
     public function ApplyChanges() { $GLOBALS['INSTANCES'][$this->InstanceID] = $this; }
     public function RegisterPropertyString(string $n, string $d): void { $this->props[$n] = $this->props[$n] ?? $d; }
@@ -202,6 +205,9 @@ class IPSModule
 }
 
 require dirname(__DIR__) . '/Automat/module.php';
+// Prüfstand läuft auf Deutsch: Übersetzungstabelle aus Automat/locale.json (php .tools/locale-bauen.php).
+$GLOBALS['DE'] = json_decode((string)file_get_contents(dirname(__DIR__) . '/Automat/locale.json'), true)['translations']['de'] ?? [];
+AUTOMATText::setzen(function (string $t): string { return $GLOBALS['DE'][$t] ?? $t; });
 // Der Prüfstand arbeitet mit Kurz-IDs (100, 1001 …); echte Symcon-IDs sind fünfstellig. Block A9 prüft die echte Grenze.
 AUTOMATKatalog::$minId = 1;
 
@@ -1745,7 +1751,7 @@ foreach ([10, 11, 9, 10, 12, 10, 627] as $i => $dur) {
     $GLOBALS['ARCHIVE'][1011][] = ['TimeStamp' => $t0, 'Value' => true];
     $GLOBALS['ARCHIVE'][1011][] = ['TimeStamp' => $t0 + $dur, 'Value' => false];
 }
-$m = new AutomatTest();
+$m = new AutomatTest(12345);
 $m->Create();
 $m->props['Automations'] = json_encode([$bl, $fo, $gf, $zl]);
 $m->ApplyChanges();
@@ -1855,7 +1861,7 @@ fire($m, 1021, 12.0);
 // Neueinbinden in der Modulverwaltung: Attribute weg, Variablen bleiben; währenddessen Fenster geschlossen (Nachricht verpasst)
 $GLOBALS['OBJ'][1031]['value'] = false;
 $props = $m->props;
-$m = new AutomatTest();
+$m = new AutomatTest(12345);
 $m->props = $props;
 $m->Create();
 $m->ApplyChanges();
@@ -1961,7 +1967,7 @@ $m->UIDialogType('fenster');
 check('Art gewählt (neuer Automatismus): Beschreibung folgt, keine Abschnitte angesprochen', count(array_filter($m->fieldUpdates, fn($u) => strpos($u[0], 'sec_') === 0)) === 0 && count(array_filter($m->fieldUpdates, fn($u) => $u[0] === 'TypeDesc' && strpos($u[2], 'Fenster') !== false)) === 1);
 
 // Hausmodus-Automatik: Standard an, verständlicher Schalter, Zustand sichtbar
-$m2 = new AutomatTest();
+$m2 = new AutomatTest(12345);
 $m2->InstanceID = 12399;
 mkinst(12399, 'Automat 2');
 $m2->Create();

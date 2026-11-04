@@ -136,7 +136,7 @@ class AUTOMATLogik
     {
         $mode = (int)($ctx['mode'] ?? 0);
         if (array_key_exists('m' . $mode, $row) && !$row['m' . $mode]) {
-            return 'im Hausmodus „' . (AUTOMATKatalog::MODES[$mode] ?? $mode) . '“ nicht aktiv';
+            return 'im Hausmodus „' . (AUTOMATKatalog::modes()[$mode] ?? $mode) . '“ nicht aktiv';
         }
         if (isset($ctx['condOk']) && !$ctx['condOk']) {
             return 'Bedingung nicht erfüllt';
@@ -1153,7 +1153,7 @@ class AUTOMATLogik
         $st += ['ph' => 'normal', 'since' => 0, 'last' => 0];
         $v = $ctx['val'][$vid] ?? null;
         $cond = $v !== null && self::compare($v, $op, $ref);
-        $opText = AUTOMATKatalog::WA_OPS[$op] ?? '';
+        $opText = AUTOMATKatalog::tr(AUTOMATKatalog::WA_OPS)[$op] ?? '';
         // Beschriftungen der Variable (z. B. „Offen“ statt „true“), wenn das Modul sie mitgibt
         $labels = (array)($ctx['labels'][$vid] ?? []);
         $cmpText = in_array($op, [4, 5], true) ? $opText : $opText . ' ' . ($labels[self::valueKey($ref)] ?? $ref);
@@ -1527,7 +1527,7 @@ class AUTOMATLogik
         if (($ev['k'] ?? '') === 'mode' && !empty($row['gc_m' . (int)($ev['to'] ?? -1)])) {
             $to = (int)$ev['to'];
             if ($hard !== '') {
-                $res['log'] = 'Hausmodus „' . AUTOMATKatalog::MODES[$to] . '“ — nicht geprüft: ' . $hard . '.';
+                $res['log'] = 'Hausmodus „' . AUTOMATKatalog::modes()[$to] . '“ — nicht geprüft: ' . $hard . '.';
             } else {
                 $open = self::activeOf(AUTOMATKatalog::vars($row, 'gc_kon'), $ctx, !empty($row['gc_invert']));
                 $on = [];
@@ -1560,10 +1560,10 @@ class AUTOMATLogik
                     $parts[] = 'noch an: ' . implode(', ', $on);
                 }
                 $txt = $parts ? implode('; ', $parts) : 'alles zu und aus';
-                $st['last'] = AUTOMATKatalog::MODES[$to] . ' — ' . $txt;
+                $st['last'] = AUTOMATKatalog::modes()[$to] . ' — ' . $txt;
                 $st['lastTs'] = $now;
                 $st['bad'] = count($open) > 0 || count($on) > 0; // was noch an ist, wurde nicht ausgeschaltet
-                $res['log'] = 'Gehen-Check bei „' . AUTOMATKatalog::MODES[$to] . '“: ' . $txt . '.';
+                $res['log'] = 'Gehen-Check bei „' . AUTOMATKatalog::modes()[$to] . '“: ' . $txt . '.';
                 if (!empty($row['gc_push']) && ($parts || !empty($row['gc_ok']))) {
                     $res['msg'][] = [($parts ? '🚪 ' : '✅ ') . $name, ($parts ? 'Beim ' . ($to === AUTOMATKatalog::MODE_NIGHT ? 'Zubettgehen' : 'Gehen') . ' — ' . $txt : ucfirst($txt)) . '.'];
                 }
@@ -2611,7 +2611,7 @@ class AUTOMATLogik
         }
         $lowered = $target !== null && count($res['cmd']) > 0;
         if ($lowered) {
-            $logs[] = count($res['cmd']) . ' Sollwert(e) auf ' . self::fmtNum($target) . ' °C abgesenkt („' . AUTOMATKatalog::MODES[$mode] . '“)';
+            $logs[] = count($res['cmd']) . ' Sollwert(e) auf ' . self::fmtNum($target) . ' °C abgesenkt („' . AUTOMATKatalog::modes()[$mode] . '“)';
         }
         if ($logs) {
             $res['log'] = implode('; ', $logs) . '.';
@@ -2622,7 +2622,7 @@ class AUTOMATLogik
         if ($hard !== '') {
             $res['status'] = self::hardStatus($hard);
         } elseif ($target !== null && count($set) > 0) {
-            $res['status'] = '🌡 Abgesenkt auf ' . self::fmtNum($target) . ' °C („' . AUTOMATKatalog::MODES[$mode] . '“)';
+            $res['status'] = '🌡 Abgesenkt auf ' . self::fmtNum($target) . ' °C („' . AUTOMATKatalog::modes()[$mode] . '“)';
         } else {
             $res['status'] = '✅ Normalbetrieb';
         }
@@ -2694,7 +2694,7 @@ class AUTOMATLogik
                 default:
                     $m = max(0, min(4, (int)round($zw)));
                     $res['mode'] = $m;
-                    $did = 'Hausmodus „' . AUTOMATKatalog::MODES[$m] . '“';
+                    $did = 'Hausmodus „' . AUTOMATKatalog::modes()[$m] . '“';
             }
             $st['last'] = $label . ' → ' . $did . ' (' . date('H:i', $now) . ')';
             $res['st'] = $st;
@@ -2867,7 +2867,7 @@ class AUTOMATLogik
         $mode = (int)($ctx['mode'] ?? 0);
         $st += ['pend' => -1, 'at' => 0, 'last' => '', 'lastTs' => 0];
         $hard = self::hardBlock($ctx);
-        $modeName = AUTOMATKatalog::MODES[$mode] ?? (string)$mode;
+        $modeName = AUTOMATKatalog::modes()[$mode] ?? (string)$mode;
         $name = trim((string)($row['Name'] ?? '')) ?: 'Szene';
         if (($ev['k'] ?? '') === 'run') {
             // Von Hand über Automat: jetzt ausführen, ohne Verzögerung und unabhängig vom Hausmodus
@@ -2878,15 +2878,15 @@ class AUTOMATLogik
         if (($ev['k'] ?? '') === 'mode') {
             $to = (int)($ev['to'] ?? $mode);
             if ((int)$st['pend'] >= 0 && (int)$st['pend'] !== $to) {
-                $res['log'] = 'Hausmodus wechselte vor Ablauf der Verzögerung auf „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — „' . (AUTOMATKatalog::MODES[(int)$st['pend']] ?? '') . '“-Schaltung entfällt.';
+                $res['log'] = 'Hausmodus wechselte vor Ablauf der Verzögerung auf „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — „' . (AUTOMATKatalog::modes()[(int)$st['pend']] ?? '') . '“-Schaltung entfällt.';
                 $st['pend'] = -1;
                 $st['at'] = 0;
             }
             if (!empty($row['sz_m' . $to])) {
                 if ($hard !== '') {
-                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — nicht geschaltet: ' . $hard . '.';
+                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — nicht geschaltet: ' . $hard . '.';
                 } elseif (isset($ctx['condOk']) && !$ctx['condOk']) {
-                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::MODES[$to] ?? $to) . '“ — nicht geschaltet: Bedingung nicht erfüllt.';
+                    $res['log'] = 'Hausmodus „' . (AUTOMATKatalog::modes()[$to] ?? $to) . '“ — nicht geschaltet: Bedingung nicht erfüllt.';
                 } else {
                     $st['pend'] = $to;
                     $st['at'] = $now + max(0, (int)($row['sz_verz'] ?? 0)) * 60;
@@ -2898,7 +2898,7 @@ class AUTOMATLogik
             $st['pend'] = -1;
             $st['at'] = 0;
             if ($mode !== $pend) {
-                $res['log'] = 'Hausmodus ist nicht mehr „' . (AUTOMATKatalog::MODES[$pend] ?? $pend) . '“ — Schaltung entfällt.';
+                $res['log'] = 'Hausmodus ist nicht mehr „' . (AUTOMATKatalog::modes()[$pend] ?? $pend) . '“ — Schaltung entfällt.';
             } elseif ($hard !== '') {
                 $res['log'] = 'Nicht geschaltet: ' . $hard . '.';
             } else {
@@ -2921,7 +2921,7 @@ class AUTOMATLogik
                         $changed[] = (string)($ctx['names'][$vid] ?? ('#' . $vid));
                     }
                 }
-                $verb = AUTOMATKatalog::SZ_ACTIONS[$aktion] ?? 'geschaltet';
+                $verb = AUTOMATKatalog::tr(AUTOMATKatalog::SZ_ACTIONS)[$aktion] ?? 'geschaltet';
                 $verbPast = [0 => 'ausgeschaltet', 1 => 'eingeschaltet', 2 => 'auf ' . self::fmtNum((float)($row['sz_wert'] ?? 0)) . ' gesetzt'][$aktion] ?? 'geschaltet';
                 $res['log'] = 'Hausmodus „' . $modeName . '“: ' . (count($changed) > 0 ? count($changed) . ' Gerät(e) ' . $verbPast . ' (' . implode(', ', $changed) . ').' : 'alle Geräte standen schon richtig — nichts zu ' . $verb . '.');
                 $st['last'] = $modeName . ': ' . (count($changed) > 0 ? count($changed) . ' ' . $verbPast : 'nichts zu tun');
@@ -2937,7 +2937,7 @@ class AUTOMATLogik
         } elseif ((int)$st['pend'] >= 0) {
             $res['due'] = (int)$st['at'];
             $res['end'] = (int)$st['at'];
-            $res['status'] = '⏳ „' . (AUTOMATKatalog::MODES[(int)$st['pend']] ?? '') . '“: schaltet um ' . self::fmtClock((int)$st['at'], $now);
+            $res['status'] = '⏳ „' . (AUTOMATKatalog::modes()[(int)$st['pend']] ?? '') . '“: schaltet um ' . self::fmtClock((int)$st['at'], $now);
         } else {
             $res['status'] = $st['last'] !== '' ? '✅ Zuletzt ' . date('d.m.Y H:i', (int)$st['lastTs']) . ' — ' . $st['last'] : '💤 Wartet auf den nächsten Wechsel des Hausmodus';
         }

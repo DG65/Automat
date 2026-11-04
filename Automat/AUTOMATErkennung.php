@@ -657,7 +657,7 @@ class AUTOMATErkennung
     /** Wie viele Geräte je Rolle gefunden wurden (für den Katalog). */
     public static function roleCounts(array $items): array
     {
-        $c = array_fill_keys(array_keys(AUTOMATKatalog::ROLES), 0);
+        $c = array_fill_keys(array_keys(AUTOMATKatalog::roles()), 0);
         foreach ($items as $it) {
             $r = (string)($it['role'] ?? '');
             if (isset($c[$r])) {

@@ -189,6 +189,42 @@ class AUTOMATKatalog
     public const DZ_OFF = [0 => 'Uhrzeit', 1 => 'Sonnenaufgang (± Versatz)', 2 => 'Helligkeit über Schwelle', 3 => 'gar nicht (nur einschalten)'];
 
     /** Typ bekannt? */
+    /** Hausmodi in der Sprache des Systems (Konstante MODES bleibt der englische Quelltext). */
+    public static function modes(): array
+    {
+        return array_map([AUTOMATText::class, 'wert'], self::MODES);
+    }
+
+    /** Kategorien in der Sprache des Systems. */
+    public static function categories(): array
+    {
+        return array_map([AUTOMATText::class, 'wert'], self::CATEGORIES);
+    }
+
+    /** Geräte-Rollen in der Sprache des Systems. */
+    public static function roles(): array
+    {
+        return array_map([AUTOMATText::class, 'wert'], self::ROLES);
+    }
+
+    /** Typen mit übersetztem Namen und übersetzter Beschreibung. */
+    public static function types(): array
+    {
+        $out = [];
+        foreach (self::TYPES as $k => $d) {
+            $d['label'] = AUTOMATText::t($d['label']);
+            $d['desc'] = AUTOMATText::t($d['desc']);
+            $out[$k] = $d;
+        }
+        return $out;
+    }
+
+    /** Auswahlliste (Konstante) in der Sprache des Systems. */
+    public static function tr(array $options): array
+    {
+        return array_map([AUTOMATText::class, 'wert'], $options);
+    }
+
     public static function has(string $type): bool
     {
         return isset(self::TYPES[$type]);
