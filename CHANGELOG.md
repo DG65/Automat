@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (Build 58) — 05.11.2026
+
+- Fix (live 05.11.2026, Küche/HWR blieben an): Symcons `Translate()` liest locale.json bei jedem Aufruf; mit hunderten Texten je Durchlauf (Kachel bei jedem Tick) dauerte ein Tick 2,5 s, das Formular 5,4 s, und der Timer „Tick“ blieb überfällig liegen. `AUTOMATText::mitTabelle()` fragt Symcon nur einmal nach der Sprache und liest die deutsche Tabelle selbst (andere Sprachen: je Text einmal fragen und merken).
+- Sicherheitsnetz: `MessageSink` holt einen Durchlauf nach, wenn eine Frist (`Due`) mehr als `OVERDUE_S` = 10 s überfällig ist.
+- Prüfstand: 718 Prüfungen (ein Translate()-Aufruf je Formular; Nachholen bei überfälliger Frist).
+
 ## 0.2.0 (Build 57) — 04.11.2026
 
 - Zweisprachig (Deutsch/Englisch) nach RoboHub-Muster: Quelltexte englisch über `AUTOMATText::t()` (neue Datei `AUTOMATText.php`, Übersetzer im Konstruktor auf `$this->Translate()`), Deutsch in `Automat/locale.json` (rund 1.250 Texte), gebaut aus `.tools/locale-teile/*.json` mit `php .tools/locale-bauen.php`.

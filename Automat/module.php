@@ -39,13 +39,16 @@ class Automat extends IPSModule
     private const LIBRARY_GUID = '{D7A3CB8F-E43B-4307-AB64-BAD160C1823A}';
     private const MODULE_GUID  = '{A92CA7FD-B746-45C4-902B-3CBAE1F3FA27}';
 
+    /** Ab so vielen Sekunden Verzug holt eine Gerätemeldung den liegengebliebenen Timer-Durchlauf nach. */
+    private const OVERDUE_S = 10;
+
     public function __construct($InstanceID)
     {
         parent::__construct($InstanceID);
         // Logik, Katalog, Erkennung und Kachel übersetzen über AUTOMATText (englische Quelltexte, Deutsch in locale.json).
-        AUTOMATText::setzen(function (string $text): string {
+        AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $text): string {
             return $this->Translate($text);
-        });
+        }, __DIR__ . '/locale.json'));
     }
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
@@ -79,6 +82,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.1' => [
+            '⚡ Fix: since 0.2.0, lights sometimes stayed on after the follow-up time — the translation made every run take seconds, so the timer no longer kept up. Automat is fast again, and any device message now catches up an overdue run.',
+        ],
         '0.2.0' => [
             '🌍 Automat now speaks English: on an English Symcon, the form, dialogs, states, log, notifications and the tile appear in English; on a German Symcon everything stays as before. Variable idents are unchanged.',
         ],
@@ -457,6 +463,16 @@ class Automat extends IPSModule
         if ($touched) {
             $this->reschedule();
             $this->refreshTile();
+        }
+        // Sicherheitsnetz: Hat Symcon den Timer liegen lassen (live 05.11.2026: „Tick“ stundenlang überfällig, Lichter
+        // gingen nicht aus), holt die nächste Gerätemeldung den fälligen Durchlauf nach.
+        $now = $this->now();
+        foreach ($this->attrMap('Due') as $ts) {
+            if ((int)$ts > 0 && (int)$ts < $now - self::OVERDUE_S) {
+                $this->SendDebug('Tick', 'Frist seit ' . ($now - (int)$ts) . ' s überfällig — Durchlauf nachgeholt', 0);
+                $this->Tick();
+                break;
+            }
         }
     }
 

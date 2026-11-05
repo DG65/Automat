@@ -17,9 +17,44 @@ final class AUTOMATText
     /** @var callable|null fn(string): string */
     private static $uebersetzer = null;
 
+    /** @var array<string,string>|null deutsche Tabelle aus locale.json, [] = Englisch (Quelltext bleibt) */
+    private static $tabelle = null;
+    /** @var array<string,string> gemerkte Ergebnisse, wenn weder Deutsch noch Englisch */
+    private static $gemerkt = [];
+
     public static function setzen(?callable $uebersetzer): void
     {
         self::$uebersetzer = $uebersetzer;
+    }
+
+    /**
+     * Übersetzer für das Modul: Symcons Translate() liest bei jedem Aufruf locale.json — bei hunderten Texten je
+     * Durchlauf dauerte ein Tick Sekunden (live 05.11.2026: Tick 2,5 s, Formular 5,4 s, der Timer kam nicht mehr
+     * hinterher). Deshalb fragt Automat Symcon nur einmal, in welcher Sprache es läuft, und liest die Tabelle selbst.
+     */
+    public static function mitTabelle(callable $translate, string $localeDatei): callable
+    {
+        return function (string $text) use ($translate, $localeDatei): string {
+            if (self::$tabelle === null) {
+                $probe = 'House mode';
+                $ziel = (string)$translate($probe);
+                $de = $ziel === $probe ? [] : (json_decode((string)@file_get_contents($localeDatei), true)['translations']['de'] ?? []);
+                // Andere Sprache als Deutsch (oder Tabelle unlesbar): jeden Text einmal bei Symcon nachfragen und merken.
+                self::$tabelle = $ziel === $probe || ($de[$probe] ?? null) === $ziel ? $de : false;
+                self::$gemerkt[$probe] = $ziel;
+            }
+            if (self::$tabelle !== false) {
+                return self::$tabelle[$text] ?? $text;
+            }
+            return self::$gemerkt[$text] ?? (self::$gemerkt[$text] = (string)$translate($text));
+        };
+    }
+
+    /** Nur für den Prüfstand: Sprachwahl vergessen. */
+    public static function vergessen(): void
+    {
+        self::$tabelle = null;
+        self::$gemerkt = [];
     }
 
     /** Text übersetzen; mit Argumenten wie sprintf (Platzhalter %s/%d, ein Prozentzeichen als %%). */

@@ -1070,6 +1070,7 @@
             "⚠️ no script selected (or it no longer exists)": "⚠️ kein Skript gewählt (oder es gibt es nicht mehr)",
             "⚠️ not sent — %s": "⚠️ nicht gesendet — %s",
             "⚠️ noticeable / incomplete": "⚠️ auffällig / unvollständig",
+            "⚡ Fix: since 0.2.0, lights sometimes stayed on after the follow-up time — the translation made every run take seconds, so the timer no longer kept up. Automat is fast again, and any device message now catches up an overdue run.": "⚡ Behoben: Seit 0.2.0 blieben Lichter nach dem Nachlauf teils an — die Übersetzung machte jeden Durchlauf sekundenlang, der Timer kam nicht mehr hinterher. Automat ist wieder schnell, und jede Gerätemeldung holt einen überfälligen Durchlauf nach.",
             "⚪ Off": "⚪ Aus",
             "⚪ Off — last finished %s": "⚪ Aus — zuletzt fertig %s Uhr",
             "⚪ Off — next switching %s": "⚪ Aus — nächste Schaltung %s",

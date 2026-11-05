@@ -117,3 +117,35 @@ check('Kachel: jeder T()-Text in KACHEL_TEXTE und locale.json', count($enT[1]) >
 $enSkript = preg_replace(['~^\s*//.*$~m', '~/\*.*?\*/~s', '~ // .*$~m'], '', $enHtml);
 preg_match_all("/'[^'\\n]*[äöüÄÖÜß][^'\\n]*'/u", $enSkript, $enDeHtml);
 check('Kachel: keine deutschen Texte im Skript', $enDeHtml[0] === [], implode(' | ', array_slice($enDeHtml[0], 0, 6)));
+
+// Tempo (live 05.11.2026): Symcons Translate() nur einmal je Lauf befragen, danach eigene Tabelle.
+$enRufe = 0;
+$enSym = function (string $t) use (&$enRufe): string { $enRufe++; return $GLOBALS['DE'][$t] ?? $t; };
+AUTOMATText::vergessen();
+AUTOMATText::setzen(AUTOMATText::mitTabelle($enSym, dirname(__DIR__) . '/Automat/locale.json'));
+$enA = AUTOMATText::t('House mode') . '|' . AUTOMATText::t('Automations') . '|' . AUTOMATText::t('Switches at %s', '07:00');
+$enM->GetConfigurationForm();
+check('Deutsch über die eigene Tabelle: ein einziger Translate()-Aufruf für ein ganzes Formular', $enRufe === 1 && strpos($enA, 'Hausmodus|') === 0, $enRufe . ' Aufrufe, ' . $enA);
+$enRufe = 0;
+AUTOMATText::vergessen();
+AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $t) use (&$enRufe): string { $enRufe++; return $t; }, dirname(__DIR__) . '/Automat/locale.json'));
+$enB = AUTOMATText::t('House mode');
+$enM->GetConfigurationForm();
+check('Englisch: ebenfalls ein einziger Aufruf, Quelltext bleibt', $enRufe === 1 && $enB === 'House mode');
+$enRufe = 0;
+AUTOMATText::vergessen();
+AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $t) use (&$enRufe): string { $enRufe++; return $t === 'House mode' ? 'Mode maison' : $t . ' (fr)'; }, dirname(__DIR__) . '/Automat/locale.json'));
+$enC = AUTOMATText::t('House mode') . '|' . AUTOMATText::t('Automations') . '|' . AUTOMATText::t('Automations');
+check('Andere Sprache: Symcon übersetzt, jeder Text nur einmal gefragt', $enC === 'Mode maison|Automations (fr)|Automations (fr)' && $enRufe === 2, $enC . ' / ' . $enRufe);
+AUTOMATText::vergessen();
+AUTOMATText::setzen(function (string $t): string { return $GLOBALS['DE'][$t] ?? $t; });
+
+heading('F. Sicherheitsnetz Timer (live 05.11.2026)');
+$fN = count($enM->tileUpdates);
+$enM->attrs['Due'] = json_encode(['xyz' => $GLOBALS['CLOCK'] - 60]);
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('Überfällige Frist: eine beliebige Gerätemeldung holt den Durchlauf nach', count($enM->tileUpdates) > $fN);
+$fN = count($enM->tileUpdates);
+$enM->attrs['Due'] = json_encode(['xyz' => $GLOBALS['CLOCK'] + 60]);
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('Frist in der Zukunft: Meldung ohne Bezug löst keinen Durchlauf aus', count($enM->tileUpdates) === $fN);
