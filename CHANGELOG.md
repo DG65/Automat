@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 (Build 59) — 05.11.2026
+
+- Übersetzung nach dem Merkliste-Muster (Entscheidung Dietmar über EMS, SUITE.md Stolperstein 24, Vorbild WPModbusHub): `AUTOMATText::mitMerkliste()` fragt jeden Text höchstens einmal je Prozess über `Translate()` und merkt ihn; `mitTabelle()` (eigenes Lesen der locale.json) entfernt — Store: Dateizugriff nur als Ausnahme.
+- Kachel: Textliste (`texte`) nur im ersten Bild (`GetVisualizationTile`), Aktualisierungen ohne; module.html behält die Texte. Spart je Tick 44 Übersetzungen.
+- Store-Review 20724 (SUITE.md Punkt 26): Variablen entfernter Automatismen über `$this->UnregisterVariable($ident)` statt `IPS_DeleteVariable`.
+- Prüfstand 723: zweites Formular fragt nicht mehr; Tick nach dem ersten ≤ 5 Fragen, mit leerer Merkliste ≤ 80; kein eigenes Lesen der locale.json.
+
 ## 0.2.1 (Build 58) — 05.11.2026
 
 - Fix (live 05.11.2026, Küche/HWR blieben an): Symcons `Translate()` liest locale.json bei jedem Aufruf; mit hunderten Texten je Durchlauf (Kachel bei jedem Tick) dauerte ein Tick 2,5 s, das Formular 5,4 s, und der Timer „Tick“ blieb überfällig liegen. `AUTOMATText::mitTabelle()` fragt Symcon nur einmal nach der Sprache und liest die deutsche Tabelle selbst (andere Sprachen: je Text einmal fragen und merken).

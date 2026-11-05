@@ -371,6 +371,8 @@
         var data = (typeof payload === 'string') ? JSON.parse(payload) : payload;
         if (!data) { return; }
         data._recv = Date.now();
+        // Aktualisierungen kommen ohne Texte (nur das erste Bild trägt sie): die bisherigen behalten
+        if (!data.texte && AU && AU.texte) { data.texte = AU.texte; }
         AU = data;
         auRender();
         if (!auTimer) { auTimer = setInterval(auTick, 1000); }

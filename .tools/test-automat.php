@@ -199,6 +199,7 @@ class IPSModule
             $GLOBALS['OBJ'][$id]['pos'] = $pos; // wie Symcon im ungünstigsten Fall: Position bei jedem Aufruf
         }
     }
+    public function UnregisterVariable(string $ident): void { $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID); if ($id !== false) { IPS_DeleteVariable($id); } }
     public function EnableAction(string $ident): void { $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID); if ($id !== false) { $GLOBALS['OBJ'][$id]['action'] = true; } }
     public function SetValue(string $ident, $v): void { $id = IPS_GetObjectIDByIdent($ident, $this->InstanceID); $GLOBALS['OBJ'][$id]['value'] = $v; }
     public function GetValue(string $ident) { $id = IPS_GetObjectIDByIdent($ident, $this->InstanceID); return $GLOBALS['OBJ'][$id]['value']; }
@@ -2849,6 +2850,7 @@ check('… bekommt eine Ersatzkennung, die das Formular zum Speichern mitgibt', 
 $m->props['Automations'] = json_encode([$noUid, array_merge($noUid, ['Uid' => 'r0'])]);
 check('… und kollidiert nie mit einer schon gespeicherten Ersatzkennung', array_column((new ReflectionMethod('Automat', 'rows'))->invoke($m), 'Uid') === ['r1', 'r0']);
 $srcSp = (string)file_get_contents(dirname(__DIR__) . '/Automat/module.php');
+check('Store-Review 20724: eigene Variablen über UnregisterVariable entfernen, nie IPS_DeleteVariable', strpos($srcSp, 'IPS_DeleteVariable(') === false && strpos($srcSp, '$this->UnregisterVariable(') !== false);
 check('Store-Review: kein IPS_SetProperty/IPS_ApplyChanges im Modul', strpos($srcSp, 'IPS_SetProperty(') === false && strpos($srcSp, 'IPS_ApplyChanges(') === false);
 [$m->props['Automations'], $m->props['AutomationsHidden']] = $keepProps;
 $m->ApplyChanges();

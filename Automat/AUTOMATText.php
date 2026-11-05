@@ -17,44 +17,36 @@ final class AUTOMATText
     /** @var callable|null fn(string): string */
     private static $uebersetzer = null;
 
-    /** @var array<string,string>|null deutsche Tabelle aus locale.json, [] = Englisch (Quelltext bleibt) */
-    private static $tabelle = null;
-    /** @var array<string,string> gemerkte Ergebnisse, wenn weder Deutsch noch Englisch */
+    /** @var array<string,string> gemerkte Übersetzungen */
     private static $gemerkt = [];
+    /** @var int für den Prüfstand: wie oft wurde Symcon wirklich gefragt */
+    public static $anfragen = 0;
 
     public static function setzen(?callable $uebersetzer): void
     {
         self::$uebersetzer = $uebersetzer;
+        self::$gemerkt = [];
     }
 
     /**
      * Übersetzer für das Modul: Symcons Translate() liest bei jedem Aufruf locale.json — bei hunderten Texten je
      * Durchlauf dauerte ein Tick Sekunden (live 05.11.2026: Tick 2,5 s, Formular 5,4 s, der Timer kam nicht mehr
-     * hinterher). Deshalb fragt Automat Symcon nur einmal, in welcher Sprache es läuft, und liest die Tabelle selbst.
+     * hinterher; SUITE.md Stolperstein 24). Deshalb fragt jeder Text Symcon höchstens einmal je Prozess und die
+     * Antwort wird gemerkt. locale.json liest das Modul nie selbst (Store: Dateizugriff nur als Ausnahme).
      */
-    public static function mitTabelle(callable $translate, string $localeDatei): callable
+    public static function mitMerkliste(callable $translate): callable
     {
-        return function (string $text) use ($translate, $localeDatei): string {
-            if (self::$tabelle === null) {
-                $probe = 'House mode';
-                $ziel = (string)$translate($probe);
-                $de = $ziel === $probe ? [] : (json_decode((string)@file_get_contents($localeDatei), true)['translations']['de'] ?? []);
-                // Andere Sprache als Deutsch (oder Tabelle unlesbar): jeden Text einmal bei Symcon nachfragen und merken.
-                self::$tabelle = $ziel === $probe || ($de[$probe] ?? null) === $ziel ? $de : false;
-                self::$gemerkt[$probe] = $ziel;
+        return function (string $text) use ($translate): string {
+            if (!isset(self::$gemerkt[$text])) {
+                self::$anfragen++;
+                try {
+                    self::$gemerkt[$text] = (string)$translate($text);
+                } catch (\Throwable $e) {
+                    return $text; // z. B. Instanz während des Aufrufs gelöscht: Quelltext zeigen, nichts merken
+                }
             }
-            if (self::$tabelle !== false) {
-                return self::$tabelle[$text] ?? $text;
-            }
-            return self::$gemerkt[$text] ?? (self::$gemerkt[$text] = (string)$translate($text));
+            return self::$gemerkt[$text];
         };
-    }
-
-    /** Nur für den Prüfstand: Sprachwahl vergessen. */
-    public static function vergessen(): void
-    {
-        self::$tabelle = null;
-        self::$gemerkt = [];
     }
 
     /** Text übersetzen; mit Argumenten wie sprintf (Platzhalter %s/%d, ein Prozentzeichen als %%). */

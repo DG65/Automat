@@ -46,9 +46,9 @@ class Automat extends IPSModule
     {
         parent::__construct($InstanceID);
         // Logik, Katalog, Erkennung und Kachel übersetzen über AUTOMATText (englische Quelltexte, Deutsch in locale.json).
-        AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $text): string {
+        AUTOMATText::setzen(AUTOMATText::mitMerkliste(function (string $text): string {
             return $this->Translate($text);
-        }, __DIR__ . '/locale.json'));
+        }));
     }
 
     // Symcon-Kernmodul Location Control (Idents Sunrise/Sunset, live verifiziert an IPS 9.0 durch die Anwesenheitssimulation, vormals Schein).
@@ -82,6 +82,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.2' => [
+            '⚡ Faster: each text is translated only once per run, and the tile gets its texts only when it is opened.',
+        ],
         '0.2.1' => [
             '⚡ Fix: since 0.2.0, lights sometimes stayed on after the follow-up time — the translation made every run take seconds, so the timer no longer kept up. Automat is fast again, and any device message now catches up an overdue run.',
         ],
@@ -376,7 +379,7 @@ class Automat extends IPSModule
         foreach (IPS_GetChildrenIDs($this->InstanceID) as $cid) {
             $ident = (string)(IPS_GetObject($cid)['ObjectIdent'] ?? '');
             if (preg_match('/^[sldrp]_[a-z0-9]+$/', $ident) && !isset($keep[$ident]) && IPS_VariableExists($cid)) {
-                IPS_DeleteVariable($cid);
+                $this->UnregisterVariable($ident); // Store-Review 20724: dafür vorgesehen, nicht IPS_DeleteVariable
             }
         }
         $this->cleanupChanged($rows);
@@ -3098,13 +3101,15 @@ class Automat extends IPSModule
 
     private function refreshTile(): void
     {
-        $this->UpdateVisualizationValue(json_encode($this->tilePayload(), JSON_UNESCAPED_UNICODE));
+        // Die Kachel-Texte kommen nur mit dem ersten Bild (GetVisualizationTile); Aktualisierungen ohne, das spart
+        // bei jedem Tick die Übersetzung (die Kachel behält die Texte, siehe handleMessage in module.html).
+        $this->UpdateVisualizationValue(json_encode($this->tilePayload(false), JSON_UNESCAPED_UNICODE));
     }
 
     /** Kachel-Texte (englische Schlüssel), übersetzt mitgegeben in tilePayload()['texte']. */
     private const KACHEL_TEXTE = ['language code: en', 'All', 'Running', 'Noticeable', 'Locked/inactive', 'Search: name, room, kind, state …', 'Clear search', 'by room', 'by function', 'no groups', 'Name', 'State', 'Kind', 'Group', 'Sort', 'House mode "%s" …', '⏸ paused', '⏸ Pause', 'Ending pause …', 'Pausing all automations …', 'Permanent light off', 'Permanent light on', 'Permanent light off …', 'Permanent light on …', 'Open now', 'Opening …', 'Close now', 'Closing …', 'Run now', 'Running …', 'Unlock', 'Lock (then does nothing)', 'Unlocking …', 'Locking …', '⚫ Not active', 'No automation set up yet — create one in the instance under "Discover" or "Catalog".', 'Nothing found for "%s"', 'Nothing found', ' — choose filter "All" or clear the search.', 'Without room', 'Expand', 'Collapse', 'Log', ' · %s left'];
 
-    private function tilePayload(): array
+    private function tilePayload(bool $mitTexten = true): array
     {
         $status = $this->attrMap('Status');
         $due = $this->attrMap('End');
@@ -3134,8 +3139,7 @@ class Automat extends IPSModule
             'paused' => (bool)$this->getOwn('Pause', false),
             'items' => $items,
             'log' => $this->protocolLines(8),
-            'texte' => array_combine(self::KACHEL_TEXTE, array_map([AUTOMATText::class, 't'], self::KACHEL_TEXTE)),
-        ];
+        ] + ($mitTexten ? ['texte' => array_combine(self::KACHEL_TEXTE, array_map([AUTOMATText::class, 't'], self::KACHEL_TEXTE))] : []);
     }
 
     /**

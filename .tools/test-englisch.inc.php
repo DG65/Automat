@@ -118,26 +118,28 @@ $enSkript = preg_replace(['~^\s*//.*$~m', '~/\*.*?\*/~s', '~ // .*$~m'], '', $en
 preg_match_all("/'[^'\\n]*[äöüÄÖÜß][^'\\n]*'/u", $enSkript, $enDeHtml);
 check('Kachel: keine deutschen Texte im Skript', $enDeHtml[0] === [], implode(' | ', array_slice($enDeHtml[0], 0, 6)));
 
-// Tempo (live 05.11.2026): Symcons Translate() nur einmal je Lauf befragen, danach eigene Tabelle.
+// Tempo (live 05.11.2026, SUITE.md Stolperstein 24): jeder Text fragt Symcons Translate() höchstens einmal je Prozess.
 $enRufe = 0;
-$enSym = function (string $t) use (&$enRufe): string { $enRufe++; return $GLOBALS['DE'][$t] ?? $t; };
-AUTOMATText::vergessen();
-AUTOMATText::setzen(AUTOMATText::mitTabelle($enSym, dirname(__DIR__) . '/Automat/locale.json'));
-$enA = AUTOMATText::t('House mode') . '|' . AUTOMATText::t('Automations') . '|' . AUTOMATText::t('Switches at %s', '07:00');
+AUTOMATText::setzen(AUTOMATText::mitMerkliste(function (string $t) use (&$enRufe): string { $enRufe++; return $GLOBALS['DE'][$t] ?? $t; }));
 $enM->GetConfigurationForm();
-check('Deutsch über die eigene Tabelle: ein einziger Translate()-Aufruf für ein ganzes Formular', $enRufe === 1 && strpos($enA, 'Hausmodus|') === 0, $enRufe . ' Aufrufe, ' . $enA);
-$enRufe = 0;
-AUTOMATText::vergessen();
-AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $t) use (&$enRufe): string { $enRufe++; return $t; }, dirname(__DIR__) . '/Automat/locale.json'));
-$enB = AUTOMATText::t('House mode');
+$enErst = $enRufe;
 $enM->GetConfigurationForm();
-check('Englisch: ebenfalls ein einziger Aufruf, Quelltext bleibt', $enRufe === 1 && $enB === 'House mode');
+check('Merkliste: zweites Formular fragt Symcon kein einziges Mal mehr', $enErst > 50 && $enRufe === $enErst, $enErst . ' / ' . $enRufe);
+$enA = AUTOMATText::t('House mode') . '|' . AUTOMATText::t('Switches at %s', '07:00');
+check('… und übersetzt weiter richtig (Deutsch)', strpos($enA, 'Hausmodus|') === 0, $enA);
 $enRufe = 0;
-AUTOMATText::vergessen();
-AUTOMATText::setzen(AUTOMATText::mitTabelle(function (string $t) use (&$enRufe): string { $enRufe++; return $t === 'House mode' ? 'Mode maison' : $t . ' (fr)'; }, dirname(__DIR__) . '/Automat/locale.json'));
-$enC = AUTOMATText::t('House mode') . '|' . AUTOMATText::t('Automations') . '|' . AUTOMATText::t('Automations');
-check('Andere Sprache: Symcon übersetzt, jeder Text nur einmal gefragt', $enC === 'Mode maison|Automations (fr)|Automations (fr)' && $enRufe === 2, $enC . ' / ' . $enRufe);
-AUTOMATText::vergessen();
+$enM->Tick();
+$enM->Tick();
+check('Ein Timer-Durchlauf nach dem ersten: höchstens eine Handvoll neuer Fragen (Kachel-Texte nur im ersten Bild)', $enRufe <= 5, (string)$enRufe);
+$enRufe = 0;
+AUTOMATText::setzen(AUTOMATText::mitMerkliste(function (string $t) use (&$enRufe): string { $enRufe++; return $GLOBALS['DE'][$t] ?? $t; }));
+$enM->Tick();
+echo '      (Tick mit leerer Merkliste: ' . $enRufe . " Fragen an Translate)\n";
+check('Auch mit leerer Merkliste (neuer Prozess) fragt ein Tick nur wenige Texte', $enRufe <= 80, (string)$enRufe);
+$enUpd = json_decode((string)end($enM->tileUpdates), true);
+check('Kachel-Aktualisierung ohne Textliste, erstes Bild mit', is_array($enUpd) && !isset($enUpd['texte']) && strpos($enM->GetVisualizationTile(), '"texte"') !== false);
+check('Kachel behält die Texte bei Aktualisierungen', strpos((string)file_get_contents(dirname(__DIR__) . '/Automat/module.html'), 'if (!data.texte && AU && AU.texte) { data.texte = AU.texte; }') !== false);
+check('Modul liest locale.json nie selbst (Store: Dateizugriff nur als Ausnahme)', strpos((string)file_get_contents(dirname(__DIR__) . '/Automat/AUTOMATText.php') . (string)file_get_contents(dirname(__DIR__) . '/Automat/module.php'), 'locale.json\')') === false && strpos((string)file_get_contents(dirname(__DIR__) . '/Automat/module.php'), "'/locale.json'") === false);
 AUTOMATText::setzen(function (string $t): string { return $GLOBALS['DE'][$t] ?? $t; });
 
 heading('F. Sicherheitsnetz Timer (live 05.11.2026)');
