@@ -5,7 +5,8 @@
 - Übersetzung nach dem Merkliste-Muster (Entscheidung Dietmar über EMS, SUITE.md Stolperstein 24, Vorbild WPModbusHub): `AUTOMATText::mitMerkliste()` fragt jeden Text höchstens einmal je Prozess über `Translate()` und merkt ihn; `mitTabelle()` (eigenes Lesen der locale.json) entfernt — Store: Dateizugriff nur als Ausnahme.
 - Kachel: Textliste (`texte`) nur im ersten Bild (`GetVisualizationTile`), Aktualisierungen ohne; module.html behält die Texte. Spart je Tick 44 Übersetzungen.
 - Store-Review 20724 (SUITE.md Punkt 26): Variablen entfernter Automatismen über `$this->UnregisterVariable($ident)` statt `IPS_DeleteVariable`.
-- Prüfstand 723: zweites Formular fragt nicht mehr; Tick nach dem ersten ≤ 5 Fragen, mit leerer Merkliste ≤ 80; kein eigenes Lesen der locale.json.
+- Fix (live 06.11.2026, Windfang abgesenkt bei geschlossener Haustür): `DoorLockDoorState` (Z-Wave-Schloss, Profil ~Lock) meldet die Tür, wahr = offen — vor jeder Beschriftung erkannt (die Annahme vom 17.10. war falsch herum). `AUTOMATErkennung::contactPolarity()` dreiwertig (zu/offen/unbekannt); `ctx['inv']` trägt auch „wahr = offen“, `AUTOMATLogik::contactInvert()` nimmt den Zeilen-Haken nur noch für Kontakte ohne erkannte Richtung.
+- Prüfstand 726: zweites Formular fragt nicht mehr; Tick nach dem ersten ≤ 5 Fragen, mit leerer Merkliste ≤ 80; kein eigenes Lesen der locale.json.
 
 ## 0.2.1 (Build 58) — 05.11.2026
 

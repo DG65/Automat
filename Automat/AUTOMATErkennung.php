@@ -149,6 +149,21 @@ class AUTOMATErkennung
      */
     public static function contactInverted(array $v): bool
     {
+        return self::contactPolarity($v) ?? false;
+    }
+
+    /**
+     * Richtung eines Kontakts, soweit erkennbar: true = „wahr heißt zu“, false = „wahr heißt offen“, null = unbekannt
+     * (dann entscheidet der Haken „Kontakte melden wahr = ZU“ an der Zeile).
+     */
+    public static function contactPolarity(array $v): ?bool
+    {
+        // Z-Wave-Türschloss „Türstatus“ (Door Condition) meldet, ob die TÜR auf ist, nicht den Riegel: wahr = offen.
+        // Symcon gibt ihm trotzdem das Profil ~Lock („Entriegelt“/„Gesperrt“) — die Beschriftung führt hier in die Irre.
+        // Live 06.11.2026: Tür um 18:57:33 zu (Kontakt „Geschlossen“), Türstatus in derselben Sekunde auf falsch.
+        if (preg_match('/^DoorLockDoorState$/i', (string)($v['ident'] ?? ''))) {
+            return false;
+        }
         $closed = '/geschlossen|closed|\bzu\b|gesperrt|verriegelt|abgeschlossen|\blocked|gesichert|secured/iu';
         $open = '/offen|geöffnet|open|entsperrt|unlocked|entriegelt|ungesichert|unsecured/iu';
         $cap = [];
@@ -188,7 +203,7 @@ class AUTOMATErkennung
         if (preg_match('/^BooleanState/i', (string)($v['ident'] ?? ''))) {
             return true;
         }
-        return strpos(mb_strtolower((string)($v['profile'] ?? '')), 'reversed') !== false;
+        return strpos(mb_strtolower((string)($v['profile'] ?? '')), 'reversed') !== false ? true : null;
     }
 
     /** Grundformen von Raumwörtern: Kurz- und Langform werden gleich („Essen“/„Esszimmer“ → „ess“). */

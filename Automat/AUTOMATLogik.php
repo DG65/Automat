@@ -2030,7 +2030,7 @@ class AUTOMATLogik
      */
     public static function contactInvert(int $vid, array $ctx, bool $rowInvert): bool
     {
-        return !empty($ctx['inv'][$vid]) ? true : $rowInvert;
+        return array_key_exists($vid, $ctx['inv'] ?? []) ? (bool)$ctx['inv'][$vid] : $rowInvert;
     }
 
     /** Namen der Variablen, deren Wert „aktiv“ ist (bei $invert umgekehrt). Fehlende Werte zählen nicht. */

@@ -83,6 +83,7 @@ class Automat extends IPSModule
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
         '0.2.2' => [
+            '🚪 Fix: the door status of Z-Wave door locks ("Türstatus"/DoorLockDoorState) reports whether the DOOR is open — "true" = open, despite its lock labels. Before, a closed front door counted as open and "Window open" lowered the heating. A detected direction per contact now also takes precedence over the "true = CLOSED" tick of the row.',
             '⚡ Faster: each text is translated only once per run, and the tile gets its texts only when it is opened.',
         ],
         '0.2.1' => [
@@ -847,8 +848,11 @@ class Automat extends IPSModule
         ];
         foreach (AUTOMATKatalog::CONTACT_FIELDS as $cf) {
             foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
-                if (IPS_VariableExists($cv) && AUTOMATErkennung::contactInverted($this->varInfo($cv))) {
-                    $ctx['inv'][$cv] = true;
+                // Erkannte Richtung je Kontakt (auch „wahr = offen“) geht vor; der Haken an der Zeile gilt nur für
+                // Kontakte ohne erkennbare Richtung (live 06.11.2026: Haken für Matter-Kontakt drehte den Türstatus mit).
+                $pol = IPS_VariableExists($cv) ? AUTOMATErkennung::contactPolarity($this->varInfo($cv)) : null;
+                if ($pol !== null) {
+                    $ctx['inv'][$cv] = $pol;
                 }
             }
         }

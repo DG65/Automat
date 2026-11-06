@@ -1229,6 +1229,7 @@
             "🚨 Alarm since %s — %s": "🚨 Alarm seit %s Uhr — %s",
             "🚪 Everybody gone": "🚪 Alle weg",
             "🚪 Everybody gone — \"nobody there\" at %s": "🚪 Alle weg — „niemand da“ um %s",
+            "🚪 Fix: the door status of Z-Wave door locks (\"Türstatus\"/DoorLockDoorState) reports whether the DOOR is open — \"true\" = open, despite its lock labels. Before, a closed front door counted as open and \"Window open\" lowered the heating. A detected direction per contact now also takes precedence over the \"true = CLOSED\" tick of the row.": "🚪 Behoben: Der Türstatus von Z-Wave-Türschlössern („Türstatus“/DoorLockDoorState) meldet, ob die TÜR offen ist — „wahr“ = offen, trotz der Schloss-Beschriftung. Bisher galt eine geschlossene Haustür als offen, und „Fenster offen“ senkte die Heizung ab. Außerdem geht eine erkannte Richtung je Kontakt jetzt dem Haken „wahr = ZU“ an der Zeile vor.",
             "🚪 Leaving check: when switching to \"Away\"/\"Holiday\", ONE notification about what is still open or on.": "🚪 Gehen-Check: beim Wechsel auf „Abwesend“/„Urlaub“ EINE Meldung, was noch offen oder an ist.",
             "🚪 Nobody at home since %s": "🚪 Niemand zu Hause seit %s Uhr",
             "🛎 %s — nobody at home": "🛎 %s — niemand zu Hause",

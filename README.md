@@ -17,7 +17,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.2.2 (Beta im Module Store, 723 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.2.2 (Beta im Module Store, 726 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 
