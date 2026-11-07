@@ -1613,6 +1613,8 @@ $cases = [
     // Live 17.10.2026: Riegel/Schnappverschluss eines Matter-Schlosses sind keine Tür-/Fensterkontakte
     ['', ['type' => 0, 'profile' => '~Lock.Reversed', 'name' => 'Status Türriegel', 'inst' => 'Türschloß', 'ident' => 'DoorLockBoltState']],
     ['', ['type' => 0, 'profile' => '~Lock', 'name' => 'Status Schnappverschluss', 'inst' => 'Türschloß', 'ident' => 'DoorLockLatchState']],
+    // Live 07.11.2026: „Türstatus“ des Z-Wave-Schlosses meldet verriegelt/entriegelt, nicht offen/zu
+    ['', ['type' => 0, 'profile' => '~Lock', 'name' => 'Türschloß (Türstatus)', 'inst' => 'Haustüre', 'ident' => 'DoorLockDoorState']],
     ['contact', ['type' => 0, 'name' => 'Windfang Haustür', 'inst' => 'Windfang Haustür', 'ident' => 'BooleanState_State']],
     ['', ['type' => 1, 'action' => true, 'profile' => '~ShutterMoveStop', 'name' => 'Steuerung', 'inst' => 'Rollladen Küche']],
 ];
@@ -1626,7 +1628,8 @@ check('Normaler Kontakt nicht invertiert', AUTOMATErkennung::contactInverted($it
 check('Schloss-Riegel ~Lock (wahr = Gesperrt): wahr heißt zu', AUTOMATErkennung::contactInverted(['profile' => '~Lock', 'pres' => [], 'ident' => 'DoorLockBoltState', 'assoc' => [0 => 'Entriegelt', 1 => 'Gesperrt']]) === true);
 check('Erkannte Richtung geht vor dem Zeilen-Haken: „wahr = offen“ bleibt offen, auch wenn der Haken gesetzt ist (live 06.11.2026 Windfang)', AUTOMATLogik::contactInvert(17330, ['inv' => [13879 => true, 17330 => false]], true) === false && AUTOMATLogik::contactInvert(13879, ['inv' => [13879 => true, 17330 => false]], true) === true && AUTOMATLogik::contactInvert(999, ['inv' => [13879 => true]], true) === true && AUTOMATLogik::contactInvert(999, [], false) === false);
 check('Richtung unbekannt (kein Profil, keine Beschriftung) → null, dann entscheidet der Haken', AUTOMATErkennung::contactPolarity(['profile' => '', 'pres' => [], 'ident' => 'State']) === null && AUTOMATErkennung::contactPolarity(['profile' => '~Window.Reversed', 'pres' => [], 'ident' => '']) === true);
-check('Schloss-Türstatus (DoorLockDoorState) meldet die Tür: wahr = offen, trotz ~Lock-Beschriftung (live 06.11.2026)', AUTOMATErkennung::contactInverted(['profile' => '~Lock', 'pres' => [], 'ident' => 'DoorLockDoorState', 'assoc' => [0 => 'Entriegelt', 1 => 'Gesperrt']]) === false);
+check('Schloss-Türstatus (DoorLockDoorState) meldet das Schloss (live 07.11.2026: nach Auto-Verriegelung wahr = Gesperrt bei geschlossener Tür) — gilt nach der Beschriftung, nicht mehr als „wahr = offen“', AUTOMATErkennung::contactInverted(['profile' => '~Lock', 'pres' => [], 'ident' => 'DoorLockDoorState', 'assoc' => [0 => 'Entriegelt', 1 => 'Gesperrt']]) === true);
+check('Schloss-Zustände sind keine Kontakte: Türstatus, Riegel, Schnappverschluss, Profil ~Lock', AUTOMATErkennung::isLockState(['ident' => 'DoorLockDoorState']) && AUTOMATErkennung::isLockState(['ident' => 'DoorLockBoltState']) && AUTOMATErkennung::isLockState(['ident' => 'DoorLockLatchState']) && AUTOMATErkennung::isLockState(['profile' => '~Lock.Reversed']) && !AUTOMATErkennung::isLockState(['ident' => 'BooleanState_State', 'profile' => '~Window']));
 check('Schloss ~Lock.Reversed (falsch = Gesperrt): wahr heißt offen (vorher falsch herum)', AUTOMATErkennung::contactInverted(['profile' => '~Lock.Reversed', 'pres' => [], 'ident' => 'DoorLockBoltState', 'assoc' => [0 => 'Gesperrt', 1 => 'Entriegelt']]) === false);
 check('~Window (wahr = Geöffnet): nicht umgekehrt; ~Window.Reversed (wahr = Geschlossen): umgekehrt', AUTOMATErkennung::contactInverted(['profile' => '~Window', 'pres' => [], 'assoc' => [0 => 'Geschlossen', 1 => 'Geöffnet']]) === false && AUTOMATErkennung::contactInverted(['profile' => '~Window.Reversed', 'pres' => [], 'assoc' => [0 => 'Geöffnet', 1 => 'Geschlossen']]) === true);
 

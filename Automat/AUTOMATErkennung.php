@@ -104,9 +104,10 @@ class AUTOMATErkennung
         if ($type === 0 && !$action && (preg_match('/motion|presence|occupancy/', $profile) || preg_match(self::MOTION_WORDS, $text))) {
             return 'motion';
         }
-        // Riegel/Schnappverschluss eines Türschlosses sagen „verriegelt“, nicht „offen“ — kein Fenster-/Türkontakt
-        // (live 17.10.2026: „Türschloß (Status Türriegel)“ ließ „Fenster offen Windfang“ dauerhaft absenken).
-        $lockPart = preg_match('/riegel|schnapp|latch|bolt|verriegel/iu', $text) || preg_match('/^DoorLock(Bolt|Latch)/i', (string)($v['ident'] ?? ''));
+        // Riegel, Schnappverschluss und „Türstatus“ eines Türschlosses sagen „verriegelt/entriegelt“, nicht „offen“ —
+        // kein Fenster-/Türkontakt (live 17.10. und 07.11.2026: Windfang wurde bei geschlossener, aber entriegelter bzw.
+        // automatisch verriegelter Haustür abgesenkt).
+        $lockPart = self::isLockState($v) || preg_match('/riegel|schnapp|latch|bolt|verriegel/iu', $text);
         if (($type === 0 || $type === 1) && !$action && !$lockPart
             && (preg_match('/window|door|contact|fenster/', $profile) || preg_match(self::CONTACT_WORDS, $text))) {
             return 'contact';
@@ -147,6 +148,13 @@ class AUTOMATErkennung
      * Ein Türschloss mit „~Lock“ (wahr = Gesperrt) heißt also: gesperrt = zu (Dietmar 17.10.2026, Haustüre #32185).
      * Ohne Beschriftung: Matter „Boolean State“ (wahr = Kontakt = zu), dann Profil „…Reversed“.
      */
+    /** Zustand eines Türschlosses (Riegel, Schnappverschluss, „Türstatus“ der Z-Wave-Schlösser, Profil ~Lock) — kein Kontakt. */
+    public static function isLockState(array $v): bool
+    {
+        return (bool)preg_match('/^DoorLock(Bolt|Latch|Door)State/i', (string)($v['ident'] ?? ''))
+            || (bool)preg_match('/^~lock/i', (string)($v['profile'] ?? ''));
+    }
+
     public static function contactInverted(array $v): bool
     {
         return self::contactPolarity($v) ?? false;
@@ -158,12 +166,6 @@ class AUTOMATErkennung
      */
     public static function contactPolarity(array $v): ?bool
     {
-        // Z-Wave-Türschloss „Türstatus“ (Door Condition) meldet, ob die TÜR auf ist, nicht den Riegel: wahr = offen.
-        // Symcon gibt ihm trotzdem das Profil ~Lock („Entriegelt“/„Gesperrt“) — die Beschriftung führt hier in die Irre.
-        // Live 06.11.2026: Tür um 18:57:33 zu (Kontakt „Geschlossen“), Türstatus in derselben Sekunde auf falsch.
-        if (preg_match('/^DoorLockDoorState$/i', (string)($v['ident'] ?? ''))) {
-            return false;
-        }
         $closed = '/geschlossen|closed|\bzu\b|gesperrt|verriegelt|abgeschlossen|\blocked|gesichert|secured/iu';
         $open = '/offen|geöffnet|open|entsperrt|unlocked|entriegelt|ungesichert|unsecured/iu';
         $cap = [];

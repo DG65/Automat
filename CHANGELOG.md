@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 (Build 61) — 07.11.2026
+
+- Korrektur zu 0.2.2: `DoorLockDoorState` (Z-Wave-Schloss „Türstatus“) meldet das Schloss, nicht die Tür (live 07.11.2026: Tür 13:39:25 zu, 13:39:57 automatisch verriegelt → wahr „Gesperrt“; Windfang wurde bei geschlossener Tür abgesenkt). Sonderregel entfernt, Richtung wieder nach Beschriftung.
+- `AUTOMATErkennung::isLockState()`: Türstatus, Riegel, Schnappverschluss und Profil ~Lock sind keine Kontakte — Entdecken schlägt sie nicht mehr vor; steht einer im Automatismus, warnt der Bearbeiten-Dialog.
+- Live: Türstatus aus „Fenster offen Windfang“ entfernt (Dietmars Auftrag).
+- Prüfstand 734.
+
 ## 0.2.3 (Build 60) — 07.11.2026
 
 - Wiederholung verlorener Schaltbefehle (live 07.11.2026: Flurlicht um 18:13:13 „aus“ geschickt, Z-Wave-Lampe meldete nie zurück, blieb an; Automat hielt sie für aus, und „hell genug“ kam vom eigenen Licht): `checkUnanswered()` wiederholt einen Befehl ohne Wirkung bis zu `MAX_RETRY` = 2-mal (nur frische Befehle ≤ ECHO_S + 60 s, nur Variablen mit Aktion), Protokoll „🔁 … Befehl wiederholt (n von 2)“, danach wie bisher Störung. Sent-Eintrag trägt [4] = Wiederholung.

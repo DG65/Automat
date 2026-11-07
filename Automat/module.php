@@ -84,6 +84,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.4' => [
+            '🚪 Correction: the "door status" of Z-Wave door locks reports the LOCK (locked/unlocked), not whether the door is open — the rule from 0.2.2 was wrong and has been removed. Lock states (bolt, latch, door status) are no longer suggested as window/door contacts; if one is used, the dialog shows a warning.',
+        ],
         '0.2.3' => [
             '🔁 If a device does not respond to a switching command (lost radio command, e.g. Z-Wave), Automat now repeats the command up to twice before reporting a fault. Before, a light could stay on after the follow-up time while Automat believed it was off.',
         ],
@@ -2807,6 +2810,17 @@ class Automat extends IPSModule
         if (!$isNew) {
             $row = $this->rowByUid($uid);
             if ($row !== null) {
+                $locks = [];
+                foreach (AUTOMATKatalog::CONTACT_FIELDS as $cf) {
+                    foreach (AUTOMATKatalog::vars($row, $cf) as $cv) {
+                        if (IPS_VariableExists($cv) && AUTOMATErkennung::isLockState($this->varInfo($cv))) {
+                            $locks[] = $this->varLabel($cv);
+                        }
+                    }
+                }
+                if (count($locks) > 0) {
+                    $el[] = ['type' => 'Label', 'caption' => AUTOMATText::t('⚠️ %s reports the state of a door lock (locked/unlocked), not whether the door is open — an unlocked door is not open. Better use the door contact.', implode(', ', $locks))];
+                }
                 $c = $this->conflicts($row, $uid);
                 if (count($c) === 0) {
                     $el[] = ['type' => 'Label', 'caption' => AUTOMATText::t('✅ No other control of the same devices found (saved state).')];
