@@ -41,6 +41,8 @@ class Automat extends IPSModule
 
     /** Ab so vielen Sekunden Verzug holt eine Gerätemeldung den liegengebliebenen Timer-Durchlauf nach. */
     private const OVERDUE_S = 10;
+    /** So oft wiederholt Automat einen Schaltbefehl, auf den das Gerät nicht reagiert hat. */
+    private const MAX_RETRY = 2;
 
     public function __construct($InstanceID)
     {
@@ -82,6 +84,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.3' => [
+            '🔁 If a device does not respond to a switching command (lost radio command, e.g. Z-Wave), Automat now repeats the command up to twice before reporting a fault. Before, a light could stay on after the follow-up time while Automat believed it was off.',
+        ],
         '0.2.2' => [
             '🚪 Fix: the door status of Z-Wave door locks ("Türstatus"/DoorLockDoorState) reports whether the DOOR is open — "true" = open, despite its lock labels. Before, a closed front door counted as open and "Window open" lowered the heating. A detected direction per contact now also takes precedence over the "true = CLOSED" tick of the row.',
             '⚡ Faster: each text is translated only once per run, and the tile gets its texts only when it is opened.',
@@ -983,7 +988,7 @@ class Automat extends IPSModule
 
     /** Schalten einer Zielvariable; merkt sich den Wert, damit das Echo nicht als Handbedienung zählt. */
     /** $origin: Kennung einer Szene, die schaltet — andere Automatismen sehen das als „zentral“, nicht als Handbedienung. */
-    private function switchVariable(int $vid, $value, string $origin = '', bool $raw = false, string &$why = ''): bool
+    private function switchVariable(int $vid, $value, string $origin = '', bool $raw = false, string &$why = '', int $try = 0): bool
     {
         if (!IPS_VariableExists($vid)) {
             return false;
@@ -998,7 +1003,7 @@ class Automat extends IPSModule
             $list = array_values(array_filter($sent[$vid] ?? [], function ($e) use ($now) {
                 return $now - (int)$e[1] <= self::ECHO_S;
             }));
-            $list[] = [$value, $now, $origin, GetValue($vid)];
+            $list[] = [$value, $now, $origin, GetValue($vid), $try]; // [4] = Wiederholung (checkUnanswered)
             $sent[$vid] = array_slice($list, -6);
             $this->WriteAttributeString('Sent', json_encode($sent));
         } finally {
@@ -1053,6 +1058,7 @@ class Automat extends IPSModule
     {
         $now = $this->now();
         $bad = [];
+        $retry = [];
         $this->lockEnter();
         try {
             $sent = $this->sentMap();
@@ -1069,7 +1075,15 @@ class Automat extends IPSModule
                 }
                 $cur = GetValue((int)$vid);
                 if (!$this->sameValue($cur, $last[0], (int)$vid) && array_key_exists(3, $last) && $this->sameValue($cur, $last[3], (int)$vid)) {
-                    $bad[] = $this->varLabel((int)$vid) . ' → ' . AUTOMATLogik::fmtNum($last[0]);
+                    // Funkbefehl verloren (live 07.11.2026: Flurlicht blieb nach „aus“ an, Z-Wave meldete nichts zurück) —
+                    // bis zu MAX_RETRY-mal wiederholen, erst dann als Störung melden.
+                    $tries = (int)($last[4] ?? 0);
+                    // nur frische Befehle wiederholen — ein Befehl von vor einer Stunde (Timer lag still) wäre nicht mehr gewollt
+                    if ($tries < self::MAX_RETRY && $now - (int)$last[1] <= self::ECHO_S + 60 && HasAction((int)$vid)) {
+                        $retry[] = [(int)$vid, $last[0], (string)($last[2] ?? ''), $tries + 1];
+                    } else {
+                        $bad[] = $this->varLabel((int)$vid) . ' → ' . AUTOMATLogik::fmtNum($last[0]);
+                    }
                 }
             }
             if ($changed) {
@@ -1077,6 +1091,14 @@ class Automat extends IPSModule
             }
         } finally {
             $this->lockLeave();
+        }
+        foreach ($retry as [$vid, $value, $origin, $try]) {
+            $why = '';
+            $this->switchVariable($vid, $value, $origin, false, $why, $try);
+            $this->addLog('', AUTOMATText::t('🔁 %s did not respond — command repeated (%s of %s).', $this->varLabel($vid) . ' → ' . AUTOMATLogik::fmtNum($value), $try, self::MAX_RETRY));
+        }
+        if (count($retry) > 0) {
+            $this->reschedule();
         }
         if (count($bad) > 0) {
             $text = AUTOMATText::t('Device did not respond (value unchanged): %s. Check the radio connection.', implode(', ', $bad));

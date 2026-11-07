@@ -1853,7 +1853,9 @@ $GLOBALS['CLOCK'] += 3600;
 $m->Tick();
 fire($m, 1011, false);
 fire($m, 1011, true);
+(new ReflectionMethod('Automat', 'switchVariable'))->invoke($m, 1001, !GetValue(1001), ''); // sicher ein Schaltversuch, auch wenn das Licht schon an ist
 $GLOBALS['FAIL_RA'] = false;
+$m->attrs['Sent'] = '[]'; // diesen Test-Befehl nicht später wiederholen lassen
 check('Fehlgeschlagenes Schalten → LogMessage KL_WARNING', count(array_filter($m->logged, fn($l) => $l[0] === KL_WARNING)) >= 1, json_encode($m->logged, JSON_UNESCAPED_UNICODE));
 
 heading('C2b. Gedächtnis übersteht Neueinbinden; abgesenktes Thermostat wird beim Start zurückgestellt');
@@ -3002,6 +3004,37 @@ $GLOBALS['CLOCK'] += 25;
 $before = $m->attrs['Protocol'];
 $m->Tick();
 check('… reagiert es, kein Eintrag', $m->attrs['Protocol'] === $before);
+// Verlorener Funkbefehl (live 07.11.2026, Flurlicht blieb an): bis zu zwei Wiederholungen, dann Störung
+mkinst(2300, 'Licht Probe');
+mkvar(2301, VARIABLETYPE_BOOLEAN, true, 'Status', 2300, true, '~Switch');
+$protN = function () use ($m): string { return implode("\n", array_map(fn($e) => $e[2], json_decode($m->attrs['Protocol'] ?? '[]', true) ?: [])); };
+$GLOBALS['FAIL_RA'] = true;
+$sw->invoke($m, 2301, false, '');
+$GLOBALS['CLOCK'] += 25;
+$m->Tick();
+check('Gerät reagiert nicht: Befehl wird wiederholt (1 von 2)', substr_count($protN(), 'Licht Probe / Status → aus hat nicht reagiert — Befehl wiederholt (1 von 2)') === 1, mb_substr($protN(), 0, 600));
+$GLOBALS['CLOCK'] += 25;
+$m->Tick();
+check('… zweite Wiederholung (2 von 2)', substr_count($protN(), 'Licht Probe / Status → aus hat nicht reagiert — Befehl wiederholt (2 von 2)') === 1);
+$GLOBALS['CLOCK'] += 25;
+$m->Tick();
+check('… danach Störung „nicht reagiert“, kein dritter Versuch', substr_count($protN(), 'Befehl wiederholt (3') === 0 && strpos($protN(), 'Gerät hat nicht reagiert (Wert unverändert): Licht Probe / Status') !== false, mb_substr($protN(), 0, 600));
+$GLOBALS['FAIL_RA'] = false;
+$sw->invoke($m, 2301, false, '');
+SetValue(2301, true); // Funkbefehl verloren: Gerät bleibt an
+$GLOBALS['CLOCK'] += 25;
+$m->Tick();
+check('Wiederholung kommt an: Licht aus', GetValue(2301) === false);
+$GLOBALS['CLOCK'] += 25;
+$nVor = substr_count($protN(), 'nicht reagiert');
+$m->Tick();
+check('… und keine Störungsmeldung', substr_count($protN(), 'nicht reagiert') === $nVor);
+$GLOBALS['FAIL_RA'] = true;
+$sw->invoke($m, 2301, true, '');
+$GLOBALS['FAIL_RA'] = false;
+$GLOBALS['CLOCK'] += 3600;
+$m->Tick();
+check('Alter Befehl (Timer lag eine Stunde still) wird nicht mehr wiederholt', GetValue(2301) === false);
 mkinst(1230, 'Jalousie Wohnen');
 mkvar(1231, VARIABLETYPE_INTEGER, 0, 'Position', 1230, true, '~Shutter');
 $rlM = AUTOMATKatalog::defaults('rollladen') + ['Uid' => 'arolm1', 'Name' => 'Jalousien Wohnen', 'Enabled' => true];

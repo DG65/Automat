@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 (Build 60) — 07.11.2026
+
+- Wiederholung verlorener Schaltbefehle (live 07.11.2026: Flurlicht um 18:13:13 „aus“ geschickt, Z-Wave-Lampe meldete nie zurück, blieb an; Automat hielt sie für aus, und „hell genug“ kam vom eigenen Licht): `checkUnanswered()` wiederholt einen Befehl ohne Wirkung bis zu `MAX_RETRY` = 2-mal (nur frische Befehle ≤ ECHO_S + 60 s, nur Variablen mit Aktion), Protokoll „🔁 … Befehl wiederholt (n von 2)“, danach wie bisher Störung. Sent-Eintrag trägt [4] = Wiederholung.
+- Prüfstand 732.
+
 ## 0.2.2 (Build 59) — 05.11.2026
 
 - Übersetzung nach dem Merkliste-Muster (Entscheidung Dietmar über EMS, SUITE.md Stolperstein 24, Vorbild WPModbusHub): `AUTOMATText::mitMerkliste()` fragt jeden Text höchstens einmal je Prozess über `Translate()` und merkt ihn; `mitTabelle()` (eigenes Lesen der locale.json) entfernt — Store: Dateizugriff nur als Ausnahme.
