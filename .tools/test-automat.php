@@ -78,20 +78,26 @@ function IPS_VariableExists($id): bool { return isset($GLOBALS['OBJ'][(int)$id])
 function IPS_GetVariable($id): array
 {
     $o = $GLOBALS['OBJ'][(int)$id];
-    return ['VariableType' => $o['type'], 'VariableProfile' => '', 'VariableCustomProfile' => $o['profile'], 'VariableAction' => $o['action'] ? 12345 : 0, 'VariableCustomAction' => 0, 'VariablePresentation' => [], 'VariableCustomPresentation' => $o['pres']];
+    return ['VariableChanged' => (int)($o['chg'] ?? 0), 'VariableType' => $o['type'], 'VariableProfile' => '', 'VariableCustomProfile' => $o['profile'], 'VariableAction' => $o['action'] ? 12345 : 0, 'VariableCustomAction' => 0, 'VariablePresentation' => [], 'VariableCustomPresentation' => $o['pres']];
 }
 function IPS_GetVariableList(): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['kind'] === 2)); }
 function IPS_GetInstanceList(): array { return array_keys(array_filter($GLOBALS['OBJ'], fn($o) => $o['kind'] === 1)); }
 function GetValue($id) { return $GLOBALS['OBJ'][(int)$id]['value']; }
-function SetValue($id, $v): bool { if (!empty($GLOBALS['OBJ'][(int)$id]['ro'])) { trigger_error('Variable is marked as read-only and cannot be changed', E_USER_WARNING); return false; } $GLOBALS['OBJ'][(int)$id]['value'] = $v; $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'SetValue']; return true; }
+function SetValue($id, $v): bool { if (!empty($GLOBALS['OBJ'][(int)$id]['ro'])) { trigger_error('Variable is marked as read-only and cannot be changed', E_USER_WARNING); return false; } if (($GLOBALS['OBJ'][(int)$id]['value'] ?? null) !== $v) { $GLOBALS['OBJ'][(int)$id]['chg'] = $GLOBALS['CLOCK']; } $GLOBALS['OBJ'][(int)$id]['value'] = $v; $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'SetValue']; return true; }
 function HasAction($id): bool { return (bool)$GLOBALS['OBJ'][(int)$id]['action']; }
 function RequestAction($id, $v): bool
 {
     if (!empty($GLOBALS['FAIL_RA'])) {
         return false;
     }
+    if (!empty($GLOBALS['LOST_RA'])) {
+        return true; // Funkbefehl verloren: Symcon meldet Erfolg, das Gerät tut nichts
+    }
     // Alten Wert merken: die spätere Gerätemeldung (fire) meldet die Änderung von diesem Wert aus
     $GLOBALS['PENDING'][(int)$id] = $GLOBALS['OBJ'][(int)$id]['value'] ?? null;
+    if (($GLOBALS['OBJ'][(int)$id]['value'] ?? null) !== $v) {
+        $GLOBALS['OBJ'][(int)$id]['chg'] = $GLOBALS['CLOCK'];
+    }
     $GLOBALS['OBJ'][(int)$id]['value'] = $v;
     $GLOBALS['WRITES'][] = [$GLOBALS['CLOCK'], (int)$id, $v, 'RequestAction'];
     return true;
@@ -1781,7 +1787,7 @@ check('Statusvariable zeigt Bereitschaft', strpos((string)GetValue(IPS_GetObject
 
 heading('C2. Ablauf über Nachrichten und Timer');
 // Wie Symcon: [Wert, geändert, alter Wert, Zeit] — „geändert“ nur, wenn sich der Wert wirklich ändert
-function fire(Automat $m, int $vid, $v): void { $old = array_key_exists($vid, $GLOBALS['PENDING'] ?? []) ? $GLOBALS['PENDING'][$vid] : ($GLOBALS['OBJ'][$vid]['value'] ?? null); unset($GLOBALS['PENDING'][$vid]); $GLOBALS['OBJ'][$vid]['value'] = $v; $m->MessageSink($GLOBALS['CLOCK'], $vid, VM_UPDATE, [$v, $old !== $v, $old, $GLOBALS['CLOCK']]); }
+function fire(Automat $m, int $vid, $v): void { $old = array_key_exists($vid, $GLOBALS['PENDING'] ?? []) ? $GLOBALS['PENDING'][$vid] : ($GLOBALS['OBJ'][$vid]['value'] ?? null); unset($GLOBALS['PENDING'][$vid]); if (($GLOBALS['OBJ'][$vid]['value'] ?? null) !== $v) { $GLOBALS['OBJ'][$vid]['chg'] = $GLOBALS['CLOCK']; } $GLOBALS['OBJ'][$vid]['value'] = $v; $m->MessageSink($GLOBALS['CLOCK'], $vid, VM_UPDATE, [$v, $old !== $v, $old, $GLOBALS['CLOCK']]); }
 $GLOBALS['WRITES'] = [];
 fire($m, 1011, true);
 check('Bewegung → RequestAction auf das Licht', count($GLOBALS['WRITES']) === 1 && $GLOBALS['WRITES'][0][1] === 1001 && $GLOBALS['WRITES'][0][2] === true && $GLOBALS['WRITES'][0][3] === 'RequestAction');
@@ -3025,8 +3031,10 @@ $GLOBALS['CLOCK'] += 25;
 $m->Tick();
 check('… danach Störung „nicht reagiert“, kein dritter Versuch', substr_count($protN(), 'Befehl wiederholt (3') === 0 && strpos($protN(), 'Gerät hat nicht reagiert (Wert unverändert): Licht Probe / Status') !== false, mb_substr($protN(), 0, 600));
 $GLOBALS['FAIL_RA'] = false;
-$sw->invoke($m, 2301, false, '');
-SetValue(2301, true); // Funkbefehl verloren: Gerät bleibt an
+$GLOBALS['CLOCK'] += 5;
+$GLOBALS['LOST_RA'] = true;
+$sw->invoke($m, 2301, false, ''); // Funkbefehl verloren: Gerät bleibt an
+$GLOBALS['LOST_RA'] = false;
 $GLOBALS['CLOCK'] += 25;
 $m->Tick();
 check('Wiederholung kommt an: Licht aus', GetValue(2301) === false);
@@ -3034,6 +3042,15 @@ $GLOBALS['CLOCK'] += 25;
 $nVor = substr_count($protN(), 'nicht reagiert');
 $m->Tick();
 check('… und keine Störungsmeldung', substr_count($protN(), 'nicht reagiert') === $nVor);
+// Live 15.11.2026 (Küche): Licht geht an, Gerät bestätigt, Nutzer schaltet 5 s später von Hand aus → kein „wiederholt“
+$GLOBALS['CLOCK'] += 30;
+$sw->invoke($m, 2301, true, '');
+$GLOBALS['CLOCK'] += 5;
+fire($m, 2301, false); // von Hand aus
+$nVor = substr_count($protN(), 'Licht Probe / Status → an hat nicht reagiert');
+$GLOBALS['CLOCK'] += 20;
+$m->Tick();
+check('Von Hand ausgeschaltet nach bestätigtem Einschalten: kein Wiederholen, keine Störung', GetValue(2301) === false && substr_count($protN(), 'Licht Probe / Status → an hat nicht reagiert') === $nVor, mb_substr($protN(), 0, 300));
 $GLOBALS['FAIL_RA'] = true;
 $sw->invoke($m, 2301, true, '');
 $GLOBALS['FAIL_RA'] = false;

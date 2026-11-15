@@ -90,6 +90,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.7' => [
+            '🔁 Fix: a light switched off by hand shortly after Automat switched it on was switched on again (the repeat for lost radio commands took the manual operation for a lost command). Automat now only repeats a command if the device did not react at all.',
+        ],
         '0.2.6' => [
             '⏱ Self-monitoring: if the timer of Automat stops running (Symcon lost it after overload), Automat reports it once in the log, as a warning in the Symcon log, in the form and — if faults are reported — as a notification.',
             '🔁 "Reset sensors" is honest now: variables of device instances (write-protected by Symcon 9) are skipped and named, each sensor is tried at most once per report, and a failed reset no longer counts as done. Discover only suggests it for writable sensors.',
@@ -1145,6 +1148,11 @@ class Automat extends IPSModule
                     continue;
                 }
                 $cur = GetValue((int)$vid);
+                // Hat sich der Wert seit dem Befehl überhaupt geändert, hat das Gerät reagiert — steht er jetzt wieder wie
+                // vorher, war das jemand von Hand (live 15.11.2026: Küchenlicht von Hand aus, 17 s später „wiederholt“ an).
+                if ((int)(IPS_GetVariable((int)$vid)['VariableChanged'] ?? 0) >= (int)$last[1]) {
+                    continue;
+                }
                 if (!$this->sameValue($cur, $last[0], (int)$vid) && array_key_exists(3, $last) && $this->sameValue($cur, $last[3], (int)$vid)) {
                     // Funkbefehl verloren (live 07.11.2026: Flurlicht blieb nach „aus“ an, Z-Wave meldete nichts zurück) —
                     // bis zu MAX_RETRY-mal wiederholen, erst dann als Störung melden.

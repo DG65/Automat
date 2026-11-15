@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.7 (Build 64) — 15.11.2026
+
+- Fix zu 0.2.3 (live 15.11.2026, Küche: 22:18:01 Bewegung → an, bestätigt; 22:18:06 von Hand aus; 22:18:23 „🔁 … an wiederholt“): `checkUnanswered()` wiederholt und meldet nur noch, wenn sich der Wert seit dem Befehl gar nicht geändert hat (`VariableChanged` < Befehlszeit). Steht der Wert wieder wie vorher, nachdem das Gerät reagiert hat, war es Handbedienung.
+- Prüfstand: `VariableChanged` im Nachbau, Funkverlust als `LOST_RA`; Küchen-Fall als Prüfung (Gegenprobe ohne Fix schlägt fehl). 757 Prüfungen.
+
 ## 0.2.6 (Build 63) — 15.11.2026
 
 - Selbstüberwachung des Timers (Anlass 05.11.2026): `Tick()` schreibt `TimerRan` (nicht beim Sicherheitsnetz-Aufruf, `$netCall`), `reschedule()` schreibt `TimerDue`. `checkTimerStall()` in `MessageSink`: Timer `STALL_S` = 120 s über fällig → einmalig Protokoll, `LogMessage` KL_WARNING, Formular-Hinweis, Meldung bei `cfg_NotifyFaults`; läuft er wieder → „läuft wieder“.
