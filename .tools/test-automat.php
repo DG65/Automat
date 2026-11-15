@@ -99,7 +99,7 @@ function RequestAction($id, $v): bool
 function IPS_GetObject(int $id): array
 {
     $o = $GLOBALS['OBJ'][$id];
-    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden'], 'ObjectPosition' => $o['pos'] ?? 0, 'ObjectType' => [1 => 1, 2 => 2, 3 => 3, 4 => 4][$o['kind']] ?? 0];
+    return ['ObjectIdent' => $o['ident'], 'ObjectName' => $o['name'], 'ParentID' => $o['parent'], 'ObjectIsHidden' => $o['hidden'], 'ObjectIsReadOnly' => (bool)($o['ro'] ?? false), 'ObjectPosition' => $o['pos'] ?? 0, 'ObjectType' => [1 => 1, 2 => 2, 3 => 3, 4 => 4][$o['kind']] ?? 0];
 }
 function IPS_GetObjectIDByIdent(string $ident, int $parent)
 {
@@ -209,6 +209,8 @@ require dirname(__DIR__) . '/Automat/module.php';
 // Prüfstand läuft auf Deutsch: Übersetzungstabelle aus Automat/locale.json (php .tools/locale-bauen.php).
 $GLOBALS['DE'] = json_decode((string)file_get_contents(dirname(__DIR__) . '/Automat/locale.json'), true)['translations']['de'] ?? [];
 AUTOMATText::setzen(function (string $t): string { return $GLOBALS['DE'][$t] ?? $t; });
+// Die Prüfungen lesen das Formular, wie der Nutzer es sieht (voll übersetzt); Block H prüft die Konsolen-Variante.
+AUTOMATText::$formModeAllowed = false;
 // Der Prüfstand arbeitet mit Kurz-IDs (100, 1001 …); echte Symcon-IDs sind fünfstellig. Block A9 prüft die echte Grenze.
 AUTOMATKatalog::$minId = 1;
 
@@ -3078,9 +3080,32 @@ check('… im Protokoll vermerkt', strpos(json_encode(json_decode((string)$m->at
 fire($m, 1243, true);
 $GLOBALS['CLOCK'] += 61;
 $m->Tick();
-check('Gesperrte Variable („Variablen sperren“): klarer Hinweis, was zu tun ist', GetValue(1243) === true && strpos((string)$m->attrs['Protocol'], 'Variablen sperren') !== false, mb_substr((string)$m->attrs['Protocol'], 0, 400));
+$mrStat = (string)GetValue(IPS_GetObjectIDByIdent('s_amrst1', 12345));
+check('Schreibgeschützte Gerätevariable (Symcon 9, live 07.11.2026): kein Versuch, Status nennt sie', GetValue(1243) === true && strpos($mrStat, 'schreibgeschützt, ausgelassen') !== false && strpos((string)$m->attrs['Protocol'], 'Variablen sperren') === false, $mrStat . ' / ' . mb_substr((string)$m->attrs['Protocol'], 0, 300));
 $GLOBALS['OBJ'][1243]['ro'] = false;
 SetValue(1243, false);
+// Logik: Zurücksetzen schlägt fehl (Melder bleibt „wahr“ ohne neue Meldung) → nicht endlos wiederholen, nicht als Erfolg zählen
+$mrL = array_merge(AUTOMATKatalog::defaults('ruecksetzen'), ['Uid' => 'amrl1', 'Enabled' => true, 'mr_mel1' => 1241]);
+$mrSt = [];
+$t0 = $GLOBALS['CLOCK'];
+$r = step($mrL, $mrSt, ['k' => 'tick'], ['val' => [1241 => true], 'upd' => [1241 => $t0 - 70], 'names' => [1241 => 'Sensor HWR']]);
+check('Melder 70 s auf „wahr“: Zurücksetzen wird geschickt', ($r['cmd'][0] ?? null) === [1241, false]);
+$GLOBALS['CLOCK'] += 20;
+$r = step($mrL, $mrSt, ['k' => 'tick'], ['val' => [1241 => true], 'upd' => [1241 => $t0 - 70], 'names' => [1241 => 'Sensor HWR']]);
+check('… steht danach unverändert auf „wahr“: kein zweiter Versuch (live 07.11.2026: alle 20 s)', ($r['cmd'] ?? []) === []);
+check('… Status meldet das ehrlich und zählt es nicht als Erfolg', strpos($r['status'], 'Ließ sich nicht zurücksetzen') !== false && strpos($r['status'], 'zurückgesetzt (') === false, $r['status']);
+$GLOBALS['CLOCK'] += 5;
+$r = step($mrL, $mrSt, ['k' => 'trigger', 'vid' => 1241, 'v' => true], ['val' => [1241 => true], 'upd' => [1241 => $GLOBALS['CLOCK']], 'names' => [1241 => 'Sensor HWR']]);
+$GLOBALS['CLOCK'] += 61;
+$r = step($mrL, $mrSt, ['k' => 'tick'], ['val' => [1241 => true], 'upd' => [1241 => $GLOBALS['CLOCK'] - 61], 'names' => [1241 => 'Sensor HWR']]);
+check('Neue Meldung: danach darf es wieder einen Versuch geben', ($r['cmd'][0] ?? null) === [1241, false]);
+$r = step($mrL, $mrSt, ['k' => 'tick'], ['val' => [1241 => true], 'upd' => [1241 => $GLOBALS['CLOCK']], 'names' => [1241 => 'Sensor HWR'], 'ro' => [1241 => true]]);
+check('Nur schreibgeschützte Melder: „Nicht möglich“ statt Versuch', ($r['cmd'] ?? []) === [] && strpos($r['status'], 'Nicht möglich') !== false, $r['status']);
+// Entdecken schlägt „Melder zurücksetzen“ nur für beschreibbare Melder vor
+$mrIt = ['vid' => 1241, 'type' => 0, 'action' => false, 'profile' => '~Motion', 'pres' => [], 'suffix' => '', 'assoc' => [], 'name' => 'Bewegung', 'inst' => 'Sensor HWR', 'ident' => 'Motion', 'room' => 'HWR', 'module' => '', 'ro' => true];
+$mrIt['role'] = AUTOMATErkennung::role($mrIt);
+$mrSug = array_filter(AUTOMATErkennung::suggest([$mrIt], [], []), fn($s) => ($s['type'] ?? '') === 'ruecksetzen');
+check('Entdecken: kein „Melder zurücksetzen“ für schreibgeschützte Gerätevariablen', count($mrSug) === 0);
 check('Nie verschachtelt gesperrt, am Ende alles freigegeben', ($GLOBALS['SEMMAX'] ?? 0) === 1 && array_sum($GLOBALS['SEM'] ?? []) === 0, json_encode([$GLOBALS['SEMMAX'] ?? null, $GLOBALS['SEM'] ?? null]));
 
 $src = file_get_contents(dirname(__DIR__) . '/Automat/module.php');

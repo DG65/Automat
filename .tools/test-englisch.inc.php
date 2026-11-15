@@ -152,6 +152,26 @@ $enM->attrs['Due'] = json_encode(['xyz' => $GLOBALS['CLOCK'] + 60]);
 $enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
 check('Frist in der Zukunft: Meldung ohne Bezug löst keinen Durchlauf aus', count($enM->tileUpdates) === $fN);
 
+// Selbstüberwachung: Timer verloren (live 05.11.2026)
+$fP = function () use ($enM): string { return implode("\n", array_map(fn($e) => $e[2], json_decode($enM->attrs['Protocol'] ?? '[]', true) ?: [])); };
+$enM->attrs['TimerDue'] = $GLOBALS['CLOCK'] - 300;
+$enM->attrs['TimerRan'] = $GLOBALS['CLOCK'] - 400;
+$enM->attrs['TimerStall'] = 0;
+$enM->attrs['Due'] = '{}';
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('Timer seit 5 min überfällig: Störung im Protokoll und als Warnung im Symcon-Log', $enM->attrs['TimerStall'] > 0 && strpos($fP(), 'Zeitgeber von Automat ist seit 5 min nicht gelaufen') !== false && count(array_filter($enM->logged, fn($l) => $l[0] === KL_WARNING && strpos($l[1], 'Zeitgeber') !== false)) >= 1);
+$fN = substr_count($fP(), 'nicht gelaufen');
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('… nur einmal gemeldet, nicht bei jeder Gerätemeldung', substr_count($fP(), 'nicht gelaufen') === $fN);
+check('… Formular zeigt den Hinweis', strpos(json_encode(json_decode($enM->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE), 'Zeitgeber läuft seit') !== false);
+$enM->attrs['Due'] = json_encode(['xyz' => $GLOBALS['CLOCK'] - 60]);
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('Sicherheitsnetz-Durchlauf zählt nicht als „Timer läuft“', $enM->attrs['TimerStall'] > 0);
+$GLOBALS['CLOCK'] += 5;
+$enM->Tick();
+$enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
+check('Timer läuft wieder: vermerkt, Hinweis weg', $enM->attrs['TimerStall'] === 0 && strpos($fP(), 'Der Zeitgeber läuft wieder') !== false);
+
 heading('G. Variablen wiederfinden, wenn das Gerät neu angelegt wurde (live 15.11.2026)');
 $gFp = ['id' => 13879, 'type' => 0, 'ident' => 'BooleanState_State', 'name' => 'Windfang Haustür', 'inst' => 'Windfang Haustür', 'folder' => 'Öffnungskontakte', 'profile' => ''];
 $gC = [
@@ -190,3 +210,51 @@ check('… Konfiguration wird NICHT selbst geschrieben (Store-Review), Formular 
 $enM->props['Automations'] = json_encode([array_merge($gRow, ['wa_var' => 2411])]);
 $enM->ApplyChanges();
 check('Nach „Übernehmen“: Ersatz-Zuordnung aufgeräumt', json_decode($enM->attrs['Relink'], true) === []);
+
+heading('H. Formular übersetzt die Konsole (Store-Punkt 25)');
+// Die Konsole ersetzt Texte, die genau in locale.json stehen. Nachgestellt: Formular im Formular-Modus bauen, dann wie die Konsole
+// übersetzen — das Ergebnis muss Zeichen für Zeichen der Vollübersetzung entsprechen (sonst bliebe Englisch stehen).
+$hKonsole = function ($x) use (&$hKonsole) {
+    if (is_array($x)) {
+        foreach ($x as $k => $v) {
+            if (is_string($v) && in_array($k, ['caption', 'label', 'confirm', 'placeholder'], true) && isset($GLOBALS['DE'][$v])) {
+                $x[$k] = $GLOBALS['DE'][$v];
+            } elseif (is_array($v)) {
+                $x[$k] = $hKonsole($v);
+            }
+        }
+    }
+    return $x;
+};
+$hDiff = function ($a, $b, $p = '') use (&$hDiff): array {
+    if (!is_array($a) || !is_array($b)) {
+        $k = (string)substr((string)strrchr($p, '/'), 1);
+        if (!in_array($k, ['caption', 'label', 'confirm', 'placeholder'], true)) {
+            return []; // nur Beschriftungen vergleichen (Kennungen neuer Zeilen sind zufällig)
+        }
+        return $a === $b ? [] : [$p . ': „' . mb_substr((string)json_encode($b, JSON_UNESCAPED_UNICODE), 0, 90) . '“ statt „' . mb_substr((string)json_encode($a, JSON_UNESCAPED_UNICODE), 0, 90) . '“'];
+    }
+    $o = [];
+    foreach (array_unique(array_merge(array_keys($a), array_keys($b))) as $k) {
+        $o = array_merge($o, $hDiff($a[$k] ?? null, $b[$k] ?? null, $p . '/' . $k));
+    }
+    return $o;
+};
+$hVergleich = function (callable $bau) use ($hKonsole, $hDiff): array {
+    AUTOMATText::$formModeAllowed = false;
+    $voll = json_decode($bau(), true);
+    AUTOMATText::$formModeAllowed = true;
+    $konsole = $hKonsole(json_decode($bau(), true));
+    return $hDiff($voll, $konsole);
+};
+$hD = $hVergleich(fn() => $enM->GetConfigurationForm());
+check('Hauptformular: Konsolen-Übersetzung = Vollübersetzung', $hD === [], count($hD) . ': ' . implode(' | ', array_slice($hD, 0, 6)));
+$hDD = [];
+foreach (array_keys(AUTOMATKatalog::TYPES) as $hT) {
+    $hDD = array_merge($hDD, array_map(fn($x) => $hT . $x, $hVergleich(fn() => $enM->UIEditForm('', $hT))));
+}
+check('Alle Bearbeiten-Dialoge: Konsolen-Übersetzung = Vollübersetzung', $hDD === [], count($hDD) . ': ' . implode(' | ', array_slice($hDD, 0, 6)));
+AUTOMATText::$formModeAllowed = true;
+$hRoh = json_encode(json_decode($enM->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
+check('Feste Texte gehen englisch an die Konsole (z. B. „⚙️  Automations“), zusammengesetzte übersetzt', strpos($hRoh, '"⚙️  Automations"') !== false && strpos($hRoh, 'Hausmodus (aktuell:') !== false);
+AUTOMATText::$formModeAllowed = false;

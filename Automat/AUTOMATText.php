@@ -17,6 +17,50 @@ final class AUTOMATText
     /** @var callable|null fn(string): string */
     private static $uebersetzer = null;
 
+    /**
+     * Formular für die Konsole (Store-Punkt 25: „Das Formular übersetzt die Konsole selbst“). Automat baut das Formular
+     * wie immer fertig übersetzt und merkt sich dabei jede Übersetzung eines festen Texts. Danach steht in jeder
+     * Beschriftung, die genau so eine Übersetzung ist, wieder der englische Quelltext — die Konsole übersetzt ihn über
+     * locale.json zurück. Zusammengesetzte Texte (mit Werten) bleiben übersetzt, die findet die Konsole nicht.
+     * Ergebnis: dieselbe Anzeige, aber feste Texte übersetzt die Konsole (Prüfstand H vergleicht beides).
+     */
+    public static $formModeAllowed = true;
+    /** @var array<string,string>|null übersetzt → englischer Quelltext, während ein Formular gebaut wird */
+    private static $rueck = null;
+
+    public static function forForm(callable $fn): string
+    {
+        $vorher = self::$rueck;
+        self::$rueck = [];
+        try {
+            $json = (string)$fn();
+            $rueck = self::$rueck;
+        } finally {
+            self::$rueck = $vorher;
+        }
+        if (!self::$formModeAllowed || $rueck === []) {
+            return $json;
+        }
+        $form = json_decode($json, true);
+        if (!is_array($form)) {
+            return $json;
+        }
+        $walk = function ($x) use (&$walk, $rueck) {
+            if (!is_array($x)) {
+                return $x;
+            }
+            foreach ($x as $k => $v) {
+                if (is_string($v) && in_array($k, ['caption', 'label', 'confirm', 'placeholder'], true) && isset($rueck[$v])) {
+                    $x[$k] = $rueck[$v];
+                } elseif (is_array($v)) {
+                    $x[$k] = $walk($v);
+                }
+            }
+            return $x;
+        };
+        return (string)json_encode($walk($form));
+    }
+
     /** @var array<string,string> gemerkte Übersetzungen */
     private static $gemerkt = [];
     /** @var int für den Prüfstand: wie oft wurde Symcon wirklich gefragt */
@@ -54,6 +98,9 @@ final class AUTOMATText
     {
         $uebersetzt = self::$uebersetzer !== null ? (string)(self::$uebersetzer)($text) : $text;
         if ($args === []) {
+            if (self::$rueck !== null && $uebersetzt !== $text) {
+                self::$rueck[$uebersetzt] = $text; // für forForm(): diese Beschriftung kann die Konsole selbst übersetzen
+            }
             return $uebersetzt;
         }
         $aus = @vsprintf($uebersetzt, array_map(function ($a) {

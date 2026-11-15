@@ -610,7 +610,10 @@ class AUTOMATErkennung
             $add('gehen', '', AUTOMATText::t('Leaving check'), $row, AUTOMATText::t('%1$s window/door contact(s) found (%2$s) — on change to "Away"/"Holiday" it reports what is still open', count($gk), $labels($gk, 4)), array_column($gk, 'vid'));
         }
         // Melder zurücksetzen: alle Bewegungsmelder in einem Automatismus (Absicherung gegen verlorene „keine Bewegung“)
-        $mot = $byR('motion');
+        // Nur beschreibbare Melder: Variablen von Geräte-Instanzen schützt Symcon 9 gegen SetValue (live 07.11.2026)
+        $mot = array_values(array_filter($byR('motion'), function ($it) {
+            return empty($it['ro']);
+        }));
         if (count($mot) > 0) {
             $row = AUTOMATKatalog::defaults('ruecksetzen');
             $row['Name'] = AUTOMATText::t('Reset sensors');

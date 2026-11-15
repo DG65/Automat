@@ -2348,8 +2348,9 @@ class AUTOMATLogik
         $now = (int)$ctx['now'];
         $mel = AUTOMATKatalog::vars($row, 'mr_mel');
         $halt = max(5, (int)($row['mr_halt'] ?? 60));
-        $st += ['t' => [], 'hist' => []];
+        $st += ['t' => [], 'hist' => [], 'tried' => [], 'fail' => []];
         $res['raw'] = true; // Sensorvariablen haben keine Aktion — direkt setzen
+        $ro = array_keys(array_filter((array)($ctx['ro'] ?? [])));
         $vid = (int)($ev['vid'] ?? 0);
         if (($ev['k'] ?? '') === 'trigger' && in_array($vid, $mel, true)) {
             if (self::isTrue($ev['v'] ?? false)) {
@@ -2360,12 +2361,31 @@ class AUTOMATLogik
         }
         foreach ($mel as $m) {
             $on = self::isTrue($ctx['val'][$m] ?? false);
-            if ($on && !isset($st['t'][(string)$m])) {
-                // Steht schon auf „wahr“ (erster Lauf, Neustart): letzte Meldung als Beginn
-                $st['t'][(string)$m] = (int)($ctx['upd'][$m] ?? $now);
-            } elseif (!$on) {
-                unset($st['t'][(string)$m]);
+            $upd = (int)($ctx['upd'][$m] ?? $now);
+            $tried = $st['tried'][(string)$m] ?? null;
+            if (!$on) {
+                unset($st['t'][(string)$m], $st['tried'][(string)$m], $st['fail'][(string)$m]);
+                continue;
             }
+            if ($tried !== null && (int)$tried === $upd) {
+                // Schon einmal zurückgesetzt, Melder steht trotzdem noch auf „wahr“ ohne neue Meldung: hat nicht geklappt.
+                // Nicht endlos wiederholen (live 07.11.2026: alle 20 s ein Fehlversuch) und nicht als Erfolg zählen.
+                if (!isset($st['fail'][(string)$m])) {
+                    $st['fail'][(string)$m] = $now;
+                    $st['hist'] = array_values(array_filter((array)$st['hist'], function ($h) use ($m, $upd) {
+                        return !((int)$h[1] === $m && (int)$h[0] >= $upd);
+                    }));
+                }
+                unset($st['t'][(string)$m]);
+                continue;
+            }
+            if (!isset($st['t'][(string)$m])) {
+                // Steht schon auf „wahr“ (erster Lauf, Neustart): letzte Meldung als Beginn
+                $st['t'][(string)$m] = $upd;
+            }
+        }
+        foreach ($ro as $m) {
+            unset($st['t'][(string)$m]);
         }
         $hard = self::hardBlock($ctx);
         $done = [];
@@ -2375,6 +2395,7 @@ class AUTOMATLogik
                     $res['cmd'][] = [(int)$k, false];
                     $done[] = self::nameOf((int)$k, $ctx);
                     $st['hist'][] = [$now, (int)$k];
+                    $st['tried'][(string)$k] = (int)($ctx['upd'][(int)$k] ?? (int)$t);
                     unset($st['t'][$k]);
                 }
             }
@@ -2401,9 +2422,19 @@ class AUTOMATLogik
         }
         arsort($per);
         $top = array_slice($per, 0, 3, true);
+        $roNames = array_map(function ($m) use ($ctx) {
+            return self::nameOf((int)$m, $ctx);
+        }, array_values(array_intersect($ro, $mel)));
+        $failNames = array_map(function ($m) use ($ctx) {
+            return self::nameOf((int)$m, $ctx);
+        }, array_keys((array)$st['fail']));
         $res['status'] = $hard !== '' ? self::hardStatus($hard)
+            : (count($roNames) > 0 && count($roNames) === count($mel)
+                ? AUTOMATText::t('⛔ Not possible: Symcon protects these device variables against writing (%s) — remove them; use the sensor setting on the device instead', implode(', ', $roNames))
+            : (count($failNames) > 0 ? AUTOMATText::t('⚠️ Could not be reset (still "true"): %s', implode(', ', $failNames))
             : (count($st['t']) > 0 ? AUTOMATText::t('⏳ %s sensor(s) at "true" — reset at %s if no new report arrives', count($st['t']), date('H:i:s', (int)$next))
-                : AUTOMATText::t('✅ All sensors quiet'))
+                : AUTOMATText::t('✅ All sensors quiet'))))
+            . (count($roNames) > 0 && count($roNames) < count($mel) ? AUTOMATText::t(' · write-protected, skipped: %s', implode(', ', $roNames)) : '')
             . ($cnt > 0 ? AUTOMATText::t(' · reset %s× in 7 days (%s)', $cnt, implode(', ', array_map(function ($n, $c) {
                 return $n . ' ' . $c . '×';
             }, array_keys($top), $top))) : '');

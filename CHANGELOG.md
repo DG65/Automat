@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.6 (Build 63) — 15.11.2026
+
+- Selbstüberwachung des Timers (Anlass 05.11.2026): `Tick()` schreibt `TimerRan` (nicht beim Sicherheitsnetz-Aufruf, `$netCall`), `reschedule()` schreibt `TimerDue`. `checkTimerStall()` in `MessageSink`: Timer `STALL_S` = 120 s über fällig → einmalig Protokoll, `LogMessage` KL_WARNING, Formular-Hinweis, Meldung bei `cfg_NotifyFaults`; läuft er wieder → „läuft wieder“.
+- „Melder zurücksetzen“ ehrlich (Anlass 07.11.2026): `ctx['ro']` aus `ObjectIsReadOnly` (Symcon 9 schützt Gerätevariablen unabhängig von „Variablen sperren“) → kein Versuch, Status nennt sie bzw. „⛔ Nicht möglich“; je Melder höchstens ein Versuch je Meldung (`tried` = VariableUpdated), Fehlschlag (`fail`) zählt nicht in der Statistik; Entdecken schlägt die Art nur für beschreibbare Melder vor (Item `ro`).
+- Store-Punkt 25: `AUTOMATText::forForm()` — Formular und Dialoge werden fertig übersetzt gebaut, danach stehen in Beschriftungen, die genau eine Übersetzung sind, wieder die englischen Quelltexte (die Konsole übersetzt zurück); zusammengesetzte Texte bleiben übersetzt. Prüfblock H stellt die Konsolen-Übersetzung nach und vergleicht mit der Vollübersetzung (Hauptformular und alle 21 Dialoge identisch).
+- Prüfstand 756.
+
 ## 0.2.5 (Build 62) — 15.11.2026
 
 - Variablen wiederfinden (live 15.11.2026: Matter-Kontakte am 09.11. als „Composite Device“ neu angelernt, alle IDs neu, Ident `BooleanState_State` → `E1_BooleanState_State`, „Windfang Haustür“ → „Windfang Haustüre“; elf Automatismen „Variable existiert nicht mehr“): Attribut `VarPrints` (Typ, Ident, Name, Gerät, Ordner, Profil je benutzter Variable), `relink()` in ApplyChanges und alle `RELINK_S` = 600 s im Tick. `AUTOMATErkennung::findSuccessor()`: gleicher Typ + Ident-Kern (ohne `E<n>_`) + ähnlicher Gerätename (≤ 2 Zeichen Unterschied), Punkte für gleichen Ordner/Namen/Profil. Eindeutig → `Relink` (wirkt über `rows()`, Protokoll „🔗“, Formular bietet die neue ID zum Übernehmen an; Konfiguration schreibt Automat nie selbst). Mehrdeutig → `RelinkAsk`, Hinweis mit Kandidaten im Formular.

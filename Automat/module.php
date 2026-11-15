@@ -43,6 +43,10 @@ class Automat extends IPSModule
     private const OVERDUE_S = 10;
     /** So oft wiederholt Automat einen Schaltbefehl, auf den das Gerät nicht reagiert hat. */
     private const MAX_RETRY = 2;
+    /** So lange (s) darf der Timer über seine Fälligkeit hinaus schweigen, bevor Automat eine Störung meldet. */
+    private const STALL_S = 120;
+    /** Tick wurde vom Sicherheitsnetz aufgerufen, nicht vom Timer (zählt nicht als „Timer läuft“). */
+    private $netCall = false;
     /** So oft (s) prüft der Timer, ob benutzte Variablen verschwunden sind (Gerät neu angelegt). */
     private const RELINK_S = 600;
 
@@ -86,6 +90,11 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.6' => [
+            '⏱ Self-monitoring: if the timer of Automat stops running (Symcon lost it after overload), Automat reports it once in the log, as a warning in the Symcon log, in the form and — if faults are reported — as a notification.',
+            '🔁 "Reset sensors" is honest now: variables of device instances (write-protected by Symcon 9) are skipped and named, each sensor is tried at most once per report, and a failed reset no longer counts as done. Discover only suggests it for writable sensors.',
+            '🌍 Fixed texts in the form are now translated by the console itself (Store guideline); what you see stays the same.',
+        ],
         '0.2.5' => [
             '🔗 If a device is created anew (e.g. Matter contacts re-paired, Z-Wave re-included), Automat now finds its new variable by name, folder and ident and reconnects it; if that is not unique, the form asks. "Apply changes" saves the new assignment.',
         ],
@@ -278,6 +287,9 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('Relink', '{}');
         $this->RegisterAttributeString('RelinkAsk', '{}');
         $this->RegisterAttributeInteger('RelinkChecked', 0);
+        $this->RegisterAttributeInteger('TimerDue', 0);
+        $this->RegisterAttributeInteger('TimerRan', 0);
+        $this->RegisterAttributeInteger('TimerStall', 0);
         $this->RegisterAttributeInteger('ModeKnown', -1);
         $this->RegisterAttributeString('MelStats', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
@@ -490,11 +502,44 @@ class Automat extends IPSModule
         // Sicherheitsnetz: Hat Symcon den Timer liegen lassen (live 05.11.2026: „Tick“ stundenlang überfällig, Lichter
         // gingen nicht aus), holt die nächste Gerätemeldung den fälligen Durchlauf nach.
         $now = $this->now();
+        $this->checkTimerStall($now);
         foreach ($this->attrMap('Due') as $ts) {
             if ((int)$ts > 0 && (int)$ts < $now - self::OVERDUE_S) {
                 $this->SendDebug('Tick', 'Frist seit ' . ($now - (int)$ts) . ' s überfällig — Durchlauf nachgeholt', 0);
-                $this->Tick();
+                $this->netCall = true;
+                try {
+                    $this->Tick();
+                } finally {
+                    $this->netCall = false;
+                }
                 break;
+            }
+        }
+    }
+
+    /**
+     * Selbstüberwachung: Läuft der Timer nicht mehr, obwohl er längst fällig war (live 05.11.2026: Symcon hatte ihn nach
+     * Überlast verloren, nur ein Dienst-Neustart half), steht das im Protokoll und — wenn gewünscht — als Störung in
+     * den Meldungen. Läuft er wieder, wird das ebenfalls vermerkt.
+     */
+    private function checkTimerStall(int $now): void
+    {
+        $due = $this->aInt('TimerDue');
+        $ran = $this->aInt('TimerRan');
+        $flag = $this->aInt('TimerStall');
+        if ($flag > 0 && $ran >= $flag) {
+            $this->WriteAttributeInteger('TimerStall', 0);
+            $this->addLog('', AUTOMATText::t('✅ The timer is running again.'));
+            return;
+        }
+        if ($flag === 0 && $due > 0 && $ran < $due && $now > $due + self::STALL_S) {
+            $this->WriteAttributeInteger('TimerStall', $now);
+            $min = (int)ceil(($now - $due) / 60);
+            $text = AUTOMATText::t('The timer of Automat has not run for %s min although it was due. Symcon has probably lost it — restart the Symcon service. Until then Automat only switches when a device reports.', $min);
+            $this->LogMessage($text, KL_WARNING);
+            $this->addLog('', '⚠️ ' . $text);
+            if ($this->pBool('cfg_NotifyFaults')) {
+                $this->message('⚠️ Automat', $text, true, null);
             }
         }
     }
@@ -544,6 +589,9 @@ class Automat extends IPSModule
     {
         if (IPS_GetKernelRunlevel() !== KR_READY) {
             return;
+        }
+        if (!$this->netCall) {
+            $this->WriteAttributeInteger('TimerRan', $this->now()); // vom Timer selbst, nicht vom Sicherheitsnetz
         }
         $this->evaluateMode(false);
         if ($this->now() - $this->aInt('RelinkChecked') >= self::RELINK_S) {
@@ -881,6 +929,10 @@ class Automat extends IPSModule
         if ($row['Type'] === 'ruecksetzen') {
             foreach (AUTOMATKatalog::vars($row, 'mr_mel') as $mv) {
                 if (IPS_VariableExists($mv)) {
+                    // Symcon 9 schützt Variablen von Geräte-Instanzen gegen SetValue (live 07.11.2026, auch ohne „Variablen sperren“)
+                    if (!empty(IPS_GetObject($mv)['ObjectIsReadOnly'])) {
+                        $ctx['ro'][$mv] = true;
+                    }
                     $ctx['upd'][$mv] = (int)(IPS_GetVariable($mv)['VariableUpdated'] ?? 0) ?: null;
                 }
             }
@@ -980,6 +1032,7 @@ class Automat extends IPSModule
         });
         if (count($rows) === 0 && !$this->pBool('cfg_ModeAuto') && $this->aStr('Deferred') === '[]') {
             $this->SetTimerInterval('Tick', 0);
+            $this->WriteAttributeInteger('TimerDue', 0);
             return;
         }
         $now = $this->now();
@@ -1001,6 +1054,7 @@ class Automat extends IPSModule
             }
         }
         $this->SetTimerInterval('Tick', max(1, $next - $now) * 1000);
+        $this->WriteAttributeInteger('TimerDue', $now + max(1, $next - $now));
     }
 
     /** Schalten einer Zielvariable; merkt sich den Wert, damit das Echo nicht als Handbedienung zählt. */
@@ -1913,6 +1967,7 @@ class Automat extends IPSModule
                 'name' => (string)$obj['ObjectName'], 'inst' => $parent > 0 ? IPS_GetName($parent) : '', 'ident' => (string)$obj['ObjectIdent'],
                 'room' => $roomByInstance[$instID] ?? ($roomByInstance[$vid] ?? null),
                 'module' => $instID > 0 ? (string)(@IPS_GetInstance($instID)['ModuleInfo']['ModuleName'] ?? '') : '',
+                'ro' => (bool)($obj['ObjectIsReadOnly'] ?? false), // Symcon 9: Gerätevariablen sind schreibgeschützt
             ];
             if ($item['room'] === null && count($this->roomLabels) > 0) {
                 // Gerät hängt nicht in einem Raum, nennt ihn aber im Namen („Thermostat Kind II“).
@@ -2751,7 +2806,9 @@ class Automat extends IPSModule
      */
     public function UIEditForm(string $uid, string $type): string
     {
-        return $this->editForm($uid, $type, null);
+        return AUTOMATText::forForm(function () use ($uid, $type) {
+            return $this->editForm($uid, $type, null);
+        });
     }
 
     /**
@@ -2763,7 +2820,9 @@ class Automat extends IPSModule
     {
         $row = json_decode($rowJson, true);
         $row = is_array($row) ? $row : [];
-        return $this->editForm((string)($row['Uid'] ?? ''), (string)($row['Type'] ?? ''), $row);
+        return AUTOMATText::forForm(function () use ($row) {
+            return $this->editForm((string)($row['Uid'] ?? ''), (string)($row['Type'] ?? ''), $row);
+        });
     }
 
     private function editForm(string $uid, string $type, ?array $current): string
@@ -3938,6 +3997,7 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => AUTOMATText::t('⚙️  Automations'),
             'items' => [
                 ['type' => 'Label', 'name' => 'Summary', 'caption' => $summary],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('⚠️ The timer has not been running since %s — restart the Symcon service. Until then Automat only switches when a device reports.', date('d.m.Y H:i', $this->aInt('TimerStall'))), 'visible' => $this->aInt('TimerStall') > 0],
                 ['type' => 'Label', 'caption' => $this->relinkNote(), 'visible' => $this->relinkNote() !== ''],
                 ['type' => 'Select', 'name' => 'cfg_ListOrder', 'caption' => AUTOMATText::t('Order by'), 'width' => '320px', 'onChange' => 'AUTOMAT_UISetListOrder($id, $cfg_ListOrder);', 'options' => [
                     ['caption' => AUTOMATText::t('Room, then by kind'), 'value' => 0],
@@ -4536,6 +4596,14 @@ class Automat extends IPSModule
     }
 
     public function GetConfigurationForm()
+    {
+        // Store-Punkt 25: feste Texte übersetzt die Konsole selbst (AUTOMATText::forForm)
+        return AUTOMATText::forForm(function () {
+            return $this->buildConfigurationForm();
+        });
+    }
+
+    private function buildConfigurationForm(): string
     {
         $base = json_decode((string)file_get_contents(__DIR__ . '/form.json'), true);
         $panels = $this->layoutPanels();
