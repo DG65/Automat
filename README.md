@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.4-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.5-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -17,7 +17,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.2.4 (Beta im Module Store, 734 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.2.5 (Beta im Module Store, 742 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 
@@ -64,6 +64,7 @@ Geräten vor, was sich lohnt.
 - **Duplizieren**: Automatismen anhaken und in einen anderen Raum kopieren — Melder, Licht, Kontakte gleicher Art
   werden dort eingesetzt; was nicht passt, bleibt leer und die Kopie bis zur Auswahl inaktiv.
 - **Von Hand auslösen**: angehakte Automatismen „▶ Jetzt ausführen“ (verschlafene Schaltung nachholen, Szene, Zeitschaltuhr, Treppenlicht, Gehen-Check, Heizung) bzw. Rollläden „⬇ schließen“ / „⬆ öffnen“ — auch in der Kachel. `AUTOMAT_RunNow($id, $uid, '' | 'down' | 'up')` für Skripte.
+- **Geräte neu angelegt?** Automat merkt sich zu jeder benutzten Variable Gerätename, Ordner und Ident. Verschwindet sie (z. B. Matter-Kontakte neu angelernt), findet Automat den eindeutigen Nachfolger, verknüpft neu und meldet das; „Änderungen übernehmen“ speichert es dauerhaft. Ist der Nachfolger nicht eindeutig, nennt das Formular die Kandidaten.
 - **Probelauf** je Automatismus: nichts schalten, nichts melden, nur protokollieren, was passiert wäre.
 - **Feiertage** nach Bundesland (DE), Österreich oder Schweiz für Rollläden, Aufwachlicht und Zeitschaltuhr.
 - **Statistik** je Automatismus (Schaltungen, Meldungen) und Hinweis auf solche, die 30 Tage nichts getan haben.

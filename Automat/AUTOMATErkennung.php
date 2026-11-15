@@ -35,6 +35,75 @@ class AUTOMATErkennung
         'kipp', 'l', 'r', 'und', 'the', 'der', 'die', 'das', 'zigbee', 'zwave', 'z-wave', 'matter', 'shelly', 'hue', 'knx'];
 
     /** Rolle einer Variable oder '' (nicht zuordenbar). */
+    // =====================================================================
+    //  Fingerabdruck: Variable wiederfinden, wenn ihr Gerät neu angelegt wurde
+    // =====================================================================
+    // Live 15.11.2026: Alle Matter-Kontakte wurden als „Composite Device“ neu angelernt — neue Instanzen, neue
+    // Variablen-IDs, Ident „BooleanState_State“ → „E1_BooleanState_State“, Gerätename „Windfang Haustür“ →
+    // „Windfang Haustüre“. Elf Automatismen zeigten „Variable existiert nicht mehr“.
+
+    /** Kern eines Idents ohne Endpunkt-Vorsatz (Matter „E1_“). */
+    public static function identCore(string $ident): string
+    {
+        return strtolower((string)preg_replace('/^E\d+_/i', '', $ident));
+    }
+
+    /** Name für den Vergleich: klein, nur Buchstaben/Ziffern, Umlaute vereinheitlicht. */
+    public static function nameKey(string $name): string
+    {
+        $n = mb_strtolower($name);
+        $n = strtr($n, ['ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss']);
+        return (string)preg_replace('/[^a-z0-9]/', '', $n);
+    }
+
+    /** Ähnlich: gleich, einer enthält den anderen, oder höchstens 2 Zeichen Unterschied (Haustür/Haustüre). */
+    public static function nameSimilar(string $a, string $b): bool
+    {
+        $a = self::nameKey($a);
+        $b = self::nameKey($b);
+        if ($a === '' || $b === '') {
+            return false;
+        }
+        if ($a === $b) {
+            return true;
+        }
+        if (min(strlen($a), strlen($b)) >= 6 && (strpos($a, $b) !== false || strpos($b, $a) !== false)) {
+            return true;
+        }
+        return strlen($a) >= 6 && strlen($b) >= 6 && levenshtein($a, $b) <= 2;
+    }
+
+    /**
+     * Nachfolger einer verschwundenen Variable suchen. $fp/$cands: ['id', 'type', 'ident', 'name', 'inst', 'folder', 'profile'].
+     * Pflicht: gleicher Variablentyp, gleicher Ident-Kern (ohne Ident: gleicher Variablenname) und ähnlicher Gerätename.
+     * Rückgabe: ['id' => eindeutiger Nachfolger oder 0, 'cands' => alle passenden IDs, beste zuerst].
+     */
+    public static function findSuccessor(array $fp, array $cands): array
+    {
+        $scored = [];
+        foreach ($cands as $c) {
+            if ((int)($c['type'] ?? -1) !== (int)($fp['type'] ?? -2) || (int)$c['id'] === (int)($fp['id'] ?? 0)) {
+                continue;
+            }
+            $core = self::identCore((string)($fp['ident'] ?? ''));
+            if ($core !== '' ? self::identCore((string)($c['ident'] ?? '')) !== $core : self::nameKey((string)($c['name'] ?? '')) !== self::nameKey((string)($fp['name'] ?? ''))) {
+                continue;
+            }
+            if (!self::nameSimilar((string)($c['inst'] ?? ''), (string)($fp['inst'] ?? ''))) {
+                continue;
+            }
+            $s = self::nameKey((string)$c['inst']) === self::nameKey((string)$fp['inst']) ? 3 : 2;
+            $s += self::nameKey((string)($c['folder'] ?? '')) === self::nameKey((string)($fp['folder'] ?? '')) ? 1 : 0;
+            $s += self::nameKey((string)($c['name'] ?? '')) === self::nameKey((string)($fp['name'] ?? '')) ? 1 : 0;
+            $s += (string)($c['profile'] ?? '') === (string)($fp['profile'] ?? '') ? 1 : 0;
+            $scored[(int)$c['id']] = $s;
+        }
+        arsort($scored);
+        $ids = array_keys($scored);
+        $unique = count($ids) === 1 || (count($ids) > 1 && $scored[$ids[0]] > $scored[$ids[1]]);
+        return ['id' => count($ids) > 0 && $unique ? (int)$ids[0] : 0, 'cands' => $ids];
+    }
+
     public static function role(array $v): string
     {
         $text = mb_strtolower(trim(($v['name'] ?? '') . ' ' . ($v['inst'] ?? '') . ' ' . ($v['ident'] ?? '')));

@@ -151,3 +151,42 @@ $fN = count($enM->tileUpdates);
 $enM->attrs['Due'] = json_encode(['xyz' => $GLOBALS['CLOCK'] + 60]);
 $enM->MessageSink($GLOBALS['CLOCK'], 999999, VM_UPDATE, [1, true, 0]);
 check('Frist in der Zukunft: Meldung ohne Bezug löst keinen Durchlauf aus', count($enM->tileUpdates) === $fN);
+
+heading('G. Variablen wiederfinden, wenn das Gerät neu angelegt wurde (live 15.11.2026)');
+$gFp = ['id' => 13879, 'type' => 0, 'ident' => 'BooleanState_State', 'name' => 'Windfang Haustür', 'inst' => 'Windfang Haustür', 'folder' => 'Öffnungskontakte', 'profile' => ''];
+$gC = [
+    ['id' => 19051, 'type' => 0, 'ident' => 'E1_BooleanState_State', 'name' => 'Status', 'inst' => 'Windfang Haustüre', 'folder' => 'Öffnungskontakte', 'profile' => ''],
+    ['id' => 33542, 'type' => 0, 'ident' => 'E0_PowerSource_BatReplacementNeeded', 'name' => 'Ersatz erforderlich', 'inst' => 'Windfang Haustüre', 'folder' => 'Öffnungskontakte', 'profile' => ''],
+    ['id' => 44652, 'type' => 0, 'ident' => 'E1_BooleanState_State', 'name' => 'Status', 'inst' => 'Essen Terrassentür', 'folder' => 'Öffnungskontakte', 'profile' => ''],
+];
+check('Matter neu angelernt: „Windfang Haustür“ (BooleanState_State) → „Windfang Haustüre“ (E1_BooleanState_State)', AUTOMATErkennung::findSuccessor($gFp, $gC)['id'] === 19051);
+$gZwei = ['id' => 39571, 'type' => 0, 'ident' => 'BooleanState_State', 'name' => 'Schlafzimmer Fenster', 'inst' => 'Schlafzimmer Fenster', 'folder' => 'Öffnungskontakte', 'profile' => ''];
+$gC2 = [
+    ['id' => 23716, 'type' => 0, 'ident' => 'E1_BooleanState_State', 'name' => 'Status', 'inst' => 'Schlafzimmer Fenster Links', 'folder' => 'Öffnungskontakte', 'profile' => ''],
+    ['id' => 20444, 'type' => 0, 'ident' => 'E1_BooleanState_State', 'name' => 'Status', 'inst' => 'Schlafzimmer Fenster Rechts', 'folder' => 'Öffnungskontakte', 'profile' => ''],
+];
+$gH = AUTOMATErkennung::findSuccessor($gZwei, $gC2);
+check('Zwei gleich gute Nachfolger (Links/Rechts): nicht raten, beide als Vorschlag', $gH['id'] === 0 && count($gH['cands']) === 2);
+check('Anderer Typ oder anderes Gerät: kein Treffer', AUTOMATErkennung::findSuccessor($gFp, [['id' => 1, 'type' => 1, 'ident' => 'E1_BooleanState_State', 'name' => 'Status', 'inst' => 'Windfang Haustüre', 'folder' => '', 'profile' => ''], $gC[2]])['id'] === 0);
+
+// Im Modul: Variable verschwindet, neue taucht auf → Ersatz wirkt sofort, Hinweis im Formular, mit „Übernehmen“ dauerhaft
+mkinst(2400, 'Flur Kontakt Alt', 0);
+mkvar(2401, VARIABLETYPE_BOOLEAN, false, 'Status', 2400, false, '~Window', [], 'State');
+$gRow = AUTOMATKatalog::defaults('waechter') + ['Uid' => 'agfp01', 'Name' => 'Flurfenster offen', 'Enabled' => true];
+$gRow['wa_var'] = 2401;
+$enM->props['Automations'] = json_encode([$gRow]);
+$enM->props['AutomationsHidden'] = '[]';
+$enM->ApplyChanges();
+check('Fingerabdruck der benutzten Variable gespeichert', isset(json_decode($enM->attrs['VarPrints'], true)['2401']));
+unset($GLOBALS['OBJ'][2401], $GLOBALS['OBJ'][2400]);
+mkinst(2410, 'Flur Kontakt Alt', 0);
+mkvar(2411, VARIABLETYPE_BOOLEAN, false, 'Status', 2410, false, '~Window', [], 'E1_State');
+$GLOBALS['CLOCK'] += 700;
+$enM->Tick();
+$gRows = (new ReflectionMethod('Automat', 'rows'))->invoke($enM);
+check('Nach dem Timer: Automatismus benutzt die neue Variable (#2411)', ($gRows[0]['wa_var'] ?? 0) === 2411, json_encode($enM->attrs['Relink'] ?? ''));
+check('… Protokoll nennt die Neu-Verknüpfung', strpos(implode("\n", array_map(fn($e) => $e[2], json_decode($enM->attrs['Protocol'], true))), '#2401') !== false);
+check('… Konfiguration wird NICHT selbst geschrieben (Store-Review), Formular bietet die neue ID zum Übernehmen an', strpos($enM->props['Automations'], '2401') !== false && strpos($enM->GetConfigurationForm(), '2411') !== false);
+$enM->props['Automations'] = json_encode([array_merge($gRow, ['wa_var' => 2411])]);
+$enM->ApplyChanges();
+check('Nach „Übernehmen“: Ersatz-Zuordnung aufgeräumt', json_decode($enM->attrs['Relink'], true) === []);

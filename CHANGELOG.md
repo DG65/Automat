@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.5 (Build 62) — 15.11.2026
+
+- Variablen wiederfinden (live 15.11.2026: Matter-Kontakte am 09.11. als „Composite Device“ neu angelernt, alle IDs neu, Ident `BooleanState_State` → `E1_BooleanState_State`, „Windfang Haustür“ → „Windfang Haustüre“; elf Automatismen „Variable existiert nicht mehr“): Attribut `VarPrints` (Typ, Ident, Name, Gerät, Ordner, Profil je benutzter Variable), `relink()` in ApplyChanges und alle `RELINK_S` = 600 s im Tick. `AUTOMATErkennung::findSuccessor()`: gleicher Typ + Ident-Kern (ohne `E<n>_`) + ähnlicher Gerätename (≤ 2 Zeichen Unterschied), Punkte für gleichen Ordner/Namen/Profil. Eindeutig → `Relink` (wirkt über `rows()`, Protokoll „🔗“, Formular bietet die neue ID zum Übernehmen an; Konfiguration schreibt Automat nie selbst). Mehrdeutig → `RelinkAsk`, Hinweis mit Kandidaten im Formular.
+- Live: elf Automatismen von Dietmar freigegeben neu zugeordnet; Gehen-Check um Küche, Bad (2) und Treppe (2) ergänzt, doppelten WC-Eintrag entfernt.
+- Prüfstand 742.
+
 ## 0.2.4 (Build 61) — 07.11.2026
 
 - Korrektur zu 0.2.2: `DoorLockDoorState` (Z-Wave-Schloss „Türstatus“) meldet das Schloss, nicht die Tür (live 07.11.2026: Tür 13:39:25 zu, 13:39:57 automatisch verriegelt → wahr „Gesperrt“; Windfang wurde bei geschlossener Tür abgesenkt). Sonderregel entfernt, Richtung wieder nach Beschriftung.

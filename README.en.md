@@ -3,7 +3,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module Version](https://img.shields.io/badge/Module%20Version-0.2.4-blue.svg)](https://github.com/DG65/Automat)
+[![Module Version](https://img.shields.io/badge/Module%20Version-0.2.5-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/en/service/documentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -20,7 +20,7 @@ motion light, dusk switching, window open → heating down, "door open too long"
 and reason per automation, a log, a tile — and **Discover** suggests from your existing
 devices what is worth automating.
 
-> **As of 0.2.4 (beta in the Module Store, 734 checks):** motion light, window open, watchdog, presence, central off,
+> **As of 0.2.5 (beta in the Module Store, 742 checks):** motion light, window open, watchdog, presence, central off,
 > shutters and house mode run in my own installation; the other automations are tested on the test bench.
 > Feedback is welcome in the [forum thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647) (German forum, English posts are fine).
 
@@ -68,6 +68,7 @@ devices what is worth automating.
 - **Duplicate**: tick automations and copy them into another room — sensors, lights, contacts of the same kind
   are filled in there; what does not fit stays empty and the copy stays inactive until chosen.
 - **Trigger by hand**: ticked automations "▶ Run now" (catch up a missed switching, scene, time switch, staircase light, leaving check, heating) or shutters "⬇ close" / "⬆ open" — also in the tile. `AUTOMAT_RunNow($id, $uid, '' | 'down' | 'up')` for scripts.
+- **Device created anew?** Automat remembers device name, folder and ident of every variable it uses. If one disappears (e.g. Matter contacts re-paired), Automat finds the unique successor, reconnects it and reports it; "Apply changes" saves it permanently. If the successor is not unique, the form lists the candidates.
 - **Dry run** per automation: switch nothing, notify nothing, only log what would have happened.
 - **Public holidays** by German state, Austria or Switzerland for shutters, wake-up light and time switch.
 - **Statistics** per automation (switchings, notifications) and a hint on those that did nothing for 30 days.

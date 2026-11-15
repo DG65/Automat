@@ -43,6 +43,8 @@ class Automat extends IPSModule
     private const OVERDUE_S = 10;
     /** So oft wiederholt Automat einen Schaltbefehl, auf den das Gerät nicht reagiert hat. */
     private const MAX_RETRY = 2;
+    /** So oft (s) prüft der Timer, ob benutzte Variablen verschwunden sind (Gerät neu angelegt). */
+    private const RELINK_S = 600;
 
     public function __construct($InstanceID)
     {
@@ -84,6 +86,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.5' => [
+            '🔗 If a device is created anew (e.g. Matter contacts re-paired, Z-Wave re-included), Automat now finds its new variable by name, folder and ident and reconnects it; if that is not unique, the form asks. "Apply changes" saves the new assignment.',
+        ],
         '0.2.4' => [
             '🚪 Correction: the "door status" of Z-Wave door locks reports the LOCK (locked/unlocked), not whether the door is open — the rule from 0.2.2 was wrong and has been removed. Lock states (bolt, latch, door status) are no longer suggested as window/door contacts; if one is used, the dialog shows a warning.',
         ],
@@ -268,6 +273,11 @@ class Automat extends IPSModule
         $this->RegisterAttributeString('End', '{}');
         $this->RegisterAttributeString('Sent', '{}');
         $this->RegisterAttributeString('Fp', '{}');
+        // Fingerabdrücke der benutzten Variablen und Ersatz für verschwundene (Gerät neu angelegt), siehe relink()
+        $this->RegisterAttributeString('VarPrints', '{}');
+        $this->RegisterAttributeString('Relink', '{}');
+        $this->RegisterAttributeString('RelinkAsk', '{}');
+        $this->RegisterAttributeInteger('RelinkChecked', 0);
         $this->RegisterAttributeInteger('ModeKnown', -1);
         $this->RegisterAttributeString('MelStats', '{}');
         $this->RegisterAttributeString('Protocol', '[]');
@@ -297,6 +307,7 @@ class Automat extends IPSModule
             return;
         }
 
+        $this->relink(true);
         $this->ensureModeProfile();
         $this->MaintainVariable('Hausmodus', AUTOMATText::t('House mode'), VARIABLETYPE_INTEGER, self::PROFILE_MODE, 1, true);
         $this->EnableAction('Hausmodus');
@@ -535,6 +546,9 @@ class Automat extends IPSModule
             return;
         }
         $this->evaluateMode(false);
+        if ($this->now() - $this->aInt('RelinkChecked') >= self::RELINK_S) {
+            $this->relink(false);
+        }
         foreach ($this->rows() as $row) {
             $this->process($row, ['k' => 'tick']);
         }
@@ -3330,6 +3344,7 @@ class Automat extends IPSModule
             }
         }
         $out = [];
+        $relink = array_map('intval', $this->attrMap('Relink'));
         $taken = [];
         foreach ($rows as $r) {
             if (is_array($r)) {
@@ -3351,9 +3366,115 @@ class Automat extends IPSModule
                 $taken[$r['Uid']] = true;
             }
             $r['Type'] = (string)($r['Type'] ?? '');
+            if ($relink !== []) {
+                foreach ($r as $k => $v) {
+                    if (is_int($v) && isset($relink[$v])) {
+                        $r[$k] = $relink[$v];
+                    }
+                }
+            }
             $out[] = AUTOMATKatalog::sanitize(AUTOMATKatalog::stripForeign($r));
         }
         return $out;
+    }
+
+    /** Gespeicherte Zeilen ohne Ersatz-Zuordnung (für relink: was steht wirklich in der Konfiguration?). */
+    private function rawVarIds(): array
+    {
+        $ids = [];
+        foreach (json_decode((string)$this->pStr('Automations'), true) ?: [] as $r) {
+            if (!is_array($r)) {
+                continue;
+            }
+            $v = AUTOMATKatalog::variables($r);
+            foreach (array_merge($v['in'], $v['out'], $v['read'] ?? []) as $id) {
+                if ((int)$id >= AUTOMATKatalog::$minId) {
+                    $ids[(int)$id] = true;
+                }
+            }
+        }
+        return array_keys($ids);
+    }
+
+    /** Fingerabdruck einer Variable: woran Automat sie wiedererkennt, falls ihr Gerät neu angelegt wird. */
+    private function printOf(int $vid): array
+    {
+        $o = IPS_GetObject($vid);
+        $v = IPS_GetVariable($vid);
+        $inst = IPS_GetParent($vid);
+        return ['id' => $vid, 'type' => (int)$v['VariableType'], 'ident' => (string)$o['ObjectIdent'], 'name' => IPS_GetName($vid),
+            'inst' => $inst > 0 ? IPS_GetName($inst) : '', 'folder' => $inst > 0 && IPS_GetParent($inst) > 0 ? IPS_GetName(IPS_GetParent($inst)) : '',
+            'profile' => (string)($v['VariableCustomProfile'] ?: $v['VariableProfile'])];
+    }
+
+    /**
+     * Verschwundene Variablen wiederfinden (live 15.11.2026: Matter-Kontakte neu angelernt, alle IDs neu). Eindeutiger
+     * Nachfolger → Ersatz-Zuordnung (wirkt sofort über rows(), mit dem nächsten „Übernehmen“ dauerhaft gespeichert —
+     * die Konfiguration schreibt Automat nie selbst). Mehrdeutig → Hinweis im Formular, der Nutzer wählt.
+     */
+    private function relink(bool $fromApply): void
+    {
+        $this->WriteAttributeInteger('RelinkChecked', $this->now());
+        $prints = $this->attrMap('VarPrints');
+        $relink = array_map('intval', $this->attrMap('Relink'));
+        $ask = [];
+        $missing = [];
+        $used = $this->rawVarIds();
+        foreach ($used as $id) {
+            if (IPS_VariableExists($id)) {
+                $prints[$id] = $this->printOf($id);
+            } elseif (!isset($relink[$id]) || !IPS_VariableExists($relink[$id])) {
+                $missing[] = $id;
+            }
+        }
+        // Nur Abdrücke und Zuordnungen behalten, die noch gebraucht werden
+        $prints = array_intersect_key($prints, array_flip($used));
+        $relink = array_intersect_key($relink, array_flip($used));
+        if ($missing !== []) {
+            $cands = [];
+            foreach (IPS_GetVariableList() as $c) {
+                if (!in_array($c, $used, true)) {
+                    $cands[] = $this->printOf($c);
+                }
+            }
+            foreach ($missing as $id) {
+                if (!isset($prints[$id])) {
+                    continue; // nie gesehen (vor 0.2.5 verschwunden) — bleibt „existiert nicht mehr“
+                }
+                $hit = AUTOMATErkennung::findSuccessor($prints[$id], $cands);
+                if ($hit['id'] > 0 && !in_array($hit['id'], $relink, true)) {
+                    $relink[$id] = $hit['id'];
+                    $this->addLog('', AUTOMATText::t('🔗 Variable #%s (%s) no longer exists — reconnected to #%s (%s). Click "Apply changes" in the form to save it permanently.',
+                        $id, $prints[$id]['inst'] . ' / ' . $prints[$id]['name'], $hit['id'], $this->varLabel($hit['id'])));
+                } elseif (count($hit['cands']) > 0) {
+                    $ask[$id] = ['was' => $prints[$id]['inst'] . ' / ' . $prints[$id]['name'], 'cands' => array_slice($hit['cands'], 0, 4)];
+                }
+            }
+        }
+        $this->WriteAttributeString('VarPrints', json_encode($prints, JSON_UNESCAPED_UNICODE));
+        $this->WriteAttributeString('Relink', json_encode($relink));
+        $this->WriteAttributeString('RelinkAsk', json_encode($ask, JSON_UNESCAPED_UNICODE));
+    }
+
+    /** Hinweis im Formular: was neu verknüpft wurde (dauerhaft erst mit „Übernehmen“) und was der Nutzer zuordnen muss. */
+    private function relinkNote(): string
+    {
+        $parts = [];
+        $relink = array_map('intval', $this->attrMap('Relink'));
+        if ($relink !== []) {
+            $l = [];
+            foreach ($relink as $old => $new) {
+                $l[] = '#' . $old . ' → #' . $new . (IPS_VariableExists($new) ? ' (' . $this->varLabel($new) . ')' : '');
+            }
+            $parts[] = AUTOMATText::t('🔗 Automatically reconnected because the device was created anew: %s — click "Apply changes" below to save it permanently.', implode(', ', $l));
+        }
+        foreach ($this->attrMap('RelinkAsk') as $old => $a) {
+            $c = array_map(function ($id) {
+                return '#' . $id . (IPS_VariableExists((int)$id) ? ' ' . $this->varLabel((int)$id) : '');
+            }, (array)($a['cands'] ?? []));
+            $parts[] = AUTOMATText::t('⚠️ Variable #%s (formerly "%s") no longer exists and is not unique — please choose it again yourself. Possible: %s', $old, (string)($a['was'] ?? ''), implode(', ', $c));
+        }
+        return implode("\n", $parts);
     }
 
     private function rowByUid(string $uid): ?array
@@ -3817,6 +3938,7 @@ class Automat extends IPSModule
             'type' => 'ExpansionPanel', 'expanded' => true, 'caption' => AUTOMATText::t('⚙️  Automations'),
             'items' => [
                 ['type' => 'Label', 'name' => 'Summary', 'caption' => $summary],
+                ['type' => 'Label', 'caption' => $this->relinkNote(), 'visible' => $this->relinkNote() !== ''],
                 ['type' => 'Select', 'name' => 'cfg_ListOrder', 'caption' => AUTOMATText::t('Order by'), 'width' => '320px', 'onChange' => 'AUTOMAT_UISetListOrder($id, $cfg_ListOrder);', 'options' => [
                     ['caption' => AUTOMATText::t('Room, then by kind'), 'value' => 0],
                     ['caption' => AUTOMATText::t('Kind (function), then by room'), 'value' => 1],
