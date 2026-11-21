@@ -92,6 +92,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.9' => [
+            '🔊 Announcement volume can be set in steps of 5 %.',
+        ],
         '0.2.8' => [
             '🔊 New notification channel "Announcement": speaks notifications on a HomePod (module "DG65-Toolkit AirPlay-Steuerung" with a Piper server) — volume and chime per channel. Not caught up after the quiet hours, silent in Away/Holiday, alarms always speak.',
         ],
@@ -4460,11 +4463,11 @@ class Automat extends IPSModule
         ];
     }
 
-    /** Lautstärke-Auswahl für Durchsagen: Einstellung des HomePods oder 10–100 %. */
+    /** Lautstärke-Auswahl für Durchsagen: Einstellung des HomePods oder 5–100 % in 5er-Schritten (Dietmar 21.11.2026). */
     private function volumeOptions(): array
     {
         $o = [['caption' => AUTOMATText::t('as set on the HomePod'), 'value' => -1]];
-        for ($v = 10; $v <= 100; $v += 10) {
+        for ($v = 5; $v <= 100; $v += 5) {
             $o[] = ['caption' => $v . ' %', 'value' => $v];
         }
         return $o;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.9 (Build 66) — 21.11.2026
+
+- Durchsage-Lautstärke in 5-%-Schritten (5–100 %) statt 10er-Schritten (Dietmar 21.11.2026, nach erstem Live-Test). Prüfstand 769.
+
 ## 0.2.8 (Build 65) — 21.11.2026
 
 - Meldeweg „Durchsage“ (`Typ` = `say`, Dietmar 21.11.2026): `deliverSay()` ruft `AIRP_SayAsync($id, $text, $vol, $chime)` der DG65-Toolkit AirPlay-Steuerung (reiht nur ein, wartet nie), abgesichert mit `function_exists`. Ziel = AirPlay-Gerät (GUID geprüft), 0 = alle. Je Weg `Vol` (−1 = Instanz-Einstellung, 10–100 %) und `Chime` (Gong, Standard an).

@@ -3,7 +3,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module Version](https://img.shields.io/badge/Module%20Version-0.2.8-blue.svg)](https://github.com/DG65/Automat)
+[![Module Version](https://img.shields.io/badge/Module%20Version-0.2.9-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/en/service/documentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -20,7 +20,7 @@ motion light, dusk switching, window open → heating down, "door open too long"
 and reason per automation, a log, a tile — and **Discover** suggests from your existing
 devices what is worth automating.
 
-> **As of 0.2.8 (beta in the Module Store, 768 checks):** motion light, window open, watchdog, presence, central off,
+> **As of 0.2.9 (beta in the Module Store, 769 checks):** motion light, window open, watchdog, presence, central off,
 > shutters and house mode run in my own installation; the other automations are tested on the test bench.
 > Feedback is welcome in the [forum thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647) (German forum, English posts are fine).
 
@@ -65,7 +65,7 @@ devices what is worth automating.
   optionally faults as well. Quiet hours with catch-up, test notification with result per channel.
 - **Announcement on the HomePod** (from 0.2.8, needs **DG65-Toolkit AirPlay-Steuerung** with a Piper server): the
   channel kind "Announcement" speaks the notification as a short sentence (without emojis and symbols) on one HomePod
-  or all of them; volume and chime per channel. Announcements are not caught up after the quiet hours and stay silent
+  or all of them; volume (5–100 % in steps of 5) and chime per channel. Announcements are not caught up after the quiet hours and stay silent
   in Away/Holiday — alarms (water, smoke) always speak.
 - **Filter** above the list (search text, room, function/type, state) and in Discover (search text, room, type);
   filtered-out automations are kept when saving.

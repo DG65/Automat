@@ -2831,6 +2831,8 @@ check('Hausmodus Abwesend: nur der Alarm wird gesprochen', array_column($GLOBALS
 $GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Hausmodus', 12345)]['value'] = 0;
 check('Gesprochener Text: °C ausgesprochen, Link und Symbole weg', AUTOMATLogik::spokenText('⏱ Fenster Bad', 'offen seit 30 min (≥ 20 min), 18,5 °C https://x.y/z') === 'Fenster Bad. offen seit 30 min (20 min), 18,5 Grad.');
 check('Gesprochener Text: Titel nicht doppelt', AUTOMATLogik::spokenText('🔁 Licht', '🔁 Licht an wiederholt') === 'Licht an wiederholt.');
+$vo = (new ReflectionMethod('Automat', 'volumeOptions'))->invoke($m);
+check('Durchsage-Lautstärke in 5-%-Schritten (5–100 %) plus „wie am HomePod“', array_column($vo, 'value') === array_merge([-1], range(5, 100, 5)));
 $m->props['cfg_Ways'] = '[]';
 
 heading('C16. Dialog nur mit der eigenen Art (Konsole hing beim Speichern, 14.10.2026)');
