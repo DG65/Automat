@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.8 (Build 65) — 21.11.2026
+
+- Meldeweg „Durchsage“ (`Typ` = `say`, Dietmar 21.11.2026): `deliverSay()` ruft `AIRP_SayAsync($id, $text, $vol, $chime)` der DG65-Toolkit AirPlay-Steuerung (reiht nur ein, wartet nie), abgesichert mit `function_exists`. Ziel = AirPlay-Gerät (GUID geprüft), 0 = alle. Je Weg `Vol` (−1 = Instanz-Einstellung, 10–100 %) und `Chime` (Gong, Standard an).
+- `AUTOMATLogik::spokenText()`: Titel + Text als Satz ohne Emojis, Pfeile, Links, Symbole; Gedankenstrich → Pause, „°C“ → „Grad“; höchstens 400 Zeichen. `sayBlocked()`: in der Ruhezeit (Weg mit „Ruhezeit beachten“) entfällt die Durchsage ohne Nachholen, bei Hausmodus Abwesend/Urlaub ebenso; dringend (Alarm) spricht immer. Nachgeholte Meldungen überspringen Durchsage-Wege.
+- Prüfstand 768 (Block C15b).
+
 ## 0.2.7 (Build 64) — 15.11.2026
 
 - Fix zu 0.2.3 (live 15.11.2026, Küche: 22:18:01 Bewegung → an, bestätigt; 22:18:06 von Hand aus; 22:18:23 „🔁 … an wiederholt“): `checkUnanswered()` wiederholt und meldet nur noch, wenn sich der Wert seit dem Befehl gar nicht geändert hat (`VariableChanged` < Befehlszeit). Steht der Wert wieder wie vorher, nachdem das Gerät reagiert hat, war es Handbedienung.

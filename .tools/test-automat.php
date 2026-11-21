@@ -139,7 +139,16 @@ function IPS_GetEventList(): array { return array_keys($GLOBALS['EVENTS']); }
 function IPS_GetEvent(int $id): array { return $GLOBALS['EVENTS'][$id]; }
 function IPS_GetConfiguration(int $id): string { return $GLOBALS['CONF'][$id] ?? '{}'; }
 function IPS_GetProperty(int $id, string $n) { return $GLOBALS['CONF_PROP'][$id][$n] ?? ''; }
-function IPS_GetInstance(int $id): array { return ['ModuleInfo' => ['ModuleName' => $GLOBALS['MODNAME'][$id] ?? 'Testgerät', 'ModuleType' => $GLOBALS['MODTYPE'][$id] ?? 3]]; }
+function IPS_GetInstance(int $id): array
+{
+    $guid = '';
+    foreach ($GLOBALS['MODULES'] ?? [] as $g => $ids) {
+        if (in_array($id, $ids, true)) {
+            $guid = $g;
+        }
+    }
+    return ['ModuleInfo' => ['ModuleID' => $guid, 'ModuleName' => $GLOBALS['MODNAME'][$id] ?? 'Testgerät', 'ModuleType' => $GLOBALS['MODTYPE'][$id] ?? 3]];
+}
 function IPS_GetLocation(int $id): string { $p = []; while ($id > 0 && isset($GLOBALS['OBJ'][$id])) { array_unshift($p, $GLOBALS['OBJ'][$id]['name']); $id = $GLOBALS['OBJ'][$id]['parent']; } return implode('\\', $p); }
 function AC_GetLoggingStatus(int $ac, int $vid): bool { return isset($GLOBALS['ARCHIVE'][$vid]); }
 function AC_GetLoggedValues(int $ac, int $vid, int $from, int $to, int $limit): array { return array_reverse($GLOBALS['ARCHIVE'][$vid] ?? []); }
@@ -2776,6 +2785,53 @@ $m->props['cfg_Ways'] = '[]';
 $m->props['Automations'] = '[]';
 at('12:00:00');
 $m->ApplyChanges();
+
+heading('C15b. Meldeweg Durchsage (HomePod über AirPlay-Steuerung, 0.2.8)');
+$airGuid = '{2BB8B63A-9A5A-4704-8230-C18259F9F3E7}';
+$m->props['cfg_Ways'] = json_encode([['Id' => 'hp', 'Name' => 'HomePod', 'Typ' => 'say', 'Target' => 0, 'To' => '', 'Std' => true, 'Quiet' => true, 'Vol' => 40, 'Chime' => false]]);
+$tm = $m->TestMessage();
+check('Durchsage ohne AirPlay-Modul: Testmeldung sagt das, kein Absturz', strpos($tm, 'AirPlay-Steuerung') !== false && strpos($tm, 'nicht installiert') !== false, $tm);
+if (!function_exists('AIRP_SayAsync')) {
+    function AIRP_SayAsync(int $id, string $text, int $vol, bool $chime): bool { $GLOBALS['SAY'][] = [$id, $text, $vol, $chime]; return true; }
+}
+$GLOBALS['SAY'] = [];
+$tm = $m->TestMessage();
+check('Durchsage ohne HomePod-Instanz: verständlicher Hinweis', $GLOBALS['SAY'] === [] && strpos($tm, 'kein HomePod gefunden') !== false, $tm);
+mkinst(30463, 'HomePod Küche', 0, $airGuid);
+mkinst(30464, 'HomePod Bad', 0, $airGuid);
+mkinst(30465, 'Kein HomePod');
+$GLOBALS['SAY'] = [];
+$tm = $m->TestMessage();
+check('Durchsage leer = alle HomePods, mit Lautstärke und Gong des Wegs', array_column($GLOBALS['SAY'], 0) === [30463, 30464] && $GLOBALS['SAY'][0][2] === 40 && $GLOBALS['SAY'][0][3] === false && strpos($tm, '2 von 2 HomePods') !== false, $tm);
+check('Durchsage spricht ohne Emojis und Gedankenstriche', strpos($GLOBALS['SAY'][0][1], '🧪') === false && strpos($GLOBALS['SAY'][0][1], '—') === false && strpos($GLOBALS['SAY'][0][1], 'Automat.') === 0, $GLOBALS['SAY'][0][1]);
+$m->props['cfg_Ways'] = json_encode([['Id' => 'hp', 'Name' => 'HomePod', 'Typ' => 'say', 'Target' => 30465, 'To' => '', 'Std' => true, 'Quiet' => true]]);
+$GLOBALS['SAY'] = [];
+$m->TestMessage();
+check('Durchsage-Ziel ohne AirPlay-Gerät: nichts gesprochen', $GLOBALS['SAY'] === []);
+$m->props['cfg_Ways'] = json_encode([['Id' => 'hp', 'Name' => 'HomePod', 'Typ' => 'say', 'Target' => 30463, 'To' => '', 'Std' => true, 'Quiet' => true]]);
+$GLOBALS['SAY'] = [];
+$msg->invoke($m, '🧺 Waschmaschine', '✅ fertig — lief 1:32 h', true, null);
+check('Durchsage an den gewählten HomePod, alte Wege ohne Felder: Lautstärke der Instanz, mit Gong', $GLOBALS['SAY'] === [[30463, 'Waschmaschine. fertig, lief 1:32 h.', -1, true]], json_encode($GLOBALS['SAY'], JSON_UNESCAPED_UNICODE));
+$m->props['cfg_QuietEnabled'] = true;
+$m->props['cfg_QuietFrom'] = 22;
+$m->props['cfg_QuietTo'] = 7;
+at('23:30:00');
+$GLOBALS['SAY'] = [];
+$msg->invoke($m, 'Trockner', 'fertig', true, null);
+check('Durchsage in der Ruhezeit: entfällt und wird nicht zurückgehalten', $GLOBALS['SAY'] === [] && (json_decode($m->attrs['Deferred'], true) ?: []) === []);
+$msg->invoke($m, 'Wasseralarm', 'Keller', true, null, true);
+check('Alarm spricht auch in der Ruhezeit', count($GLOBALS['SAY']) === 1);
+$m->props['cfg_QuietEnabled'] = false;
+at('12:00:00');
+$GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Hausmodus', 12345)]['value'] = AUTOMATKatalog::MODE_AWAY;
+$GLOBALS['SAY'] = [];
+$msg->invoke($m, 'Trockner', 'fertig', true, null);
+$msg->invoke($m, 'Rauchalarm', 'Flur', true, null, true);
+check('Hausmodus Abwesend: nur der Alarm wird gesprochen', array_column($GLOBALS['SAY'], 1) === ['Rauchalarm. Flur.']);
+$GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Hausmodus', 12345)]['value'] = 0;
+check('Gesprochener Text: °C ausgesprochen, Link und Symbole weg', AUTOMATLogik::spokenText('⏱ Fenster Bad', 'offen seit 30 min (≥ 20 min), 18,5 °C https://x.y/z') === 'Fenster Bad. offen seit 30 min (20 min), 18,5 Grad.');
+check('Gesprochener Text: Titel nicht doppelt', AUTOMATLogik::spokenText('🔁 Licht', '🔁 Licht an wiederholt') === 'Licht an wiederholt.');
+$m->props['cfg_Ways'] = '[]';
 
 heading('C16. Dialog nur mit der eigenen Art (Konsole hing beim Speichern, 14.10.2026)');
 $bloat = $bl;

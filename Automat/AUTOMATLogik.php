@@ -1365,6 +1365,59 @@ class AUTOMATLogik
         return $evening ? 1 : 0;
     }
 
+    /**
+     * Soll eine Durchsage entfallen? '' = sprechen, sonst der Grund (für Debug).
+     * Dringend (Alarm) spricht immer; sonst nicht in der Ruhezeit (wird auch nicht nachgeholt) und nicht,
+     * wenn niemand da ist (Hausmodus Abwesend/Urlaub).
+     */
+    public static function sayBlocked(bool $urgent, bool $quietApplies, int $mode): string
+    {
+        if ($urgent) {
+            return '';
+        }
+        if ($quietApplies) {
+            return 'Ruhezeit';
+        }
+        if ($mode === AUTOMATKatalog::MODE_AWAY || $mode === AUTOMATKatalog::MODE_HOLIDAY) {
+            return 'niemand zu Hause';
+        }
+        return '';
+    }
+
+    /**
+     * Meldung als gesprochener Satz: ohne Emojis, Pfeile, Links und Sonderzeichen; Gedankenstriche werden zu Pausen,
+     * „°C“ wird ausgesprochen. Höchstens 400 Zeichen (eine Durchsage, kein Vortrag).
+     */
+    public static function spokenText(string $title, string $text): string
+    {
+        $clean = function (string $s): string {
+            $s = preg_replace('~https?://\S+~u', '', $s);
+            $s = preg_replace('~\s*°\s*C\b~u', ' ' . AUTOMATText::t('degrees'), $s);
+            $s = preg_replace('~\s*(—|–|→|←|·|\|)\s*~u', ', ', $s);
+            // Emojis und Bildzeichen samt Variationswähler/Verbinder, übrige Symbole außer %
+            $s = preg_replace('~[\p{So}\p{Sk}\p{Cs}\p{Co}\x{FE0F}\x{FE0E}\x{200D}\x{20E3}]~u', '', $s);
+            $s = preg_replace('/[<>=≥≤≠*#_~^`"„“”«»\[\]{}]/u', ' ', $s);
+            $s = preg_replace('~\s+~u', ' ', $s);
+            $s = preg_replace(['~\(\s+~u', '~\s+\)~u', '~\(\s*\)~u'], ['(', ')', ''], $s);
+            $s = preg_replace('~\s+([,.!?:;])~u', '$1', $s);
+            $s = preg_replace('~([,;:])(?:\s*[,;:])+~u', '$1', $s);
+            return trim($s, " \t\n\r\0\x0B,;:");
+        };
+        $t = $clean($title);
+        $x = $clean($text);
+        if ($t !== '' && $x !== '' && mb_stripos($x, $t) !== 0) {
+            $out = $t . (preg_match('~[.!?]$~u', $t) ? ' ' : '. ') . $x;
+        } else {
+            $out = $x !== '' ? $x : $t;
+        }
+        if (mb_strlen($out) > 400) {
+            $cut = mb_substr($out, 0, 400);
+            $p = max(mb_strrpos($cut, '. ') ?: 0, mb_strrpos($cut, ', ') ?: 0);
+            $out = $p > 200 ? mb_substr($cut, 0, $p) : $cut;
+        }
+        return $out !== '' && !preg_match('~[.!?]$~u', $out) ? $out . '.' : $out;
+    }
+
     /** Rohe SMTP-Fehlermeldung in einen verständlichen Grund übersetzen (wie Batteriewächter). */
     public static function mailError(string $raw): string
     {

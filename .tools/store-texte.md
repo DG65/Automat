@@ -14,7 +14,7 @@ Climate: window open → heating down, heating by house mode, airing reminder
 Monitoring: watchdog "stays like this too long", appliance finished, water and smoke alarms
 House: house mode (Day/Evening/Night/Away/Holiday, automatically by sun, Location Control or brightness sensor), combine presence, central off, shutters, standby cut-off
 
-"Discover" searches the existing devices and suggests suitable automations per room. Manual operation always has priority. Every automation shows its state and the reason for its last decision. Notifications go via freely selectable channels (push, e-mail, script) with quiet hours. A tile for the visualization shows everything with search, filter and locks.
+"Discover" searches the existing devices and suggests suitable automations per room. Manual operation always has priority. Every automation shows its state and the reason for its last decision. Notifications go via freely selectable channels (push, e-mail, script, HomePod announcement) with quiet hours. A tile for the visualization shows everything with search, filter and locks.
 
 The module follows the language of your Symcon (English or German).
 

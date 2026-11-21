@@ -83,6 +83,8 @@ class Automat extends IPSModule
     // Push-Ziele (SUITE.md Stolperstein 22): klassisches WebFront und Kachel-Visualisierung.
     private const WEBFRONT_GUID = '{3565B1F2-8F7B-4311-A4B6-1BF1D868F39E}';
     private const VISU_GUID     = '{B5B875BB-9B76-45FD-4E67-2607E45B3AC4}';
+    // DG65-Toolkit AirPlay-Steuerung, Gerät (HomePod) — Meldeweg „Durchsage“ über AIRP_SayAsync (optional).
+    private const AIRPLAY_GUID  = '{2BB8B63A-9A5A-4704-8230-C18259F9F3E7}';
     // Archive Control (Kernmodul) — zum Anlernen der Melder-Dauern aus den letzten Tagen.
     private const ARCHIVE_GUID  = '{43192F0B-135B-4CE7-A0A7-1475603F3060}';
 
@@ -90,6 +92,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.8' => [
+            '🔊 New notification channel "Announcement": speaks notifications on a HomePod (module "DG65-Toolkit AirPlay-Steuerung" with a Piper server) — volume and chime per channel. Not caught up after the quiet hours, silent in Away/Holiday, alarms always speak.',
+        ],
         '0.2.7' => [
             '🔁 Fix: a light switched off by hand shortly after Automat switched it on was switched on again (the repeat for lost radio commands took the manual operation for a lost command). Automat now only repeats a command if the device did not react at all.',
         ],
@@ -1615,6 +1620,17 @@ class Automat extends IPSModule
         $quiet = !$urgent && $this->inQuiet($this->now());
         $hold = [];
         foreach ($this->waysFor($row) as $w) {
+            if ($w['typ'] === 'say') {
+                // Durchsage: nicht nachholen (eine Ansage von heute Nacht um 7 Uhr hilft niemandem) und nicht in
+                // ein leeres Haus sprechen — Alarm (Wasser/Rauch, dringend) spricht immer.
+                $skip = AUTOMATLogik::sayBlocked($urgent, $quiet && $w['quiet'], $this->houseModeNow());
+                if ($skip !== '') {
+                    $this->SendDebug('Meldung', 'Durchsage „' . $w['name'] . '“ entfällt (' . $skip . '): ' . $title, 0);
+                    continue;
+                }
+                $this->deliverWay($w, $title, $text, $media);
+                continue;
+            }
             if ($quiet && $w['quiet']) {
                 $hold[] = [$this->now(), $title, $text, $w['id'], $media];
                 $this->SendDebug('Meldung', 'Ruhezeit — zurückgehalten für „' . $w['name'] . '“: ' . $title, 0);
@@ -1667,6 +1683,9 @@ class Automat extends IPSModule
         foreach ($q as $e) {
             $w = $ways[(string)($e[3] ?? '')] ?? null;
             foreach ($w !== null ? [$w] : $this->waysFor(null) as $way) {
+                if ($way['typ'] === 'say') {
+                    continue; // Durchsagen werden nicht nachgeholt
+                }
                 try {
                     $this->deliverWay($way, (string)$e[1], AUTOMATText::t('%1$s (held back since %2$s, quiet hours)', (string)$e[2], date('d.m.Y H:i', (int)$e[0])), (int)($e[4] ?? 0));
                 } catch (Throwable $ex) {
@@ -1693,10 +1712,11 @@ class Automat extends IPSModule
                     $id .= 'x'; // in einer Sitzung doppelt hinzugefügt
                 }
                 $seen[$id] = true;
-                $typ = in_array($r['Typ'] ?? '', ['push', 'mail', 'script'], true) ? $r['Typ'] : 'push';
+                $typ = in_array($r['Typ'] ?? '', ['push', 'mail', 'script', 'say'], true) ? $r['Typ'] : 'push';
                 $out[] = ['id' => $id, 'name' => trim((string)($r['Name'] ?? '')) ?: AUTOMATText::t('Notification channel %s', $i + 1), 'typ' => $typ,
                     'target' => (int)($r['Target'] ?? 0), 'to' => trim((string)($r['To'] ?? '')),
-                    'std' => !empty($r['Std']), 'quiet' => !array_key_exists('Quiet', $r) || !empty($r['Quiet'])];
+                    'std' => !empty($r['Std']), 'quiet' => !array_key_exists('Quiet', $r) || !empty($r['Quiet']),
+                    'vol' => max(-1, min(100, (int)($r['Vol'] ?? -1))), 'chime' => !array_key_exists('Chime', $r) || !empty($r['Chime'])];
             }
             return $out;
         }
@@ -1739,6 +1759,9 @@ class Automat extends IPSModule
     private function deliverWay(array $w, string $title, string $text, int $media = 0): string
     {
         switch ($w['typ']) {
+            case 'say':
+                $res = $this->deliverSay($w, $title, $text);
+                break;
             case 'mail':
                 $err = $this->sendMail($w['target'], $w['to'], $title, $text);
                 $res = $err === '' ? AUTOMATText::t('✅ sent') : AUTOMATText::t('⚠️ not sent — %s', $err);
@@ -1784,6 +1807,50 @@ class Automat extends IPSModule
         }
         $this->SendDebug('Meldung', $w['name'] . ': ' . $title . ' — ' . $text . ' → ' . $res, 0);
         return $res;
+    }
+
+    /**
+     * Durchsage über die DG65-Toolkit AirPlay-Steuerung: Ziel = ein HomePod, 0 = alle. AIRP_SayAsync reiht nur ein
+     * und kehrt sofort zurück — Automat wartet nie auf den Lautsprecher.
+     */
+    private function deliverSay(array $w, string $title, string $text): string
+    {
+        if (!function_exists('AIRP_SayAsync')) {
+            $res = AUTOMATText::t('⚠️ the module "DG65-Toolkit AirPlay-Steuerung" is not installed');
+            $this->LogMessage(AUTOMATText::t('Notification channel "%1$s": %2$s — notification "%3$s" not delivered.', $w['name'], $res, $title), KL_WARNING);
+            return $res;
+        }
+        $ids = $w['target'] > 0 ? [$w['target']] : (@IPS_GetInstanceListByModuleID(self::AIRPLAY_GUID) ?: []);
+        $ids = array_values(array_filter(array_map('intval', $ids), function ($id) {
+            return IPS_InstanceExists($id) && IPS_GetInstance($id)['ModuleInfo']['ModuleID'] === self::AIRPLAY_GUID;
+        }));
+        if (count($ids) === 0) {
+            $res = AUTOMATText::t('⚠️ no HomePod found (choose an instance of the AirPlay device)');
+            $this->LogMessage(AUTOMATText::t('Notification channel "%1$s": %2$s — notification "%3$s" not delivered.', $w['name'], $res, $title), KL_WARNING);
+            return $res;
+        }
+        $spoken = AUTOMATLogik::spokenText($title, $text);
+        $ok = 0;
+        foreach ($ids as $id) {
+            try {
+                $done = (bool)AIRP_SayAsync($id, $spoken, $w['vol'], $w['chime']);
+            } catch (Throwable $e) {
+                $done = false;
+            }
+            if ($done) {
+                $ok++;
+            } else {
+                $this->LogMessage(AUTOMATText::t('Announcement on "%1$s" failed: %2$s', IPS_GetName($id), $title), KL_WARNING);
+            }
+        }
+        return ($ok === count($ids) ? '✅ ' : '⚠️ ') . AUTOMATText::t('%1$s of %2$s HomePods', $ok, count($ids));
+    }
+
+    /** Hausmodus jetzt (0 Tag … 4 Urlaub), -1 wenn die Variable fehlt. */
+    private function houseModeNow(): int
+    {
+        $vid = @IPS_GetObjectIDByIdent('Hausmodus', $this->InstanceID);
+        return $vid ? (int)GetValue($vid) : -1;
     }
 
     /** E-Mail über eine SMTP-Instanz (0 = die erste gefundene); Rückgabe: '' bei Erfolg, sonst der Grund. */
@@ -4393,6 +4460,16 @@ class Automat extends IPSModule
         ];
     }
 
+    /** Lautstärke-Auswahl für Durchsagen: Einstellung des HomePods oder 10–100 %. */
+    private function volumeOptions(): array
+    {
+        $o = [['caption' => AUTOMATText::t('as set on the HomePod'), 'value' => -1]];
+        for ($v = 10; $v <= 100; $v += 10) {
+            $o[] = ['caption' => $v . ' %', 'value' => $v];
+        }
+        return $o;
+    }
+
     private function NotifyPanel(): array
     {
         $ways = $this->ways();
@@ -4408,7 +4485,7 @@ class Automat extends IPSModule
         }
         $rows = [];
         foreach ($ways as $w) {
-            $rows[] = ['Id' => $w['id'], 'Name' => $w['name'], 'Typ' => $w['typ'], 'Target' => $w['target'], 'To' => $w['to'], 'Std' => $w['std'], 'Quiet' => $w['quiet']];
+            $rows[] = ['Id' => $w['id'], 'Name' => $w['name'], 'Typ' => $w['typ'], 'Target' => $w['target'], 'To' => $w['to'], 'Std' => $w['std'], 'Quiet' => $w['quiet'], 'Vol' => $w['vol'] ?? -1, 'Chime' => $w['chime'] ?? true];
         }
         $legacy = (json_decode($this->pStr('cfg_Ways'), true) ?: []) === [] && count($ways) > 0;
         return [
@@ -4426,9 +4503,12 @@ class Automat extends IPSModule
                             ['caption' => 'Push', 'value' => 'push'],
                             ['caption' => AUTOMATText::t('Email'), 'value' => 'mail'],
                             ['caption' => AUTOMATText::t('Script'), 'value' => 'script'],
+                            ['caption' => AUTOMATText::t('Announcement (HomePod)'), 'value' => 'say'],
                         ]]],
-                        ['caption' => AUTOMATText::t('Target (push: visualization, empty = all · email: SMTP instance, empty = first · script)'), 'name' => 'Target', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectObject']],
+                        ['caption' => AUTOMATText::t('Target (push: visualization, empty = all · email: SMTP instance, empty = first · script · announcement: HomePod, empty = all)'), 'name' => 'Target', 'width' => 'auto', 'add' => 0, 'edit' => ['type' => 'SelectObject']],
                         ['caption' => AUTOMATText::t('Recipients (email only, several separated by commas)'), 'name' => 'To', 'width' => '260px', 'add' => '', 'edit' => ['type' => 'ValidationTextBox']],
+                        ['caption' => AUTOMATText::t('Volume (announcement)'), 'name' => 'Vol', 'width' => '150px', 'add' => -1, 'edit' => ['type' => 'Select', 'options' => $this->volumeOptions()]],
+                        ['caption' => AUTOMATText::t('Chime (announcement)'), 'name' => 'Chime', 'width' => '130px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => AUTOMATText::t('Default'), 'name' => 'Std', 'width' => '90px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => AUTOMATText::t('Respect quiet hours'), 'name' => 'Quiet', 'width' => '140px', 'add' => true, 'edit' => ['type' => 'CheckBox']],
                     ],
@@ -4436,6 +4516,7 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => $legacy
                     ? AUTOMATText::t('ℹ️ These channels come from your previous settings (push/email). With "Apply changes" they are saved as a list — then you can rename them, add more and choose them per automation.')
                     : (count($ways) === 0 ? AUTOMATText::t('⚠️ No notification channel — notifications only appear in "Last notification" and in the log.') : AUTOMATText::t('✅ Default channels: %s.', implode(', ', $std) ?: AUTOMATText::t('— none (then only automations with their own choice notify) —')))],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('🔊 Announcement channels speak the notification on a HomePod (module "DG65-Toolkit AirPlay-Steuerung" with a Piper server). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.') . (function_exists('AIRP_SayAsync') ? '' : ' ' . AUTOMATText::t('⚠️ The module is not installed.'))],
                 ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ Script channels receive $_IPS[\'TITLE\'], $_IPS[\'TEXT\'] and $_IPS[\'MEDIA\'] (ID of a camera image, e.g. from the doorbell, otherwise 0) — so any kind of notification can be connected (Telegram, Pushover, voice output …).')],
                 ['type' => 'Label', 'caption' => AUTOMATText::t('— What is notified —'), 'bold' => true],
                 ['type' => 'Label', 'caption' => count($who) > 0
