@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.9-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.10-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -17,7 +17,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.2.9 (Beta im Module Store, 769 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.2.10 (Beta im Module Store, 770 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 
@@ -57,9 +57,9 @@ Geräten vor, was sich lohnt.
   beschränken, Licht nutzt bei „Nacht" einen eigenen Helligkeitswert.
 - **Meldungen — was und wie entscheidest du**: beliebig viele benannte Meldewege (Push an alle oder eine
   bestimmte Visualisierung, E-Mail über SMTP an bestimmte Empfänger, Skript z. B. für Telegram), je Weg
-  „Standard“ und „Ruhezeit beachten“. Je Automatismus „Melden“ und die Wahl seiner Wege (ohne Wahl: Standard);
+  „Standard“ und „Ruhezeit beachten“. Je Automatismus „Melden“ und die Wahl seiner Wege im Dialog-Abschnitt „🔔 Meldungen“ (ohne Wahl: Standard);
   dazu wahlweise Störungen. Ruhezeit mit Nachholen, Testmeldung mit Ergebnis je Weg.
-- **Durchsage auf dem HomePod** (ab 0.2.8, braucht **DG65-Toolkit AirPlay-Steuerung** mit Piper-Server): Meldeweg
+- **Durchsage auf dem HomePod** (ab 0.2.8, braucht **DG65-Toolkit AirPlay-Steuerung** mit eingerichteter Sprachausgabe): Meldeweg
   „Durchsage“ spricht die Meldung als kurzen Satz (ohne Emojis und Symbole) auf einem HomePod oder allen; Lautstärke
   (5–100 % in 5er-Schritten) und Gong je Weg. Durchsagen werden nach der Ruhezeit nicht nachgeholt und schweigen bei Abwesend/Urlaub —
   Alarme (Wasser, Rauch) sprechen immer.

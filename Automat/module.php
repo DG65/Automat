@@ -92,6 +92,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.10' => [
+            '🔔 Dialog: "Notify" and the choice of notification channels now have their own section "Notifications of this automation" right after the settings.',
+        ],
         '0.2.9' => [
             '🔊 Announcement volume can be set in steps of 5 %.',
         ],
@@ -2938,18 +2941,29 @@ class Automat extends IPSModule
         }
         foreach ($own ? [$type => AUTOMATKatalog::types()[$type]] : [] as $t => $def) {
             $items = [];
+            $notifyItems = [];
             foreach (AUTOMATKatalog::fields($t) as $f) {
+                // „Melden“ und die Wahl der Meldewege stehen in einem eigenen Abschnitt (Dietmar 21.11.2026:
+                // unten im Einstellungs-Abschnitt nicht gefunden).
+                $isNotify = ($f['n'] ?? '') !== '' && $f['n'] === (self::NOTIFY_FIELD[$t] ?? null);
                 foreach ($this->fieldElements($f, $t === $type ? $fieldProblems : [], $t === $type ? $infoHints : []) as $e) {
-                    $items[] = $e;
-                }
-                if (($f['n'] ?? '') !== '' && $f['n'] === (self::NOTIFY_FIELD[$t] ?? null)) {
-                    foreach ($this->wayChoice(substr($f['n'], 0, 3)) as $e) {
+                    if ($isNotify) {
+                        $notifyItems[] = $e;
+                    } else {
                         $items[] = $e;
+                    }
+                }
+                if ($isNotify) {
+                    foreach ($this->wayChoice(substr($f['n'], 0, 3)) as $e) {
+                        $notifyItems[] = $e;
                     }
                 }
             }
             $bad = $t === $type && count($fieldProblems) > 0;
             $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_' . $t, 'caption' => ($bad ? '⛔ ' : $def['icon'] . ' ') . AUTOMATText::t('Settings: %s', $def['label']), 'expanded' => true, 'visible' => $t === $type, 'items' => $items];
+            if (count($notifyItems) > 0) {
+                $el[] = ['type' => 'ExpansionPanel', 'name' => 'sec_notify', 'caption' => AUTOMATText::t('🔔 Notifications of this automation'), 'expanded' => true, 'items' => $notifyItems];
+            }
         }
         $modeItems = [['type' => 'Label', 'name' => 'ModesLabel', 'caption' => AUTOMATText::t('Active in these house modes (variable "House mode" of this instance):'), 'visible' => !in_array($type, AUTOMATKatalog::NO_MODE_FILTER, true)]];
         foreach (AUTOMATKatalog::modes() as $m => $label) {
@@ -4519,7 +4533,7 @@ class Automat extends IPSModule
                 ['type' => 'Label', 'caption' => $legacy
                     ? AUTOMATText::t('ℹ️ These channels come from your previous settings (push/email). With "Apply changes" they are saved as a list — then you can rename them, add more and choose them per automation.')
                     : (count($ways) === 0 ? AUTOMATText::t('⚠️ No notification channel — notifications only appear in "Last notification" and in the log.') : AUTOMATText::t('✅ Default channels: %s.', implode(', ', $std) ?: AUTOMATText::t('— none (then only automations with their own choice notify) —')))],
-                ['type' => 'Label', 'caption' => AUTOMATText::t('🔊 Announcement channels speak the notification on a HomePod (module "DG65-Toolkit AirPlay-Steuerung" with a Piper server). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.') . (function_exists('AIRP_SayAsync') ? '' : ' ' . AUTOMATText::t('⚠️ The module is not installed.'))],
+                ['type' => 'Label', 'caption' => AUTOMATText::t('🔊 Announcement channels speak the notification on a HomePod (module "DG65-Toolkit AirPlay-Steuerung" with speech output set up). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.') . (function_exists('AIRP_SayAsync') ? '' : ' ' . AUTOMATText::t('⚠️ The module is not installed.'))],
                 ['type' => 'Label', 'caption' => AUTOMATText::t('ℹ️ Script channels receive $_IPS[\'TITLE\'], $_IPS[\'TEXT\'] and $_IPS[\'MEDIA\'] (ID of a camera image, e.g. from the doorbell, otherwise 0) — so any kind of notification can be connected (Telegram, Pushover, voice output …).')],
                 ['type' => 'Label', 'caption' => AUTOMATText::t('— What is notified —'), 'bold' => true],
                 ['type' => 'Label', 'caption' => count($who) > 0

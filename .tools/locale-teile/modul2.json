@@ -326,7 +326,6 @@
  "📜  Log and tile": "📜  Protokoll und Kachel",
  "📨 Test notification via all channels": "📨 Testmeldung über alle Meldewege",
  "🔁 Devices for \"%s\": %s of %s matching ones found": "🔁 Geräte für „%s“: %s von %s passend gefunden",
- "🔊 Announcement channels speak the notification on a HomePod (module \"DG65-Toolkit AirPlay-Steuerung\" with a Piper server). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.": "🔊 Durchsage-Wege sprechen die Meldung auf einem HomePod (Modul „DG65-Toolkit AirPlay-Steuerung“ mit Piper-Server). Sie werden nach der Ruhezeit nicht nachgeholt und schweigen im Hausmodus Abwesend/Urlaub — Alarme (Wasser, Rauch) sprechen immer.",
  "🔍 Search": "🔍 Suchen",
  "🔍 Search (name, room, kind, state)": "🔍 Suchen (Name, Raum, Art, Zustand)",
  "🔎  Discover — suggestions from your devices": "🔎  Entdecken — Vorschläge aus deinen Geräten",
@@ -343,5 +342,7 @@
  "🧪 Automat is new (beta) — questions, wishes for further automations and bugs are welcome in the forum thread. Feedback on devices I do not have myself is especially helpful (shutters, push buttons, water/smoke detectors, ventilation).": "🧪 Automat ist neu (Beta) — Fragen, Wünsche nach weiteren Automatismen und Fehler gerne im Forum-Thread. Besonders hilfreich sind Rückmeldungen zu Geräten, die ich selbst nicht habe (Rollläden, Taster, Wasser-/Rauchmelder, Lüftung).",
  "🧪 Dry run": "🧪 Probelauf",
  "🧪 Dry run: switch nothing and send no notifications, only record in the log what would have happened": "🧪 Probelauf: nichts schalten und nichts melden, nur im Protokoll festhalten, was passiert wäre",
- "🪟  Form: layout": "🪟  Formular: Aufbau"
+ "🪟  Form: layout": "🪟  Formular: Aufbau",
+ "🔔 Notifications of this automation": "🔔 Meldungen dieses Automatismus",
+ "🔊 Announcement channels speak the notification on a HomePod (module \"DG65-Toolkit AirPlay-Steuerung\" with speech output set up). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.": "🔊 Durchsage-Wege sprechen die Meldung auf einem HomePod (Modul „DG65-Toolkit AirPlay-Steuerung“ mit eingerichteter Sprachausgabe). Sie werden nach der Ruhezeit nicht nachgeholt und schweigen im Hausmodus Abwesend/Urlaub — Alarme (Wasser, Rauch) sprechen immer."
 }

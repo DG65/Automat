@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.10 (Build 67) — 21.11.2026
+
+- Dialog: „Melden“ und die Wahl der Meldewege stehen im eigenen Abschnitt „🔔 Meldungen dieses Automatismus“ (`sec_notify`) direkt nach den Einstellungen, statt unten im Einstellungs-Abschnitt (Dietmar 21.11.2026: nicht gefunden). Prüfstand 770.
+
 ## 0.2.9 (Build 66) — 21.11.2026
 
 - Durchsage-Lautstärke in 5-%-Schritten (5–100 %) statt 10er-Schritten (Dietmar 21.11.2026, nach erstem Live-Test). Prüfstand 769.

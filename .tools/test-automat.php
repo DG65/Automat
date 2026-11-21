@@ -2522,6 +2522,12 @@ $m->props['Automations'] = json_encode([$rowW + ['Enabled' => true, 'wa_var' => 
 $m->ApplyChanges();
 $dlgW = json_encode(json_decode($m->UIEditForm('aww1', 'waechter'), true), JSON_UNESCAPED_UNICODE);
 check('Dialog: je Meldeweg ein Haken mit Typ-Kürzel (wa_mw_…), keine fremden (gf_mw_…)', strpos($dlgW, '"wa_mw_handy"') !== false && strpos($dlgW, '"gf_mw_handy"') === false && strpos($dlgW, 'kein Haken = die Standard-Wege: Kachel') !== false);
+$secs = array_column(array_filter(json_decode($m->UIEditForm('aww1', 'waechter'), true), fn($e) => ($e['type'] ?? '') === 'ExpansionPanel'), 'items', 'name');
+$secNames = fn($items) => array_values(array_filter(array_column($items, 'name')));
+check('Dialog: „Melden“ und Meldewege im eigenen Abschnitt „🔔 Meldungen“, direkt nach den Einstellungen',
+    isset($secs['sec_notify']) && $secNames($secs['sec_notify'])[0] === 'wa_push' && in_array('wa_mw_handy', $secNames($secs['sec_notify']), true)
+    && !in_array('wa_push', $secNames($secs['sec_waechter']), true) && !in_array('wa_mw_handy', $secNames($secs['sec_waechter']), true)
+    && array_search('sec_notify', array_keys($secs), true) === array_search('sec_waechter', array_keys($secs), true) + 1);
 $names = [];
 $walkN = function ($els) use (&$walkN, &$names) {
     foreach ($els as $e) {
