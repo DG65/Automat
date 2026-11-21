@@ -92,6 +92,9 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.2.11' => [
+            '🔇 A skipped announcement (quiet hours, nobody at home) is now listed in the log with its reason.',
+        ],
         '0.2.10' => [
             '🔔 Dialog: "Notify" and the choice of notification channels now have their own section "Notifications of this automation" right after the settings.',
         ],
@@ -1631,7 +1634,11 @@ class Automat extends IPSModule
                 // ein leeres Haus sprechen — Alarm (Wasser/Rauch, dringend) spricht immer.
                 $skip = AUTOMATLogik::sayBlocked($urgent, $quiet && $w['quiet'], $this->houseModeNow());
                 if ($skip !== '') {
-                    $this->SendDebug('Meldung', 'Durchsage „' . $w['name'] . '“ entfällt (' . $skip . '): ' . $title, 0);
+                    // Im Protokoll, damit man sieht, warum der Lautsprecher still blieb (Dietmar 21.11.2026).
+                    $why = $skip === 'quiet'
+                        ? AUTOMATText::t('quiet hours (%1$s–%2$s h)', $this->pInt('cfg_QuietFrom'), $this->pInt('cfg_QuietTo'))
+                        : AUTOMATText::t('nobody at home (house mode %s)', AUTOMATKatalog::modes()[$this->houseModeNow()] ?? '?');
+                    $this->addLog($row !== null ? $this->rowName($row) : '', AUTOMATText::t('🔇 Announcement "%1$s" skipped: %2$s — "%3$s"', $w['name'], $why, $title));
                     continue;
                 }
                 $this->deliverWay($w, $title, $text, $media);

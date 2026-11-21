@@ -1366,7 +1366,7 @@ class AUTOMATLogik
     }
 
     /**
-     * Soll eine Durchsage entfallen? '' = sprechen, sonst der Grund (für Debug).
+     * Soll eine Durchsage entfallen? '' = sprechen, sonst der Grund: 'quiet' (Ruhezeit) oder 'away' (niemand zu Hause).
      * Dringend (Alarm) spricht immer; sonst nicht in der Ruhezeit (wird auch nicht nachgeholt) und nicht,
      * wenn niemand da ist (Hausmodus Abwesend/Urlaub).
      */
@@ -1376,10 +1376,10 @@ class AUTOMATLogik
             return '';
         }
         if ($quietApplies) {
-            return 'Ruhezeit';
+            return 'quiet';
         }
         if ($mode === AUTOMATKatalog::MODE_AWAY || $mode === AUTOMATKatalog::MODE_HOLIDAY) {
-            return 'niemand zu Hause';
+            return 'away';
         }
         return '';
     }

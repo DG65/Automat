@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.11 (Build 68) — 21.11.2026
+
+- Ausgefallene Durchsage im Protokoll (live 21.11.2026: Terrassentür-Test um 23:14 in der Ruhezeit 22–7, nur Durchsage-Weg gewählt → nichts kam, Grund stand nur im Debug): „🔇 Durchsage „…“ entfällt: Ruhezeit (22–7 Uhr) / niemand zu Hause (Hausmodus …) — „Titel““. `sayBlocked()` liefert jetzt `quiet`/`away`. Prüfstand 772.
+
 ## 0.2.10 (Build 67) — 21.11.2026
 
 - Dialog: „Melden“ und die Wahl der Meldewege stehen im eigenen Abschnitt „🔔 Meldungen dieses Automatismus“ (`sec_notify`) direkt nach den Einstellungen, statt unten im Einstellungs-Abschnitt (Dietmar 21.11.2026: nicht gefunden). Prüfstand 770.

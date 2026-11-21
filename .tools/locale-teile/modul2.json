@@ -344,5 +344,8 @@
  "🧪 Dry run: switch nothing and send no notifications, only record in the log what would have happened": "🧪 Probelauf: nichts schalten und nichts melden, nur im Protokoll festhalten, was passiert wäre",
  "🪟  Form: layout": "🪟  Formular: Aufbau",
  "🔔 Notifications of this automation": "🔔 Meldungen dieses Automatismus",
- "🔊 Announcement channels speak the notification on a HomePod (module \"DG65-Toolkit AirPlay-Steuerung\" with speech output set up). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.": "🔊 Durchsage-Wege sprechen die Meldung auf einem HomePod (Modul „DG65-Toolkit AirPlay-Steuerung“ mit eingerichteter Sprachausgabe). Sie werden nach der Ruhezeit nicht nachgeholt und schweigen im Hausmodus Abwesend/Urlaub — Alarme (Wasser, Rauch) sprechen immer."
+ "🔊 Announcement channels speak the notification on a HomePod (module \"DG65-Toolkit AirPlay-Steuerung\" with speech output set up). They are not caught up after the quiet hours and stay silent in house mode Away/Holiday — alarms (water, smoke) always speak.": "🔊 Durchsage-Wege sprechen die Meldung auf einem HomePod (Modul „DG65-Toolkit AirPlay-Steuerung“ mit eingerichteter Sprachausgabe). Sie werden nach der Ruhezeit nicht nachgeholt und schweigen im Hausmodus Abwesend/Urlaub — Alarme (Wasser, Rauch) sprechen immer.",
+ "quiet hours (%1$s–%2$s h)": "Ruhezeit (%1$s–%2$s Uhr)",
+ "nobody at home (house mode %s)": "niemand zu Hause (Hausmodus %s)",
+ "🔇 Announcement \"%1$s\" skipped: %2$s — \"%3$s\"": "🔇 Durchsage „%1$s“ entfällt: %2$s — „%3$s“"
 }
