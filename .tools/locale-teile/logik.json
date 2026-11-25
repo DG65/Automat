@@ -332,5 +332,16 @@
     "Nobody at home anymore (since %s).": "Niemand mehr zu Hause (seit %s Uhr).",
     "🏠 At home: %s": "🏠 Zu Hause: %s",
     "🚪 Everybody gone — \"nobody there\" at %s": "🚪 Alle weg — „niemand da“ um %s",
-    "🚪 Nobody at home since %s": "🚪 Niemand zu Hause seit %s Uhr"
+    "🚪 Nobody at home since %s": "🚪 Niemand zu Hause seit %s Uhr",
+    "The shading is holding %s against the sun — opening left to it, catches up as soon as it releases.": "Die Verschattung hält %s gegen die Sonne — Öffnen ihr überlassen, wird nachgeholt, sobald sie freigibt.",
+    "Shading released — %s": "Verschattung gibt frei — %s",
+    "⬆️ Open — %s left to the shading (opens as soon as it releases)": "⬆️ Offen — %s der Verschattung überlassen (öffnet, sobald sie freigibt)",
+    "at %s": "um %s",
+    "sunrise %s": "Sonnenaufgang %s",
+    "house mode \"Day\"": "Hausmodus „Tag“",
+    "%1$s, weekdays not before %2$s, weekends not before %3$s": "%1$s, werktags frühestens %2$s, am Wochenende frühestens %3$s",
+    "sunset %s": "Sonnenuntergang %s",
+    "when it gets dark": "wenn es dunkel wird",
+    "house mode \"Night\"": "Hausmodus „Nacht“",
+    "%1$s, at the latest %2$s": "%1$s, spätestens %2$s"
 }

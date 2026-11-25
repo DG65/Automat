@@ -2211,7 +2211,14 @@ class AUTOMATLogik
         $noon = self::timeOn(AUTOMATKatalog::time(12, 0), $today);
         $mode = (int)($ctx['mode'] ?? 0);
         $first = !isset($st['up']);
-        $st += ['up' => '', 'down' => '', 'wait' => false, 'waitDay' => '', 'chk' => null];
+        $st += ['up' => '', 'down' => '', 'wait' => false, 'waitDay' => '', 'chk' => null, 'held' => [], 'heldDay' => ''];
+        if ($st['heldDay'] !== $today) {
+            $st['held'] = []; // gilt nur für den Tag, an dem das Öffnen übersprungen wurde
+        }
+        // Behänge, die die Verschattung gerade gegen die Sonne hält (Vertrag shading ≥ 1.1). Unbekannt = frei.
+        $shaded = function (int $vid) use ($ctx): bool {
+            return !empty($ctx['shading'][$vid]);
+        };
         $yesterday = self::addDays($today, -1);
 
         // Öffnen
@@ -2251,11 +2258,11 @@ class AUTOMATLogik
         // und kein Befehl käme mehr an (live 17.10.2026: Wohnzimmer oben, Anzeige 0 — auch von Hand ging nichts).
         // Ziel je Rollladen: Richtung aus dessen Profil (~Shutter: 0 = offen; ~Shutter.Reversed: 0 = zu), sonst die
         // Werte im Automatismus — so passen gemischte Aktoren (Z-Wave + Shelly) in EINEM Automatismus (live 17.10.2026)
-        $set = function (bool $close) use ($outs, $ctx, $row, &$res, &$st, $now): string {
+        $set = function (bool $close, ?array $only = null) use ($outs, $ctx, $row, &$res, &$st, $now): string {
             $sent = [];
             $already = [];
             $targets = [];
-            foreach ($outs as $vid) {
+            foreach ($only ?? $outs as $vid) {
                 $v = self::shutterTarget($vid, $close, $row, $ctx);
                 $targets[$vid] = $v;
                 $cur = $ctx['val'][$vid] ?? null;
@@ -2294,9 +2301,12 @@ class AUTOMATLogik
                 $st['down'] = $today;
                 $st['up'] = $today;
                 $st['wait'] = false;
+                $st['held'] = [];
             } else {
+                // Von Hand: alle öffnen, auch die von der Verschattung gehaltenen — der Nutzer will es so
                 $res['log'] = AUTOMATText::t('Triggered manually — %s', $set(false));
                 $st['up'] = $today;
+                $st['held'] = [];
             }
             $ev = ['k' => 'tick'];
         }
@@ -2311,6 +2321,9 @@ class AUTOMATLogik
         };
         if (is_array($st['chk'])) {
             foreach ($outs as $vid) {
+                if (isset($st['chk']['t']) && !array_key_exists($vid, (array)$st['chk']['t'])) {
+                    continue; // bekam keinen Befehl (z. B. der Verschattung überlassen)
+                }
                 $cur = $ctx['val'][$vid] ?? null;
                 if ($cur !== null && abs((float)$cur - $chkT($vid)) > 2.0) {
                     $chkOff[] = $vid;
@@ -2356,10 +2369,34 @@ class AUTOMATLogik
                     $st['down'] = $today;
                     $st['wait'] = false;
                     $st['up'] = $today; // heute nicht mehr öffnen
+                    $st['held'] = [];   // nachholen endet mit dem Schließen
                 }
             } elseif ($upReady && $st['up'] !== $today && !$downReady) {
-                $res['log'] = $set(false);
+                $free = array_values(array_filter($outs, function ($v) use ($shaded) {
+                    return !$shaded($v);
+                }));
+                $hold = array_values(array_diff($outs, $free));
+                $parts = [];
+                if (count($free) > 0) {
+                    $parts[] = $set(false, $free);
+                }
+                if (count($hold) > 0) {
+                    $parts[] = AUTOMATText::t('The shading is holding %s against the sun — opening left to it, catches up as soon as it releases.', self::namesOf($hold, $ctx));
+                    $st['held'] = $hold;
+                    $st['heldDay'] = $today;
+                }
+                $res['log'] = implode(' ', $parts);
                 $st['up'] = $today;
+            } elseif (count($st['held']) > 0 && $st['up'] === $today && $st['down'] !== $today && !$downReady) {
+                // Nachholen: die Verschattung gibt einen zurückgehaltenen Behang frei
+                $free = array_values(array_filter($st['held'], function ($v) use ($shaded) {
+                    return !$shaded((int)$v);
+                }));
+                if (count($free) > 0) {
+                    $free = array_map('intval', $free);
+                    $res['log'] = AUTOMATText::t('Shading released — %s', $set(false, $free));
+                    $st['held'] = array_values(array_diff(array_map('intval', $st['held']), $free));
+                }
             }
         }
         $res['st'] = $st;
@@ -2375,6 +2412,9 @@ class AUTOMATLogik
             $res['status'] = AUTOMATText::t('🌙 Paused: %s', $soft);
         } elseif ($st['down'] === $today) {
             $res['status'] = AUTOMATText::t('⬇️ Close command sent (this evening) — opens tomorrow morning');
+        } elseif ($st['up'] === $today && count($st['held']) > 0 && !$downReady) {
+            $res['status'] = AUTOMATText::t('⬆️ Open — %s left to the shading (opens as soon as it releases)', self::namesOf(array_map('intval', $st['held']), $ctx));
+            $res['due'] = $now + 60;
         } elseif ($st['up'] === $today) {
             $res['status'] = (in_array($downRef, [0, 1], true) ? AUTOMATText::t('⬆️ Open — closes at %s', self::fmtClock(min($downTs, $latest), $now))
                 : ($downRef === 2 ? AUTOMATText::t('⬆️ Open — closes when dark, at the latest %s', date('H:i', $latest)) : AUTOMATText::t('⬆️ Open — closes at "Night", at the latest %s', date('H:i', $latest))))
@@ -2385,6 +2425,44 @@ class AUTOMATLogik
             $res['due'] = $upRef === 2 ? $now + 60 : $upAt;
         }
         return $res;
+    }
+
+    private static function namesOf(array $vids, array $ctx): string
+    {
+        return implode(', ', array_map(function ($v) use ($ctx) {
+            return self::nameOf((int)$v, $ctx);
+        }, $vids));
+    }
+
+    private static function hmOf(string $timeJson): string
+    {
+        $t = json_decode($timeJson, true);
+        return sprintf('%02d:%02d', (int)($t['hour'] ?? 0), (int)($t['minute'] ?? 0));
+    }
+
+    private static function offText(int $min): string
+    {
+        return ($min >= 0 ? '+' : '−') . abs($min) . ' min';
+    }
+
+    /** Lesbar: wann der Rollladen-Automatismus öffnet (Vertrag shutters 1.0, AUTOMAT_GetShutters). */
+    public static function shutterOpenText(array $row): string
+    {
+        $ref = (int)($row['rl_upref'] ?? 1);
+        $base = $ref === 0 ? AUTOMATText::t('at %s', self::hmOf((string)($row['rl_upzeit'] ?? AUTOMATKatalog::time(7, 0))))
+            : ($ref === 1 ? AUTOMATText::t('sunrise %s', self::offText((int)($row['rl_upoff'] ?? 0))) : AUTOMATText::t('house mode "Day"'));
+        return AUTOMATText::t('%1$s, weekdays not before %2$s, weekends not before %3$s', $base,
+            self::hmOf((string)($row['rl_frueh'] ?? AUTOMATKatalog::time(6, 30))), self::hmOf((string)($row['rl_fruehwe'] ?? AUTOMATKatalog::time(8, 0))));
+    }
+
+    /** Lesbar: wann der Rollladen-Automatismus schließt. */
+    public static function shutterCloseText(array $row): string
+    {
+        $ref = (int)($row['rl_downref'] ?? 1);
+        $base = $ref === 0 ? AUTOMATText::t('at %s', self::hmOf((string)($row['rl_downzeit'] ?? AUTOMATKatalog::time(21, 0))))
+            : ($ref === 1 ? AUTOMATText::t('sunset %s', self::offText((int)($row['rl_downoff'] ?? 0)))
+            : ($ref === 2 ? AUTOMATText::t('when it gets dark') : AUTOMATText::t('house mode "Night"')));
+        return AUTOMATText::t('%1$s, at the latest %2$s', $base, self::hmOf((string)($row['rl_spaet'] ?? AUTOMATKatalog::time(22, 30))));
     }
 
     // ------------------------------------------------------------------

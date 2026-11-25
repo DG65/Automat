@@ -1,7 +1,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.11-blue.svg)](https://github.com/DG65/Automat)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.3.0-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/de/service/dokumentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -17,7 +17,7 @@ Bewegungslicht, Dämmerungsschaltung, Fenster offen → Heizung runter, „Tür 
 und Grund je Automatismus, ein Protokoll, eine Kachel — und **Entdecken** schlägt aus den vorhandenen
 Geräten vor, was sich lohnt.
 
-> **Stand 0.2.11 (Beta im Module Store, 772 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
+> **Stand 0.3.0 (Beta im Module Store, 791 Prüfungen, Deutsch und Englisch):** Bewegungslicht, Fenster offen, Wächter, Anwesenheit, Zentral-Aus,
 > Rollläden und Hausmodus laufen an meiner Anlage; die übrigen Automatismen sind am Prüfstand (rund 500
 > Prüfungen) getestet. Rückmeldungen gerne im [Forum-Thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647).
 
@@ -39,7 +39,7 @@ Geräten vor, was sich lohnt.
 | 🧊 | Ausfall-Wächter | zu lange ohne Strom (Kühlschrank) oder zu lange am Stück (Pumpe) | merkt sich die bisher längste Pause bzw. den längsten Lauf als „normal“ |
 | 📅 | Zeitschaltuhr | ein/aus nach Wochentag und Uhrzeit | nur ein / nur aus, über Mitternacht, Feiertage, Zufallsversatz; Handbedienung bleibt bis zur nächsten Schaltzeit |
 | 🚨 | Wasser-/Rauchmelder-Reaktion | Alarm: Licht an, Rollläden auf, Ventil/Geräte aus, melden | wirkt auch bei Pause und in der Ruhezeit; Erinnerung bis Entwarnung; schaltet danach nichts zurück |
-| 🪟 | Rollladen nach Zeit/Sonne | morgens auf, abends zu | Uhrzeit, Sonnenauf-/-untergang ± Versatz, Helligkeit oder Hausmodus; frühestens (werktags/Wochenende), spätestens; Aussperrschutz bei offener Tür |
+| 🪟 | Rollladen nach Zeit/Sonne | morgens auf, abends zu | Uhrzeit, Sonnenauf-/-untergang ± Versatz, Helligkeit oder Hausmodus; frühestens (werktags/Wochenende), spätestens; Aussperrschutz bei offener Tür; überlässt der **NRG-Stack Verschattung** Behänge, die sie gerade gegen die Sonne hält, und öffnet sie, sobald sie freigibt |
 | 🔌 | Standby-Abschaltung | Steckdose aus, wenn das Gerät lange im Standby ist | Schwelle in W, Dauer; zwischendurch Betrieb setzt die Zeit zurück |
 | 💨 | Lüftungserinnerung | „Bitte lüften“ bei zu viel Feuchte/CO₂, „kann wieder zu“ | Wartezeit gegen kurze Spitzen (Dusche), Erinnerung, Fensterkontakt optional |
 | 🌡 | Heizung nach Hausmodus | bei Abwesend/Urlaub (Nacht wahlweise) absenken, danach zurück | merkt den alten Sollwert; Handänderungen bleiben |
@@ -126,12 +126,19 @@ IPS_RequestAction($InstanzID, 'Hausmodus', 2);     // 0 Tag, 1 Abend, 2 Nacht, 3
 IPS_RequestAction($InstanzID, 'Pause', true);      // alle pausieren
 ```
 
+```php
+print_r(AUTOMAT_GetShutters($InstanzID));          // Behänge der Rollladen-Automatismen (Vertrag shutters 1.0, nur lesend)
+```
+
+`AUTOMAT_GetShutters` liefert je Behang `positionID`, `uid`, `name`, `enabled` (aktiv, nicht gesperrt, kein Probelauf) und
+`open`/`close` als lesbaren Text. Die NRG-Stack Verschattung nutzt das, damit nicht zwei Automatiken denselben Behang nachts fahren.
+
 Sperre und Dauerlicht einzelner Automatismen sind Variablen unter der Instanz (`l_<Kennung>`,
 `d_<Kennung>`) und per `RequestAction` auf die Variable schaltbar.
 
 ## Abgrenzung
 
-Bewusst **nicht** in Automat: Beschattung nach Sonnenstand (dafür gibt es spezialisierte Module),
+Bewusst **nicht** in Automat: Beschattung nach Sonnenstand (→ **NRG-Stack Verschattung**; Automat öffnet morgens und schließt abends und stimmt sich mit ihr ab),
 Alarmanlage mit Zonen, Anwesenheitssimulation (→ **DG65-Toolkit Anwesenheitssimulation**), Batterieüberwachung
 (→ **DG65-Toolkit Batteriewächter**), Mittelwerte/Trends (→ **DG65-Toolkit Messwertrechner**).
 

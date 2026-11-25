@@ -40,3 +40,7 @@ Stolpersteine). Kickoff mit Recherche (Symcon-Ökosystem + 11 andere Systeme): `
   bearbeiten). Katalog-Konstanten bleiben englisch, angezeigt über `modes()/categories()/roles()/types()/tr()`. Prüfblock E
   (`.tools/test-englisch.inc.php`) findet fehlende Übersetzungen, falsche Platzhalter und deutsche Reste auf Englisch.
   Erkennungsmuster für Gerätenamen bleiben deutsch (beschreiben die Objekte des Nutzers).
+- Ab 0.3.0: Rollladen liest `VSCH_GetState` (Vertrag shading ≥ 1.1) und überlässt beschattete Behänge der Verschattung
+  (`ctx['shading']`, `st['held']`, Nachholen bis zum Schließen); `AUTOMAT_GetShutters` = Vertrag „shutters“ 1.0 (SUITE.md).
+  Eigene Variablen nur mit Darstellungen (`presMode/presSwitch/presPresence`), keine neuen Profile; Typ-Name über
+  locale-bauen.php (`'Automat' => 'DG65-Toolkit Automat'`).

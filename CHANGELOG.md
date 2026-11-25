@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (Build 69) — 25.11.2026
+
+- Rollladen + NRG-Stack Verschattung (Abstimmung mit der Verschattungs-Sitzung 25.11.2026, Dietmar „Ja“): `shadingMap()` liest `VSCH_GetState` (Vertrag shading ≥ 1.1, `devices[].positionID`/`shading`, GUID {DAD1C0DF-D8EA-4839-8CAC-84C36A944F2D}, function_exists-abgesichert) → `ctx['shading']`. Beim morgendlichen Öffnen bleiben beschattete Behänge unten (`st['held']`, nur für heute), Protokoll „Die Verschattung hält … gegen die Sonne“; sobald `shading` false wird, Öffnen nachgeholt („Verschattung gibt frei“), solange nicht geschlossen ist. Schließen unverändert, beendet das Nachholen. Von Hand ⬆ öffnet alle. Nachkontrolle nur für Behänge mit Befehl.
+- Neu `AUTOMAT_GetShutters($id): array` — Vertrag „shutters“ 1.0 (nur lesend): je Behang `positionID`, `uid`, `name`, `enabled`, `open`, `close` (lesbar, Systemsprache). Nutzer: Verschattung (Spalte „Nachts“ sperren/warnen).
+- Darstellungen statt Profilen (SUITE.md, Dietmar 23.11.2026): Hausmodus als Aufzählung (gleiche Farben, Symbol House), Pause/gesperrt/Dauerlicht als Schalter, „Jemand zu Hause“ mit Vorlage Anwesenheit. Das Profil `AUTOMAT.Hausmodus` wird nicht mehr angelegt, aber auch nicht gelöscht. Eigene Darstellungen des Nutzers bleiben.
+- Typ-Spalte (SUITE.md, Dietmar 24.11.2026): locale.json übersetzt „Automat“ → „DG65-Toolkit Automat“; module.json `name` unverändert.
+- Prüfstand 791 (A8e2, Modul-Block Verschattung/GetShutters, Darstellungen, Typ-Spalte); Gegenprobe ohne Verschattungsabfrage: 6 Prüfungen schlagen fehl.
+
 ## 0.2.11 (Build 68) — 21.11.2026
 
 - Ausgefallene Durchsage im Protokoll (live 21.11.2026: Terrassentür-Test um 23:14 in der Ruhezeit 22–7, nur Durchsage-Weg gewählt → nichts kam, Grund stand nur im Debug): „🔇 Durchsage „…“ entfällt: Ruhezeit (22–7 Uhr) / niemand zu Hause (Hausmodus …) — „Titel““. `sayBlocked()` liefert jetzt `quiet`/`away`. Prüfstand 772.

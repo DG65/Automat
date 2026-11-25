@@ -85,6 +85,8 @@ class Automat extends IPSModule
     private const VISU_GUID     = '{B5B875BB-9B76-45FD-4E67-2607E45B3AC4}';
     // DG65-Toolkit AirPlay-Steuerung, Gerät (HomePod) — Meldeweg „Durchsage“ über AIRP_SayAsync (optional).
     private const AIRPLAY_GUID  = '{2BB8B63A-9A5A-4704-8230-C18259F9F3E7}';
+    // NRG-Stack Verschattung — VSCH_GetState (Vertrag shading ≥ 1.1, devices[].positionID/shading), optional.
+    private const VSCH_GUID     = '{DAD1C0DF-D8EA-4839-8CAC-84C36A944F2D}';
     // Archive Control (Kernmodul) — zum Anlernen der Melder-Dauern aus den letzten Tagen.
     private const ARCHIVE_GUID  = '{43192F0B-135B-4CE7-A0A7-1475603F3060}';
 
@@ -92,6 +94,12 @@ class Automat extends IPSModule
     // (Toolkit-Präzedenzfall Batteriewächter) — bis dahin steht die Geschichte im CHANGELOG.
     // Neu bis Version: ab der ersten Store-Veröffentlichung (0.1.32, 14.10.2026) gepflegt.
     private const NEWS_VERSIONS = [
+        '0.3.0' => [
+            '🪟 Shutters and NRG-Stack Verschattung work together: in the morning Automat leaves shutters that the shading is currently holding against the sun to it and opens them as soon as it releases them.',
+            '🔌 New for scripts and modules: AUTOMAT_GetShutters lists the shutters of the shutter automations (read-only).',
+            '🎨 House mode, pause, locks and "someone at home" now use Symcon presentations instead of profiles; your own presentations stay. The old profile AUTOMAT.Hausmodus is kept.',
+            '🏷 The "Type" column in the object tree now shows "DG65-Toolkit Automat".',
+        ],
         '0.2.11' => [
             '🔇 A skipped announcement (quiet hours, nobody at home) is now listed in the log with its reason.',
         ],
@@ -224,7 +232,6 @@ class Automat extends IPSModule
     private const LICENSE_URL = 'https://github.com/DG65/Automat/blob/main/LICENSE';
     private const PAYPAL_URL  = 'https://paypal.me/DietmarGureth';
 
-    private const PROFILE_MODE = 'AUTOMAT.Hausmodus';
     // onClick-Vorspann: Schlüssel der angehakten Vorschläge aus der offenen Liste lesen (Zeilen per Array-Zugriff).
     private const PICKED_KEYS = '$k = []; foreach ($SuggestList as $x) { if (!empty($x[\'Pick\'])) { $k[] = (string)$x[\'Key\']; } }';
     private const MAX_TICK_S   = 60;   // spätestens minütlich nachsehen (Dämmerung, Hausmodus, Wächter)
@@ -337,10 +344,12 @@ class Automat extends IPSModule
         }
 
         $this->relink(true);
-        $this->ensureModeProfile();
-        $this->MaintainVariable('Hausmodus', AUTOMATText::t('House mode'), VARIABLETYPE_INTEGER, self::PROFILE_MODE, 1, true);
+        // Ab 0.3.0 Darstellungen statt Profilen (SUITE.md „Darstellungen und Vorlagen statt eigener Profile“).
+        // Eine eigene Darstellung des Nutzers liegt in VariableCustomPresentation und hat weiter Vorrang.
+        // Das alte Profil AUTOMAT.Hausmodus bleibt bestehen (Skripte, fremde Variablen), wird aber nicht mehr angelegt.
+        $this->MaintainVariable('Hausmodus', AUTOMATText::t('House mode'), VARIABLETYPE_INTEGER, $this->presMode(), 1, true);
         $this->EnableAction('Hausmodus');
-        $this->MaintainVariable('Pause', AUTOMATText::t('Pause all automations'), VARIABLETYPE_BOOLEAN, '~Switch', 2, true);
+        $this->MaintainVariable('Pause', AUTOMATText::t('Pause all automations'), VARIABLETYPE_BOOLEAN, $this->presSwitch(), 2, true);
         $this->EnableAction('Pause');
         $this->MaintainVariable('LastMessage', AUTOMATText::t('Last notification'), VARIABLETYPE_STRING, '', 3, true);
         // Gedächtnis der Automatismen (gemerkte Sollwerte, gelernte Zeiten, Melderzustände) als versteckte
@@ -378,16 +387,16 @@ class Automat extends IPSModule
             $pos = 10 + $i * 4;
             $this->ensureVar('s_' . $uid, AUTOMATText::t('%s · Status', $name), VARIABLETYPE_STRING, '', $pos);
             $this->ensureVar('r_' . $uid, AUTOMATText::t('%s · remaining time', $name), VARIABLETYPE_STRING, '', $pos + 1);
-            $this->ensureVar('l_' . $uid, AUTOMATText::t('%s · locked', $name), VARIABLETYPE_BOOLEAN, '~Switch', $pos + 2);
+            $this->ensureVar('l_' . $uid, AUTOMATText::t('%s · locked', $name), VARIABLETYPE_BOOLEAN, $this->presSwitch(), $pos + 2);
             $this->EnableAction('l_' . $uid);
             $keep['s_' . $uid] = $keep['r_' . $uid] = $keep['l_' . $uid] = true;
             if (!empty(AUTOMATKatalog::types()[$row['Type']]['light']) && $row['Type'] !== 'daemmerung') {
-                $this->ensureVar('d_' . $uid, AUTOMATText::t('%s · permanent light', $name), VARIABLETYPE_BOOLEAN, '~Switch', $pos + 3);
+                $this->ensureVar('d_' . $uid, AUTOMATText::t('%s · permanent light', $name), VARIABLETYPE_BOOLEAN, $this->presSwitch(), $pos + 3);
                 $this->EnableAction('d_' . $uid);
                 $keep['d_' . $uid] = true;
             }
             if ($row['Type'] === 'anwesenheit') {
-                $this->ensureVar('p_' . $uid, AUTOMATText::t('%s · someone at home', $name), VARIABLETYPE_BOOLEAN, IPS_VariableProfileExists('~Presence') ? '~Presence' : '~Switch', $pos + 3);
+                $this->ensureVar('p_' . $uid, AUTOMATText::t('%s · someone at home', $name), VARIABLETYPE_BOOLEAN, $this->presPresence(), $pos + 3);
                 $keep['p_' . $uid] = true;
             }
             if (empty($row['Enabled'])) {
@@ -973,6 +982,15 @@ class Automat extends IPSModule
                 }
             }
         }
+        if ($row['Type'] === 'rollladen') {
+            // Verschattung (NRG-Stack Verschattung, Vertrag shading ≥ 1.1): Behänge, die sie gerade gegen die Sonne hält,
+            // öffnet Automat morgens nicht, sondern holt das Öffnen nach, sobald sie freigibt (Abstimmung 25.11.2026).
+            foreach ($this->shadingMap() as $sv => $on) {
+                if (in_array($sv, AUTOMATKatalog::vars($row, 'rl_out'), true)) {
+                    $ctx['shading'][$sv] = $on;
+                }
+            }
+        }
         if ($row['Type'] === 'alarm') {
             foreach ($this->rows() as $rr) {
                 if ($rr['Type'] === 'rollladen' && !empty($rr['Enabled'])) {
@@ -1442,17 +1460,77 @@ class Automat extends IPSModule
     //  Hausmodus
     // =====================================================================
 
-    private function ensureModeProfile(): void
+    /** Je Positionsvariable: beschattet die Verschattung sie gerade? Einmal je Aufruf gelesen. Leer ohne Verschattung. */
+    private ?array $shadingCache = null;
+
+    private function shadingMap(): array
     {
-        if (IPS_VariableProfileExists(self::PROFILE_MODE)) {
-            return;
+        if ($this->shadingCache !== null) {
+            return $this->shadingCache;
         }
-        IPS_CreateVariableProfile(self::PROFILE_MODE, VARIABLETYPE_INTEGER);
-        IPS_SetVariableProfileIcon(self::PROFILE_MODE, 'House');
+        $map = [];
+        if (function_exists('VSCH_GetState')) {
+            foreach (@IPS_GetInstanceListByModuleID(self::VSCH_GUID) ?: [] as $vi) {
+                try {
+                    $state = json_decode((string)VSCH_GetState((int)$vi), true);
+                } catch (Throwable $e) {
+                    $state = null;
+                }
+                foreach ((array)($state['devices'] ?? []) as $d) {
+                    $pid = (int)($d['positionID'] ?? 0);
+                    if ($pid > 0 && array_key_exists('shading', (array)$d)) {
+                        $map[$pid] = !empty($map[$pid]) || !empty($d['shading']);
+                    }
+                }
+            }
+        }
+        return $this->shadingCache = $map;
+    }
+
+    /**
+     * AUTOMAT_GetShutters($id): array — Vertrag „shutters“ 1.0 (nur lesend): je Behang, den ein Automatismus
+     * „Rollladen nach Zeit/Sonne“ fährt, positionID, uid, name, enabled (aktiv, nicht gesperrt, kein Probelauf)
+     * sowie open/close als lesbarer Text. Für die Verschattung (Spalte „Nachts“ sperren/warnen).
+     */
+    public function GetShutters(): array
+    {
+        $out = [];
+        foreach ($this->rows() as $row) {
+            if (($row['Type'] ?? '') !== 'rollladen') {
+                continue;
+            }
+            $lid = @IPS_GetObjectIDByIdent('l_' . $row['Uid'], $this->InstanceID);
+            $enabled = !empty($row['Enabled']) && empty($row['Dry']) && !($lid && GetValue($lid));
+            foreach (AUTOMATKatalog::vars($row, 'rl_out') as $vid) {
+                $out[] = ['positionID' => (int)$vid, 'uid' => (string)$row['Uid'], 'name' => $this->rowName($row), 'enabled' => $enabled,
+                    'open' => AUTOMATLogik::shutterOpenText($row), 'close' => AUTOMATLogik::shutterCloseText($row)];
+            }
+        }
+        return $out;
+    }
+
+    /** Darstellung Hausmodus: Aufzählung mit den fünf Modi (vorher Profil AUTOMAT.Hausmodus, gleiche Farben). */
+    private function presMode(): array
+    {
         $colors = [0 => 0xF5C542, 1 => 0xE08A3C, 2 => 0x3C5BA8, 3 => 0x8A8A8A, 4 => 0x2E8B3D];
+        $opt = [];
         foreach (AUTOMATKatalog::modes() as $v => $label) {
-            IPS_SetVariableProfileAssociation(self::PROFILE_MODE, $v, $label, '', $colors[$v]);
+            // Aufzählung: Farbschlüssel heißt „Color“ (die Wertanzeige hat andere Schlüssel, Stolperstein 21).
+            $opt[] = ['Value' => $v, 'Caption' => $label, 'IconActive' => false, 'IconValue' => '', 'Color' => $colors[$v] ?? -1];
         }
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_ENUMERATION, 'ICON' => 'House', 'OPTIONS' => json_encode($opt, JSON_UNESCAPED_UNICODE)];
+    }
+
+    /** Darstellung Schalter (Pause, gesperrt, Dauerlicht) — keine passende Vorlage für ein neutrales An/Aus. */
+    private function presSwitch(): array
+    {
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_SWITCH];
+    }
+
+    /** Darstellung „Jemand zu Hause“: Symcon-Vorlage Anwesenheit. */
+    private function presPresence(): array
+    {
+        return ['PRESENTATION' => VARIABLE_PRESENTATION_VALUE_PRESENTATION, 'TEMPLATE' => VARIABLE_TEMPLATE_VALUE_PRESENTATION_PRESENCE];
     }
 
     private function setMode(int $mode, string $source): void
@@ -3689,7 +3767,8 @@ class Automat extends IPSModule
         return is_array($m) ? $m : [];
     }
 
-    private function ensureVar(string $ident, string $name, int $type, string $profile, int $pos): void
+    /** @param string|array $profile Profilname oder Darstellung */
+    private function ensureVar(string $ident, string $name, int $type, $profile, int $pos): void
     {
         $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         // Position nur beim Anlegen vorgeben — eine Umsortierung im Objektbaum bleibt erhalten (Store-Checkliste 9m).

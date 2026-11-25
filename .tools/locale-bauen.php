@@ -5,7 +5,8 @@
  * Aufruf: php .tools/locale-bauen.php
  */
 declare(strict_types=1);
-$de = ['Automat' => 'Automat'];
+// Modulname für die Spalte „Typ“ im Objektbaum (SUITE.md „Typ-Spalte“, Dietmar 24.11.2026); module.json name bleibt „Automat“.
+$de = ['Automat' => 'DG65-Toolkit Automat'];
 $von = [];
 $fehler = [];
 foreach (glob(__DIR__ . '/locale-teile/*.json') as $datei) {

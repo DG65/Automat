@@ -26,6 +26,10 @@ const VARIABLETYPE_BOOLEAN = 0;
 const VARIABLETYPE_INTEGER = 1;
 const VARIABLETYPE_FLOAT = 2;
 const VARIABLETYPE_STRING = 3;
+const VARIABLE_PRESENTATION_ENUMERATION = "{52D9E126-D7D2-2CBB-5E62-4CF7BA7C5D82}";
+const VARIABLE_PRESENTATION_SWITCH = "{60AE6B26-B3E2-BDB1-A3A1-BE232940664B}";
+const VARIABLE_PRESENTATION_VALUE_PRESENTATION = "{3319437D-7CDE-699D-750A-3C6A3841FA75}";
+const VARIABLE_TEMPLATE_VALUE_PRESENTATION_PRESENCE = "{1FCEF479-CD74-46D0-A31D-CA0C15D67387}";
 const KL_MESSAGE = 10201; const KL_NOTIFY = 10203; const KL_WARNING = 10204; const KL_ERROR = 10205; const KL_DEBUG = 10206; const KL_CUSTOM = 10207;
 
 $fails = 0;
@@ -202,13 +206,17 @@ class IPSModule
     public function UpdateFormField(string $n, string $p, $v): void { $this->fieldUpdates[] = [$n, $p, $v]; }
     public function SetVisualizationType(int $t): void {}
     public function UpdateVisualizationValue($v): void { $this->tileUpdates[] = $v; }
-    public function MaintainVariable(string $ident, string $name, int $type, string $profile, int $pos, bool $keep): void
+    public function MaintainVariable(string $ident, string $name, int $type, $profile, int $pos, bool $keep): void
     {
         $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         if ($keep && $id === false) {
             $def = [false, 0, 0.0, ''][$type];
             $id = $GLOBALS['NEXT']++;
-            mkvar($id, $type, $def, $name, $this->InstanceID, false, $profile, [], $ident);
+            mkvar($id, $type, $def, $name, $this->InstanceID, false, is_string($profile) ? $profile : '', is_array($profile) ? $profile : [], $ident);
+        }
+        if ($keep && is_array($profile)) {
+            $GLOBALS['OBJ'][$id]['pres'] = $profile;
+            $GLOBALS['OBJ'][$id]['profile'] = '';
         }
         if ($keep) {
             $GLOBALS['OBJ'][$id]['pos'] = $pos; // wie Symcon im ungünstigsten Fall: Position bei jedem Aufruf
@@ -1064,6 +1072,57 @@ $st = ['up' => '2026-10-13', 'down' => '', 'wait' => true, 'waitDay' => '2026-10
 $GLOBALS['CLOCK'] = ts('2026-10-14 13:00:00');
 $r = step($rlL, $st, ['k' => 'tick'], ['val' => [700 => 0, 710 => true], 'sun' => $sunR, 'dark' => false]);
 check('Wartet von gestern, Tür offen bis Mittag: „wartet“ wird zurückgesetzt, Status stimmt', $st['wait'] === false && strpos($r['status'], 'Bleibt oben') === false, $r['status']);
+heading('A8e2. Rollladen und Verschattung (Vertrag shading 1.1, Abstimmung 25.11.2026)');
+$rlV = $rl;
+$rlV['rl_out2'] = 701;
+unset($rlV['rl_tuer1']);
+$nmV = [700 => 'Ost', 701 => 'Süd'];
+$stV = [];
+at('05:00:00');
+step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV]);
+at('07:40:00');
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true, 701 => false]]);
+check('Verschattung hält „Ost“: nur „Süd“ öffnet, „Ost“ wird ihr überlassen', cmdMap($r) === ['701=0.0'] && strpos((string)$r['log'], 'Verschattung hält Ost') !== false && $stV['held'] === [700], (string)$r['log']);
+at('07:43:00');
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 0], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true]]);
+check('Nachkontrolle betrifft nur den geöffneten — der gehaltene bekommt keinen Befehl', $r['cmd'] === [], implode(',', cmdMap($r)));
+check('Status nennt den überlassenen Behang, schaut minütlich nach', strpos($r['status'], 'Ost der Verschattung überlassen') !== false && $r['due'] === ts('2026-10-13 07:44'), $r['status']);
+at('10:15:00');
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 0], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => false]]);
+check('Verschattung gibt frei: Öffnen nachgeholt', cmdMap($r) === ['700=0.0'] && strpos((string)$r['log'], 'Verschattung gibt frei') !== false && $stV['held'] === [], (string)$r['log']);
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 0, 701 => 0], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => false]]);
+check('… und nur einmal', $r['cmd'] === []);
+// Gibt nie frei: abends wird normal geschlossen, das Nachholen endet
+$stV = ['up' => '', 'down' => '', 'wait' => false];
+at('07:40:00');
+step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true, 701 => true]]);
+check('Beide beschattet: keiner öffnet', $stV['held'] === [700, 701] && $stV['up'] === '2026-10-13');
+at('18:30:00');
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => false, 701 => false]]);
+check('Schließzeit erreicht: schließt beide, kein spätes Öffnen mehr', cmdMap($r) === ['700=100.0', '701=100.0'] && $stV['held'] === [], implode(',', cmdMap($r)));
+// Von Hand ⬆: öffnet alle, auch die gehaltenen
+$stV = ['up' => '', 'down' => '', 'wait' => false];
+at('07:40:00');
+step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true]]);
+at('09:00:00');
+$r = step($rlV, $stV, ['k' => 'run', 'what' => 'up'], ['val' => [700 => 100, 701 => 0], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true]]);
+check('Von Hand ⬆ öffnet auch den gehaltenen, Nachholen erledigt', in_array('700=0.0', cmdMap($r), true) && $stV['held'] === [], implode(',', cmdMap($r)));
+// Gehalten bleibt nicht über den Tag hinaus
+$stV = ['up' => '', 'down' => '', 'wait' => false];
+at('07:40:00');
+step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV, 'shading' => [700 => true]]);
+$stV['down'] = '2026-10-13';
+$GLOBALS['CLOCK'] = ts('2026-10-14 05:00:00');
+step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR + ['2026-10-14' => ['sr' => ts('2026-10-14 07:41'), 'ss' => ts('2026-10-14 18:28')]], 'names' => $nmV, 'shading' => [700 => false]]);
+check('Am nächsten Tag ist der gestern gehaltene vergessen (kein Öffnen um 5 Uhr)', $stV['held'] === []);
+// Ohne Verschattung: wie bisher
+$stV = ['up' => '', 'down' => '', 'wait' => false];
+at('07:40:00');
+$r = step($rlV, $stV, ['k' => 'tick'], ['val' => [700 => 100, 701 => 100], 'sun' => $sunR, 'names' => $nmV]);
+check('Ohne Verschattung (keine Angabe): beide öffnen wie bisher', cmdMap($r) === ['700=0.0', '701=0.0']);
+check('GetShutters-Texte: öffnen/schließen lesbar', AUTOMATLogik::shutterOpenText($rlV) === 'Sonnenaufgang +0 min, werktags frühestens 06:30, am Wochenende frühestens 08:00'
+    && AUTOMATLogik::shutterCloseText($rlV) === 'Sonnenuntergang +0 min, spätestens 22:30', AUTOMATLogik::shutterOpenText($rlV) . ' / ' . AUTOMATLogik::shutterCloseText($rlV));
+
 $rlBad = $rlL;
 $rlBad['rl_spaet'] = AUTOMATKatalog::time(0, 30);
 check('„Spätestens 00:30“ wird als Problem gemeldet', count(array_filter(AUTOMATKatalog::problems($rlBad, fn() => true), fn($x) => strpos($x, 'vor 12 Uhr') !== false)) === 1);
@@ -1791,7 +1850,12 @@ foreach (['s_aflur1', 'r_aflur1', 'l_aflur1', 'd_aflur1', 's_abad01', 'l_abad01'
 check('Kein Dauerlicht für Fenster-Automatismus', @IPS_GetObjectIDByIdent('d_abad01', 12345) === false);
 check('Sperre/Dauerlicht mit Aktion (WebFront/Kachel bedienbar)', HasAction(IPS_GetObjectIDByIdent('l_aflur1', 12345)) && HasAction(IPS_GetObjectIDByIdent('d_aflur1', 12345)));
 check('VM_UPDATE auf Melder, Licht, Kontakt, Sollwert, Leistung', isset($m->messages[1011][VM_UPDATE], $m->messages[1001][VM_UPDATE], $m->messages[1031][VM_UPDATE], $m->messages[1021][VM_UPDATE], $m->messages[1041][VM_UPDATE]));
-check('Hausmodus-Profil mit 5 Modi', count($GLOBALS['PROFILES']['AUTOMAT.Hausmodus']['Assoc'] ?? []) === 5);
+$hmPres = $GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Hausmodus', 12345)]['pres'] ?? [];
+check('Hausmodus: Darstellung Aufzählung mit 5 Modi, kein eigenes Profil mehr (SUITE.md Darstellungen)', ($hmPres['PRESENTATION'] ?? '') === VARIABLE_PRESENTATION_ENUMERATION
+    && count(json_decode((string)($hmPres['OPTIONS'] ?? '[]'), true)) === 5 && !isset($GLOBALS['PROFILES']['AUTOMAT.Hausmodus']) && $GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Hausmodus', 12345)]['profile'] === '');
+check('Pause/Sperre: Darstellung Schalter, Anwesenheit: Vorlage', ($GLOBALS['OBJ'][IPS_GetObjectIDByIdent('Pause', 12345)]['pres']['PRESENTATION'] ?? '') === VARIABLE_PRESENTATION_SWITCH
+    && ($GLOBALS['OBJ'][IPS_GetObjectIDByIdent('l_aflur1', 12345)]['pres']['PRESENTATION'] ?? '') === VARIABLE_PRESENTATION_SWITCH);
+check('Keine neuen eigenen Profile im Modul', strpos(file_get_contents(dirname(__DIR__) . '/Automat/module.php'), 'IPS_CreateVariableProfile') === false);
 check('Statusvariable zeigt Bereitschaft', strpos((string)GetValue(IPS_GetObjectIDByIdent('s_aflur1', 12345)), 'bereit') !== false, (string)GetValue(IPS_GetObjectIDByIdent('s_aflur1', 12345)));
 
 heading('C2. Ablauf über Nachrichten und Timer');
@@ -2211,6 +2275,7 @@ at('12:00:00');
 $m->ApplyChanges();
 $pid = @IPS_GetObjectIDByIdent('p_aanw02', 12345);
 check('Ergebnisvariable „Jemand zu Hause“ angelegt und wahr', $pid !== false && GetValue($pid) === true && isset($m->messages[1501]));
+check('„Jemand zu Hause“ mit Symcon-Vorlage Anwesenheit', ($GLOBALS['OBJ'][$pid]['pres']['TEMPLATE'] ?? '') === VARIABLE_TEMPLATE_VALUE_PRESENTATION_PRESENCE);
 $ft = json_encode(json_decode($m->GetConfigurationForm(), true), JSON_UNESCAPED_UNICODE);
 check('Hausmodus-Panel zeigt die automatische Verknüpfung', strpos($ft, '🔗 Anwesenheit automatisch aus dem Automatismus „Anwesenheit“') !== false, '');
 $fv = json_decode($m->GetConfigurationForm(), true);
@@ -3134,6 +3199,22 @@ $m->ApplyChanges();
 $msgR = $m->UIRunMarked(json_encode([$rlM + ['Mark' => true]]), 'down');
 check('Button „⬇ Rollläden schließen“ für Angehakte: ~Shutter fährt auf 100 = zu — auch wenn im Automatismus „zu = 0“ steht (Profil gewinnt, live 17.10.2026)', GetValue(1231) === 100 && strpos($msgR, 'Jalousien Wohnen') !== false && strpos($msgR, 'geschlossen') !== false, $msgR);
 check('Ohne Häkchen: Hinweis statt Aktion', strpos($m->UIRunMarked(json_encode([$rlM]), 'down'), 'Häkchen') !== false);
+// Verschattung lesen und AUTOMAT_GetShutters (Vertrag shutters 1.0)
+check('Ohne Verschattungsmodul: keine Beschattungsangaben', (new ReflectionMethod('Automat', 'shadingMap'))->invoke($m) === []);
+if (!function_exists('VSCH_GetState')) {
+    function VSCH_GetState(int $id): string { return json_encode($GLOBALS['VSCH'][$id] ?? []); }
+}
+mkinst(1250, 'Verschattung', 0, '{DAD1C0DF-D8EA-4839-8CAC-84C36A944F2D}');
+$GLOBALS['VSCH'][1250] = ['contractType' => 'shading', 'contractVersion' => '1.1', 'devices' => [['positionID' => 1231, 'shading' => true], ['positionID' => 9999, 'shading' => false], ['positionID' => 1232]]];
+$m2 = new AutomatTest(12345);
+check('Verschattung gelesen: positionID → shading (ohne Feld = unbekannt)', (new ReflectionMethod('Automat', 'shadingMap'))->invoke($m2) === [1231 => true, 9999 => false]);
+$gs = $m->GetShutters();
+check('AUTOMAT_GetShutters: je Behang positionID, uid, name, enabled, open, close', count($gs) === 1 && $gs[0]['positionID'] === 1231 && $gs[0]['uid'] === 'arolm1' && $gs[0]['enabled'] === true
+    && $gs[0]['name'] === 'Jalousien Wohnen' && strpos($gs[0]['open'], 'Sonnenaufgang') === 0 && strpos($gs[0]['close'], 'spätestens 22:30') !== false, json_encode($gs, JSON_UNESCAPED_UNICODE));
+$m->RequestAction('l_arolm1', true);
+check('Gesperrt: enabled = false', $m->GetShutters()[0]['enabled'] === false);
+$m->RequestAction('l_arolm1', false);
+unset($GLOBALS['VSCH'][1250]);
 $m->RequestAction('tile', json_encode(['a' => 'run', 'uid' => 'arolm1', 'v' => 'up']));
 check('Kachel ⬆: öffnet (~Shutter: 0 = offen)', GetValue(1231) === 0, json_encode(GetValue(1231)));
 $tileItems = (new ReflectionMethod('Automat', 'tilePayload'))->invoke($m)['items'] ?? [];
@@ -3202,6 +3283,7 @@ foreach (['library.json', 'Automat/module.json', 'Automat/form.json', 'Automat/l
 $lib = json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true);
 check('library.json: nur erlaubte Felder, Name mit Bindestrich', array_keys($lib) === ['id', 'author', 'name', 'url', 'compatibility', 'version', 'build', 'date'] && $lib['name'] === 'DG65-Toolkit Automat');
 $mod = json_decode(file_get_contents(dirname(__DIR__) . '/Automat/module.json'), true);
+check('Typ-Spalte: locale.json übersetzt den Modulnamen „Automat“ in „DG65-Toolkit Automat“ (SUITE.md Typ-Spalte)', (json_decode(file_get_contents(dirname(__DIR__) . '/Automat/locale.json'), true)['translations']['de'][$mod['name']] ?? '') === 'DG65-Toolkit Automat');
 check('module.json: genau ein Alias, Klasse = Name', $mod['aliases'] === ['DG65-Toolkit Automat'] && $mod['name'] === 'Automat');
 // Öffentliche Methoden: nur skalare Parameter ohne Standardwerte (Stolperstein 8/20)
 $bad = [];

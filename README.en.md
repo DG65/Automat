@@ -3,7 +3,7 @@
 # Automat
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module Version](https://img.shields.io/badge/Module%20Version-0.2.11-blue.svg)](https://github.com/DG65/Automat)
+[![Module Version](https://img.shields.io/badge/Module%20Version-0.3.0-blue.svg)](https://github.com/DG65/Automat)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-blue.svg)](https://www.symcon.de/en/service/documentation/installation/)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-green.svg)](LICENSE)
 [![Check Style](https://github.com/DG65/Automat/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/Automat/actions/workflows/check-style.yml)
@@ -20,7 +20,7 @@ motion light, dusk switching, window open → heating down, "door open too long"
 and reason per automation, a log, a tile — and **Discover** suggests from your existing
 devices what is worth automating.
 
-> **As of 0.2.11 (beta in the Module Store, 772 checks):** motion light, window open, watchdog, presence, central off,
+> **As of 0.3.0 (beta in the Module Store, 791 checks):** motion light, window open, watchdog, presence, central off,
 > shutters and house mode run in my own installation; the other automations are tested on the test bench.
 > Feedback is welcome in the [forum thread](https://community.symcon.de/t/beta-modul-dg65-toolkit-automat-alle-standard-automatismen-in-einer-instanz/144647) (German forum, English posts are fine).
 
@@ -42,7 +42,7 @@ devices what is worth automating.
 | 🧊 | Failure watchdog | without power for too long (fridge) or running too long in one go (pump) | remembers the longest pause or run so far as "normal" |
 | 📅 | Time switch | on/off by weekday and time | only on / only off, across midnight, public holidays, random offset; manual operation stays until the next switching time |
 | 🚨 | Water/smoke alarm reaction | alarm: light on, shutters up, valve/devices off, notify | works during pause and quiet hours too; reminder until all-clear; switches nothing back afterwards |
-| 🪟 | Shutters by time/sun | up in the morning, down in the evening | time, sunrise/sunset ± offset, brightness or house mode; earliest (weekdays/weekend), latest; lock-out protection with open door; direction taken from the profile (~Shutter / ~Shutter.Reversed) |
+| 🪟 | Shutters by time/sun | up in the morning, down in the evening | time, sunrise/sunset ± offset, brightness or house mode; earliest (weekdays/weekend), latest; lock-out protection with open door; direction taken from the profile (~Shutter / ~Shutter.Reversed); leaves shutters the **NRG-Stack Verschattung** is currently holding against the sun to it and opens them as soon as it releases them |
 | 🔌 | Standby cut-off | socket off when the device is in standby for a long time | threshold in W, duration; operation in between resets the time |
 | 💨 | Airing reminder | "please air" with too much humidity/CO₂, "can be closed again" | waiting time against short spikes (shower), reminder, window contact optional |
 | 🌡 | Heating by house mode | lower on Away/Holiday (optionally Night), restore afterwards | remembers the old setpoint; manual changes stay |
@@ -132,12 +132,19 @@ IPS_RequestAction($InstanceID, 'Hausmodus', 2);     // 0 Day, 1 Evening, 2 Night
 IPS_RequestAction($InstanceID, 'Pause', true);      // pause all
 ```
 
+```php
+print_r(AUTOMAT_GetShutters($InstanceID));         // shutters of the shutter automations (contract shutters 1.0, read-only)
+```
+
+`AUTOMAT_GetShutters` returns per shutter `positionID`, `uid`, `name`, `enabled` (active, not locked, no dry run) and
+`open`/`close` as readable text. NRG-Stack Verschattung uses it so that two automations do not move the same shutter at night.
+
 Lock and permanent light of single automations are variables below the instance (`l_<id>`,
 `d_<id>`) and can be switched with `RequestAction` on the variable.
 
 ## Scope
 
-Deliberately **not** in Automat: shading by sun position (there are specialised modules for that),
+Deliberately **not** in Automat: shading by sun position (→ **NRG-Stack Verschattung**; Automat opens in the morning, closes in the evening and coordinates with it),
 alarm system with zones, presence simulation (→ **DG65-Toolkit Anwesenheitssimulation**), battery monitoring
 (→ **DG65-Toolkit Batteriewächter**), averages/trends (→ **DG65-Toolkit Messwertrechner**).
 
